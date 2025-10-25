@@ -20,7 +20,8 @@
     - Public users can only insert data (submit forms)
     - No authentication required for form submission
     - Admin access would require authenticated users with specific roles
-*/
+    - Only allow submissions from fivedit.com domain
+*/ 
 
 CREATE TABLE IF NOT EXISTS contact_inquiries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
