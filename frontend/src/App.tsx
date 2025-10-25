@@ -7,7 +7,7 @@ import WhyChooseUs from './components/WhyChooseUs';
 import Industries from './components/Industries';
 import Contact from './components/Contact';
 import Footer from './components/Footer';
-
+import Chat from './components/Chat';
 function App() {
   return (
     <div className="min-h-screen">
@@ -22,6 +22,7 @@ function App() {
         <Contact />
       </main>
       <Footer />
+      <Chat />
     </div>
   );
 }
