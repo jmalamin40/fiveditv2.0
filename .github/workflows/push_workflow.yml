@@ -19,3 +19,6 @@ jobs:
           password: ${{ secrets.FIVEDIT_DEV_PASSWORD }}
           protocol: ftp
           port: 21 # 
+          # ignore files
+          ignore: |
+            - frontend/
