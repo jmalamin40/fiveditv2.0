@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mail, Phone, MessageCircle, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import axios from "axios";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -29,7 +30,18 @@ export default function Contact() {
       const { error } = await supabase
         .from('contact_inquiries')
         .insert([formData]);
-
+      const url ='https://aiagent.jomaddarit.com/webhook-test/3881b14b-08b0-4894-a926-066b7a1b1e50'
+        const resp = await axios.post(url, formData, {
+          auth: {
+            username: "fivedit",
+            password: "fivedit@@##"
+          },
+          headers: {
+            "Content-Type": "application/json"
+          },
+          timeout: 30000 // 30s
+        });
+        console.log("Status:", resp.status);
       if (error) throw error;
 
       setSubmitStatus('success');
