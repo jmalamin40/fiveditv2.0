@@ -30,7 +30,7 @@ export default function Contact() {
       const { error } = await supabase
         .from('contact_inquiries')
         .insert([formData]);
-      const url ='https://aiagent.jomaddarit.com/webhook-test/3881b14b-08b0-4894-a926-066b7a1b1e50'
+      const url ='https://aiagent.jomaddarit.com/webhook/3881b14b-08b0-4894-a926-066b7a1b1e50'
         const resp = await axios.post(url, formData, {
           auth: {
             username: "fivedit",
