@@ -1,0 +1,90 @@
+{
+  "id": "ai-chatbot",
+  "icon": "Bot",
+  "title": "AI Agent & Chatbot Development",
+  "short": "Custom AI agents and intelligent chatbots powered by NLP and machine learning for customer engagement and automation.",
+  "description": "Build intelligent AI agents and chatbots that understand context, handle complex queries, and provide seamless customer experiences.",
+  "features": [
+    "Custom chatbot development",
+    "NLP and machine learning integration",
+    "Multi-channel support (web, WhatsApp, Telegram)",
+    "Context-aware conversations",
+    "Integration with existing systems",
+    "Analytics and reporting",
+    "Training data preparation",
+    "Continuous learning and improvement"
+  ],
+  "color": "cyan",
+  "category": "AI Development",
+  "link": "/services/ai-chatbot",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 499,
+      "currency": "USD",
+      "description": "Simple chatbot with basic functionality",
+      "deliveryTime": "7-10 days",
+      "popular": false,
+      "features": [
+        { "name": "Basic chatbot development", "included": true },
+        { "name": "Single channel integration (web)", "included": true },
+        { "name": "Pre-defined responses and FAQ", "included": true },
+        { "name": "Basic NLP integration", "included": true },
+        { "name": "Simple conversation flow", "included": true },
+        { "name": "Multi-channel support", "included": false },
+        { "name": "Context-aware conversations", "included": false },
+        { "name": "System integration", "included": false },
+        { "name": "Analytics and reporting", "included": false },
+        { "name": "Machine learning training", "included": false },
+        { "name": "Custom AI model", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 999,
+      "currency": "USD",
+      "description": "Advanced chatbot with multi-channel and AI features",
+      "deliveryTime": "14-21 days",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Multi-channel support (web, WhatsApp, Telegram)", "included": true },
+        { "name": "Context-aware conversations", "included": true },
+        { "name": "Integration with existing systems", "included": true },
+        { "name": "Analytics and reporting dashboard", "included": true },
+        { "name": "Advanced NLP and machine learning", "included": true },
+        { "name": "Training data preparation", "included": true },
+        { "name": "Custom AI model development", "included": false },
+        { "name": "Voice integration", "included": false },
+        { "name": "Advanced analytics and insights", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 1999,
+      "currency": "USD",
+      "description": "Enterprise-grade AI agent with all features",
+      "deliveryTime": "21-30 days",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Custom AI model development", "included": true },
+        { "name": "Voice integration (speech-to-text, text-to-speech)", "included": true },
+        { "name": "Advanced analytics and insights", "included": true },
+        { "name": "Continuous learning and improvement", "included": true },
+        { "name": "Multi-language support", "included": true },
+        { "name": "Sentiment analysis", "included": true },
+        { "name": "Custom integrations (CRM, ERP, etc.)", "included": true },
+        { "name": "Dedicated AI training and optimization", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

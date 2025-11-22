@@ -1,0 +1,90 @@
+{
+  "id": "microservices",
+  "icon": "Network",
+  "title": "Microservice Architecture",
+  "short": "Modern microservice-based backend systems using Node.js and PHP for scalable applications.",
+  "description": "Design and implement scalable microservice architectures that enable your application to grow and adapt to changing requirements.",
+  "features": [
+    "Microservice architecture design",
+    "API gateway setup",
+    "Service communication (REST, GraphQL, gRPC)",
+    "Container orchestration (Docker, Kubernetes)",
+    "Service discovery and load balancing",
+    "Distributed logging and monitoring",
+    "Database per service pattern",
+    "CI/CD pipeline for microservices"
+  ],
+  "color": "blue",
+  "category": "Architecture",
+  "link": "/services/microservices",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 999,
+      "currency": "USD",
+      "description": "Basic microservice architecture setup",
+      "deliveryTime": "14-21 days",
+      "popular": false,
+      "features": [
+        { "name": "Microservice architecture design", "included": true },
+        { "name": "Basic API gateway setup", "included": true },
+        { "name": "REST API communication", "included": true },
+        { "name": "Docker containerization", "included": true },
+        { "name": "Basic service discovery", "included": true },
+        { "name": "GraphQL or gRPC communication", "included": false },
+        { "name": "Kubernetes orchestration", "included": false },
+        { "name": "Load balancing", "included": false },
+        { "name": "Distributed logging and monitoring", "included": false },
+        { "name": "CI/CD pipeline", "included": false },
+        { "name": "Database per service pattern", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 1999,
+      "currency": "USD",
+      "description": "Complete microservice architecture with essential features",
+      "deliveryTime": "21-30 days",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "GraphQL or gRPC communication", "included": true },
+        { "name": "Kubernetes orchestration", "included": true },
+        { "name": "Load balancing and service discovery", "included": true },
+        { "name": "Distributed logging and monitoring", "included": true },
+        { "name": "Database per service pattern", "included": true },
+        { "name": "Basic CI/CD pipeline", "included": true },
+        { "name": "Advanced monitoring and alerting", "included": false },
+        { "name": "Auto-scaling configuration", "included": false },
+        { "name": "Service mesh implementation", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 3999,
+      "currency": "USD",
+      "description": "Enterprise-grade microservice architecture",
+      "deliveryTime": "30-45 days",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Advanced monitoring and alerting", "included": true },
+        { "name": "Auto-scaling configuration", "included": true },
+        { "name": "Service mesh implementation (Istio/Linkerd)", "included": true },
+        { "name": "Advanced CI/CD pipeline with automated testing", "included": true },
+        { "name": "Distributed tracing", "included": true },
+        { "name": "Circuit breaker pattern implementation", "included": true },
+        { "name": "API versioning and documentation", "included": true },
+        { "name": "Security and authentication setup", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

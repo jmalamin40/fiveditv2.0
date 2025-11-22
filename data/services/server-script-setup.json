@@ -1,0 +1,90 @@
+{
+  "id": "server-script-setup",
+  "icon": "Settings",
+  "title": "Server-Side Script Setup",
+  "short": "Installation and configuration of any server-side technology stack tailored to your application requirements.",
+  "description": "We install and configure any server-side technology, from PHP applications to Node.js services, Python scripts, and more.",
+  "features": [
+    "Technology stack installation",
+    "Runtime environment setup",
+    "Dependency management",
+    "Configuration optimization",
+    "Process management (PM2, Supervisor)",
+    "Environment variables setup",
+    "Logging configuration",
+    "Error handling setup"
+  ],
+  "color": "cyan",
+  "category": "Installation",
+  "link": "/services/server-script-setup",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 99,
+      "currency": "USD",
+      "description": "Essential script installation and setup",
+      "deliveryTime": "24-48 hours",
+      "popular": false,
+      "features": [
+        { "name": "Script installation", "included": true },
+        { "name": "Basic runtime environment setup", "included": true },
+        { "name": "Dependency installation", "included": true },
+        { "name": "Basic configuration", "included": true },
+        { "name": "Environment variables setup", "included": true },
+        { "name": "Process management setup", "included": false },
+        { "name": "Logging configuration", "included": false },
+        { "name": "Error handling setup", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Monitoring setup", "included": false },
+        { "name": "Auto-restart configuration", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 199,
+      "currency": "USD",
+      "description": "Complete setup with process management",
+      "deliveryTime": "48-72 hours",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Process management (PM2, Supervisor)", "included": true },
+        { "name": "Logging configuration", "included": true },
+        { "name": "Error handling setup", "included": true },
+        { "name": "Basic performance optimization", "included": true },
+        { "name": "Auto-restart configuration", "included": true },
+        { "name": "Basic monitoring setup", "included": true },
+        { "name": "Advanced performance optimization", "included": false },
+        { "name": "Load balancing setup", "included": false },
+        { "name": "Backup and recovery setup", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 349,
+      "currency": "USD",
+      "description": "Full-featured setup with all optimizations",
+      "deliveryTime": "72-96 hours",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Advanced performance optimization", "included": true },
+        { "name": "Load balancing setup", "included": true },
+        { "name": "Backup and recovery setup", "included": true },
+        { "name": "Advanced monitoring and alerting", "included": true },
+        { "name": "Security hardening", "included": true },
+        { "name": "SSL/TLS configuration", "included": true },
+        { "name": "Auto-scaling configuration", "included": true },
+        { "name": "Custom automation scripts", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

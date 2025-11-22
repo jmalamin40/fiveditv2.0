@@ -16,7 +16,7 @@ export default function Header() {
     { label: 'Technologies', href: isHomePage ? '#technologies' : '/#technologies' },
     { label: 'Why Us', href: isHomePage ? '#why-us' : '/#why-us' },
     { label: 'Industries', href: isHomePage ? '#industries' : '/#industries' },
-    { label: 'Contact', href: isHomePage ? '#contact' : '/#contact' },
+    { label: 'Contact', href: '/contact' },
   ];
 
   return (
@@ -49,7 +49,7 @@ export default function Header() {
               );
             })}
             <Link
-              href={isHomePage ? '#contact' : '/#contact'}
+              href="/contact"
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
             >
               Get Started
@@ -83,7 +83,7 @@ export default function Header() {
               );
             })}
             <Link
-              href={isHomePage ? '#contact' : '/#contact'}
+              href="/contact"
               className="block mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors text-center"
               onClick={() => setIsMenuOpen(false)}
             >

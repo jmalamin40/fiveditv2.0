@@ -1,0 +1,90 @@
+{
+  "id": "api-integration",
+  "icon": "Plug",
+  "title": "Third-Party API Integration",
+  "short": "Seamless integration of payment gateways, SaaS platforms, and external services into your applications.",
+  "description": "Integrate payment gateways, SaaS platforms, and external APIs to extend your application's functionality.",
+  "features": [
+    "Payment gateway integration (Stripe, PayPal)",
+    "SaaS platform integration",
+    "RESTful API integration",
+    "Webhook setup and management",
+    "API authentication (OAuth, API keys)",
+    "Error handling and retry logic",
+    "Rate limiting and throttling",
+    "API documentation"
+  ],
+  "color": "blue",
+  "category": "Integration",
+  "link": "/services/api-integration",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 199,
+      "currency": "USD",
+      "description": "Single API integration",
+      "deliveryTime": "5-7 days",
+      "popular": false,
+      "features": [
+        { "name": "Single API integration", "included": true },
+        { "name": "Basic API authentication setup", "included": true },
+        { "name": "RESTful API integration", "included": true },
+        { "name": "Basic error handling", "included": true },
+        { "name": "API connection testing", "included": true },
+        { "name": "Webhook setup", "included": false },
+        { "name": "Advanced error handling and retry logic", "included": false },
+        { "name": "Rate limiting and throttling", "included": false },
+        { "name": "API documentation", "included": false },
+        { "name": "Multiple API integrations", "included": false },
+        { "name": "Custom integration logic", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 399,
+      "currency": "USD",
+      "description": "Complete API integration with webhooks",
+      "deliveryTime": "7-10 days",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Webhook setup and management", "included": true },
+        { "name": "Advanced error handling and retry logic", "included": true },
+        { "name": "Rate limiting and throttling", "included": true },
+        { "name": "API documentation", "included": true },
+        { "name": "OAuth authentication setup", "included": true },
+        { "name": "Up to 3 API integrations", "included": true },
+        { "name": "Custom integration logic", "included": false },
+        { "name": "API monitoring and analytics", "included": false },
+        { "name": "Multiple payment gateways", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 799,
+      "currency": "USD",
+      "description": "Enterprise API integration with all features",
+      "deliveryTime": "10-14 days",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Custom integration logic and workflows", "included": true },
+        { "name": "API monitoring and analytics", "included": true },
+        { "name": "Multiple payment gateways integration", "included": true },
+        { "name": "Unlimited API integrations", "included": true },
+        { "name": "Advanced webhook management", "included": true },
+        { "name": "API gateway setup", "included": true },
+        { "name": "Custom API wrapper development", "included": true },
+        { "name": "Comprehensive API documentation", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

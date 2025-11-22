@@ -1,0 +1,79 @@
+{
+  "id": "wordpress-theme-1",
+  "name": "WordPress Business Theme",
+  "category": "WordPress",
+  "shortDescription": "Modern WordPress theme for business websites",
+  "description": "Modern WordPress theme for business websites. Fully responsive design with drag-and-drop page builder, multiple homepage layouts, WooCommerce ready, SEO optimized, and includes premium plugins.",
+  "codecanyonUrl": "https://codecanyon.net/item/example",
+  "imageUrl": "",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Installation",
+      "price": 99,
+      "currency": "USD",
+      "description": "Perfect for getting started quickly",
+      "deliveryTime": "24-48 hours",
+      "popular": false,
+      "features": [
+        { "name": "Script installation on your server", "included": true },
+        { "name": "Database configuration", "included": true },
+        { "name": "Basic server requirements check", "included": true },
+        { "name": "Initial setup and configuration", "included": true },
+        { "name": "Email configuration", "included": false },
+        { "name": "Payment gateway setup", "included": false },
+        { "name": "Custom modifications", "included": false },
+        { "name": "Theme customization", "included": false },
+        { "name": "Plugin installation", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Security hardening", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Installation",
+      "price": 199,
+      "currency": "USD",
+      "description": "Most popular choice with essential features",
+      "deliveryTime": "48-72 hours",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Email configuration (SMTP/SendGrid)", "included": true },
+        { "name": "Payment gateway setup (Stripe/PayPal)", "included": true },
+        { "name": "Basic theme customization", "included": true },
+        { "name": "Essential plugin installation", "included": true },
+        { "name": "SEO basic configuration", "included": true },
+        { "name": "Custom modifications", "included": false },
+        { "name": "Advanced theme customization", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Security hardening", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "advanced",
+      "name": "Advanced Installation",
+      "price": 399,
+      "currency": "USD",
+      "description": "Complete solution with all features",
+      "deliveryTime": "72-96 hours",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Custom modifications (up to 5 hours)", "included": true },
+        { "name": "Advanced theme customization", "included": true },
+        { "name": "Performance optimization", "included": true },
+        { "name": "Security hardening & SSL setup", "included": true },
+        { "name": "CDN configuration", "included": true },
+        { "name": "Backup system setup", "included": true },
+        { "name": "Advanced SEO configuration", "included": true },
+        { "name": "Analytics integration", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

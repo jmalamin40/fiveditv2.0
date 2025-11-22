@@ -1,0 +1,89 @@
+{
+  "id": "ssl-management",
+  "icon": "Lock",
+  "title": "SSL/TLS Certificate Management",
+  "short": "Secure HTTPS implementation with automated SSL certificate management and renewal workflows.",
+  "description": "Ensure your website is secure with proper SSL/TLS certificate installation and automated renewal processes.",
+  "features": [
+    "SSL certificate installation",
+    "Let's Encrypt automation",
+    "Certificate renewal automation",
+    "Multi-domain certificate setup",
+    "Wildcard certificate configuration",
+    "Certificate monitoring",
+    "Security headers configuration",
+    "HTTPS redirect setup"
+  ],
+  "color": "cyan",
+  "category": "Security",
+  "link": "/services/ssl-management",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 49,
+      "currency": "USD",
+      "description": "Single domain SSL certificate setup",
+      "deliveryTime": "24-48 hours",
+      "popular": false,
+      "features": [
+        { "name": "SSL certificate installation (Let's Encrypt)", "included": true },
+        { "name": "Basic HTTPS configuration", "included": true },
+        { "name": "HTTP to HTTPS redirect setup", "included": true },
+        { "name": "Certificate installation on server", "included": true },
+        { "name": "Basic security headers", "included": true },
+        { "name": "Certificate renewal automation", "included": false },
+        { "name": "Multi-domain certificate", "included": false },
+        { "name": "Wildcard certificate", "included": false },
+        { "name": "Certificate monitoring", "included": false },
+        { "name": "Advanced security headers", "included": false },
+        { "name": "SSL/TLS optimization", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 99,
+      "currency": "USD",
+      "description": "Complete SSL setup with automation",
+      "deliveryTime": "48-72 hours",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Certificate renewal automation", "included": true },
+        { "name": "Multi-domain certificate setup", "included": true },
+        { "name": "Certificate monitoring and alerts", "included": true },
+        { "name": "Advanced security headers configuration", "included": true },
+        { "name": "SSL/TLS optimization", "included": true },
+        { "name": "Wildcard certificate", "included": false },
+        { "name": "EV SSL certificate", "included": false },
+        { "name": "Certificate pinning", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 199,
+      "currency": "USD",
+      "description": "Enterprise SSL management with all features",
+      "deliveryTime": "72-96 hours",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Wildcard certificate configuration", "included": true },
+        { "name": "EV SSL certificate setup", "included": true },
+        { "name": "Certificate pinning implementation", "included": true },
+        { "name": "Advanced SSL/TLS optimization", "included": true },
+        { "name": "Multi-server certificate deployment", "included": true },
+        { "name": "SSL security audit", "included": true },
+        { "name": "Custom certificate management dashboard", "included": true },
+        { "name": "Automated backup and recovery", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

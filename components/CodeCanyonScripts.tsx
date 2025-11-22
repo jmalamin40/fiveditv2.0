@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ArrowRight, ExternalLink, Package } from 'lucide-react';
-import { codecanyonScripts, CodeCanyonScript, getAllCategories } from '@/lib/codecanyon-scripts';
+import { codecanyonScripts, CodeCanyonScriptSummary, getAllCategories } from '@/lib/codecanyon-scripts';
 import Link from 'next/link';
 
 export default function CodeCanyonScripts() {
@@ -70,7 +70,7 @@ export default function CodeCanyonScripts() {
   );
 }
 
-function ScriptListItem({ script }: { script: CodeCanyonScript }) {
+function ScriptListItem({ script }: { script: CodeCanyonScriptSummary }) {
   return (
     <div className="bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 border border-gray-100 overflow-hidden">
       <div className="p-6">
@@ -85,17 +85,7 @@ function ScriptListItem({ script }: { script: CodeCanyonScript }) {
         </div>
 
         <div className="flex items-center justify-between gap-4 pt-4 border-t border-gray-200">
-          {script.codecanyonUrl && (
-            <a
-              href={script.codecanyonUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
-            >
-              View on CodeCanyon
-              <ExternalLink size={14} />
-            </a>
-          )}
+          
           <Link
             href={`/services/codecanyon/${script.id}`}
             className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-2 rounded-lg hover:shadow-lg transition-all hover:scale-105 font-semibold text-sm"

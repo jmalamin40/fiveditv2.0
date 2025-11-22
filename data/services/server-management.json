@@ -1,0 +1,90 @@
+{
+  "id": "server-management",
+  "icon": "Activity",
+  "title": "Server Management & Monitoring",
+  "short": "Ongoing server maintenance, security updates, performance monitoring, and incident response.",
+  "description": "Comprehensive server management services to keep your infrastructure running smoothly, securely, and efficiently.",
+  "features": [
+    "24/7 server monitoring",
+    "Security updates and patches",
+    "Performance optimization",
+    "Incident response and resolution",
+    "Backup management",
+    "Log analysis and troubleshooting",
+    "Capacity planning",
+    "Monthly performance reports"
+  ],
+  "color": "blue",
+  "category": "Management",
+  "link": "/services/server-management",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 99,
+      "currency": "USD",
+      "description": "Essential server monitoring and maintenance",
+      "deliveryTime": "Monthly",
+      "popular": false,
+      "features": [
+        { "name": "Basic server monitoring", "included": true },
+        { "name": "Security updates (monthly)", "included": true },
+        { "name": "Basic performance monitoring", "included": true },
+        { "name": "Email alerts for critical issues", "included": true },
+        { "name": "Monthly performance report", "included": true },
+        { "name": "24/7 monitoring", "included": false },
+        { "name": "Incident response", "included": false },
+        { "name": "Backup management", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Log analysis", "included": false },
+        { "name": "Capacity planning", "included": false },
+        { "name": "Priority support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 199,
+      "currency": "USD",
+      "description": "Comprehensive management with 24/7 monitoring",
+      "deliveryTime": "Monthly",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "24/7 server monitoring", "included": true },
+        { "name": "Incident response and resolution", "included": true },
+        { "name": "Backup management", "included": true },
+        { "name": "Performance optimization", "included": true },
+        { "name": "Log analysis and troubleshooting", "included": true },
+        { "name": "Security updates (weekly)", "included": true },
+        { "name": "Capacity planning", "included": false },
+        { "name": "Advanced analytics", "included": false },
+        { "name": "Custom monitoring dashboards", "included": false },
+        { "name": "Priority support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 399,
+      "currency": "USD",
+      "description": "Enterprise-grade management with all features",
+      "deliveryTime": "Monthly",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Capacity planning and scaling recommendations", "included": true },
+        { "name": "Advanced analytics and insights", "included": true },
+        { "name": "Custom monitoring dashboards", "included": true },
+        { "name": "Proactive performance optimization", "included": true },
+        { "name": "Security audits and penetration testing", "included": true },
+        { "name": "Disaster recovery planning", "included": true },
+        { "name": "Dedicated account manager", "included": true },
+        { "name": "Weekly performance reports", "included": true },
+        { "name": "Priority support (24/7)", "included": true },
+        { "name": "SLA guarantee", "included": true }
+      ]
+    }
+  ]
+}
+

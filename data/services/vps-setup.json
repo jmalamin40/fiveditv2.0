@@ -1,0 +1,90 @@
+{
+  "id": "vps-setup",
+  "icon": "Server",
+  "title": "Unmanaged VPS Setup & Optimization",
+  "short": "Complete server provisioning, security hardening, and performance optimization for production environments.",
+  "description": "We handle everything from initial server provisioning to ongoing optimization. Our team ensures your VPS is configured for maximum performance, security, and reliability.",
+  "features": [
+    "Complete server provisioning and setup",
+    "Security hardening (firewall, SSH, fail2ban)",
+    "Performance optimization (caching, compression)",
+    "SSL/TLS certificate installation",
+    "Server monitoring and alerting setup",
+    "Backup system configuration",
+    "Database optimization",
+    "Application deployment automation"
+  ],
+  "color": "blue",
+  "category": "Infrastructure",
+  "link": "/services/vps-setup",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 149,
+      "currency": "USD",
+      "description": "Essential VPS setup and configuration",
+      "deliveryTime": "24-48 hours",
+      "popular": false,
+      "features": [
+        { "name": "Server provisioning and initial setup", "included": true },
+        { "name": "Basic security configuration", "included": true },
+        { "name": "Firewall setup (UFW/iptables)", "included": true },
+        { "name": "SSH key configuration", "included": true },
+        { "name": "Basic monitoring setup", "included": true },
+        { "name": "Performance optimization", "included": false },
+        { "name": "SSL/TLS certificate installation", "included": false },
+        { "name": "Backup system configuration", "included": false },
+        { "name": "Database optimization", "included": false },
+        { "name": "Application deployment automation", "included": false },
+        { "name": "Advanced security hardening", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 299,
+      "currency": "USD",
+      "description": "Comprehensive setup with essential optimizations",
+      "deliveryTime": "48-72 hours",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Performance optimization (caching, compression)", "included": true },
+        { "name": "SSL/TLS certificate installation (Let's Encrypt)", "included": true },
+        { "name": "Backup system configuration", "included": true },
+        { "name": "Database optimization", "included": true },
+        { "name": "Advanced security hardening (fail2ban, intrusion detection)", "included": true },
+        { "name": "Server monitoring and alerting setup", "included": true },
+        { "name": "Application deployment automation", "included": false },
+        { "name": "CDN configuration", "included": false },
+        { "name": "Load balancer setup", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 499,
+      "currency": "USD",
+      "description": "Complete solution with all features and optimizations",
+      "deliveryTime": "72-96 hours",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Application deployment automation", "included": true },
+        { "name": "CDN configuration", "included": true },
+        { "name": "Load balancer setup", "included": true },
+        { "name": "Advanced monitoring and analytics", "included": true },
+        { "name": "Disaster recovery setup", "included": true },
+        { "name": "Performance tuning and optimization", "included": true },
+        { "name": "Security audit and penetration testing", "included": true },
+        { "name": "Custom automation scripts", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

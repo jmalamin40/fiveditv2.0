@@ -1,0 +1,90 @@
+{
+  "id": "laravel-codeigniter",
+  "icon": "Code2",
+  "title": "Laravel & CodeIgniter Installation",
+  "short": "Professional PHP framework setup with database configuration, environment optimization, and deployment automation.",
+  "description": "Expert installation and configuration of Laravel and CodeIgniter frameworks. We ensure your PHP application is set up correctly with all dependencies and optimizations.",
+  "features": [
+    "Framework installation and configuration",
+    "Database setup and migration",
+    "Environment configuration (.env)",
+    "Composer dependency management",
+    "Artisan/CLI setup",
+    "Queue and job configuration",
+    "Cache and session configuration",
+    "Production deployment optimization"
+  ],
+  "color": "cyan",
+  "category": "Development",
+  "link": "/services/laravel-codeigniter",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 99,
+      "currency": "USD",
+      "description": "Essential framework installation and setup",
+      "deliveryTime": "24-48 hours",
+      "popular": false,
+      "features": [
+        { "name": "Framework installation", "included": true },
+        { "name": "Basic configuration", "included": true },
+        { "name": "Database connection setup", "included": true },
+        { "name": "Composer dependency installation", "included": true },
+        { "name": "Environment file configuration", "included": true },
+        { "name": "Database migration", "included": false },
+        { "name": "Queue and job configuration", "included": false },
+        { "name": "Cache and session setup", "included": false },
+        { "name": "Production optimization", "included": false },
+        { "name": "SSL configuration", "included": false },
+        { "name": "Performance tuning", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 199,
+      "currency": "USD",
+      "description": "Complete setup with essential features",
+      "deliveryTime": "48-72 hours",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Database migration and seeding", "included": true },
+        { "name": "Queue and job configuration", "included": true },
+        { "name": "Cache and session configuration", "included": true },
+        { "name": "Artisan/CLI setup and optimization", "included": true },
+        { "name": "Basic production optimization", "included": true },
+        { "name": "Email configuration", "included": true },
+        { "name": "Advanced production optimization", "included": false },
+        { "name": "Performance tuning", "included": false },
+        { "name": "Security hardening", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 349,
+      "currency": "USD",
+      "description": "Full-featured setup with all optimizations",
+      "deliveryTime": "72-96 hours",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Advanced production optimization", "included": true },
+        { "name": "Performance tuning and caching strategies", "included": true },
+        { "name": "Security hardening and best practices", "included": true },
+        { "name": "SSL/TLS configuration", "included": true },
+        { "name": "CDN integration", "included": true },
+        { "name": "Automated deployment setup", "included": true },
+        { "name": "Monitoring and logging configuration", "included": true },
+        { "name": "Backup system integration", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+

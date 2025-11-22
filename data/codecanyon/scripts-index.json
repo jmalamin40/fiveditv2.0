@@ -1,0 +1,45 @@
+{
+  "scripts": [
+    {
+      "id": "laravel-script-1",
+      "name": "Laravel Multi-Vendor Marketplace",
+      "category": "E-Commerce",
+      "shortDescription": "Complete multi-vendor marketplace solution built with Laravel",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": ""
+    },
+    {
+      "id": "php-script-1",
+      "name": "PHP Job Portal Script",
+      "category": "Job Portal",
+      "shortDescription": "Professional job portal with employer and candidate management",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": ""
+    },
+    {
+      "id": "wordpress-theme-1",
+      "name": "WordPress Business Theme",
+      "category": "WordPress",
+      "shortDescription": "Modern WordPress theme for business websites",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": ""
+    },
+    {
+      "id": "laravel-saas-1",
+      "name": "Laravel SaaS Application",
+      "category": "SaaS",
+      "shortDescription": "Complete SaaS platform with subscription management",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": ""
+    },
+    {
+      "id": "php-lms-1",
+      "name": "PHP Learning Management System",
+      "category": "Education",
+      "shortDescription": "Complete LMS for online courses and training",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": ""
+    }
+  ]
+}
+

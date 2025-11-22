@@ -171,7 +171,7 @@ function ServiceCard({
 
         {/* Quick Contact Button */}
         <a
-          href={`#contact?service=${encodeURIComponent(service.title)}`}
+          href={service.link}
           className="block w-full mt-3 text-center bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-2 rounded-lg hover:shadow-lg transition-all hover:scale-105 font-semibold text-sm"
         >
           Get Quote

@@ -1,0 +1,90 @@
+{
+  "id": "custom-development",
+  "icon": "Wrench",
+  "title": "Custom Software Development",
+  "short": "Professional customization of existing applications and development of bespoke software solutions.",
+  "description": "Custom software development tailored to your specific business needs, from feature additions to complete application development.",
+  "features": [
+    "Custom feature development",
+    "Application customization",
+    "Legacy system modernization",
+    "API development",
+    "Database design and optimization",
+    "Code refactoring",
+    "Testing and quality assurance",
+    "Documentation and training"
+  ],
+  "color": "cyan",
+  "category": "Development",
+  "link": "/services/custom-development",
+  "plans": [
+    {
+      "id": "basic",
+      "name": "Basic Plan",
+      "price": 999,
+      "currency": "USD",
+      "description": "Small custom development project",
+      "deliveryTime": "14-21 days",
+      "popular": false,
+      "features": [
+        { "name": "Custom feature development (up to 2 features)", "included": true },
+        { "name": "Basic application customization", "included": true },
+        { "name": "Code implementation", "included": true },
+        { "name": "Basic testing", "included": true },
+        { "name": "Code documentation", "included": true },
+        { "name": "Database design", "included": false },
+        { "name": "API development", "included": false },
+        { "name": "Code refactoring", "included": false },
+        { "name": "Comprehensive testing", "included": false },
+        { "name": "Legacy system modernization", "included": false },
+        { "name": "Training and support", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Plan",
+      "price": 1999,
+      "currency": "USD",
+      "description": "Medium custom development project",
+      "deliveryTime": "21-30 days",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Custom feature development (up to 5 features)", "included": true },
+        { "name": "Database design and optimization", "included": true },
+        { "name": "API development", "included": true },
+        { "name": "Code refactoring", "included": true },
+        { "name": "Comprehensive testing and QA", "included": true },
+        { "name": "Application customization", "included": true },
+        { "name": "Legacy system modernization", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Security audit", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "premium",
+      "name": "Premium Plan",
+      "price": 3999,
+      "currency": "USD",
+      "description": "Large custom development project",
+      "deliveryTime": "30-45 days",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Unlimited custom feature development", "included": true },
+        { "name": "Legacy system modernization", "included": true },
+        { "name": "Performance optimization", "included": true },
+        { "name": "Security audit and hardening", "included": true },
+        { "name": "Complete application development", "included": true },
+        { "name": "Advanced database design", "included": true },
+        { "name": "Comprehensive API development", "included": true },
+        { "name": "Training and documentation", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+
