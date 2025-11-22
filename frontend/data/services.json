@@ -1,0 +1,206 @@
+{
+  "services": [
+    {
+      "id": "vps-setup",
+      "icon": "Server",
+      "title": "Unmanaged VPS Setup & Optimization",
+      "short": "Complete server provisioning, security hardening, and performance optimization for production environments.",
+      "description": "We handle everything from initial server provisioning to ongoing optimization. Our team ensures your VPS is configured for maximum performance, security, and reliability.",
+      "features": [
+        "Complete server provisioning and setup",
+        "Security hardening (firewall, SSH, fail2ban)",
+        "Performance optimization (caching, compression)",
+        "SSL/TLS certificate installation",
+        "Server monitoring and alerting setup",
+        "Backup system configuration",
+        "Database optimization",
+        "Application deployment automation"
+      ],
+      "color": "blue",
+      "category": "Infrastructure",
+      "link": "/services/vps-setup"
+    },
+    {
+      "id": "laravel-codeigniter",
+      "icon": "Code2",
+      "title": "Laravel & CodeIgniter Installation",
+      "short": "Professional PHP framework setup with database configuration, environment optimization, and deployment automation.",
+      "description": "Expert installation and configuration of Laravel and CodeIgniter frameworks. We ensure your PHP application is set up correctly with all dependencies and optimizations.",
+      "features": [
+        "Framework installation and configuration",
+        "Database setup and migration",
+        "Environment configuration (.env)",
+        "Composer dependency management",
+        "Artisan/CLI setup",
+        "Queue and job configuration",
+        "Cache and session configuration",
+        "Production deployment optimization"
+      ],
+      "color": "cyan",
+      "category": "Development",
+      "link": "/services/laravel-codeigniter"
+    },
+    {
+      "id": "codecanyon-installation",
+      "icon": "ShoppingCart",
+      "title": "CodeCanyon Script Installation",
+      "short": "Professional installation and custom modification of CodeCanyon scripts tailored to your business needs. Choose from Basic, Standard, or Advanced plans.",
+      "description": "We specialize in installing and configuring CodeCanyon scripts. From basic installation to advanced customization, we ensure your script runs smoothly on your server.",
+      "features": [
+        "Script installation and setup",
+        "Database configuration",
+        "Payment gateway integration",
+        "Email configuration (SMTP)",
+        "Theme customization",
+        "Plugin installation",
+        "Performance optimization",
+        "Security hardening",
+        "Custom modifications"
+      ],
+      "color": "blue",
+      "category": "Installation",
+      "link": "/services/codecanyon"
+    },
+    {
+      "id": "ai-chatbot",
+      "icon": "Bot",
+      "title": "AI Agent & Chatbot Development",
+      "short": "Custom AI agents and intelligent chatbots powered by NLP and machine learning for customer engagement and automation.",
+      "description": "Build intelligent AI agents and chatbots that understand context, handle complex queries, and provide seamless customer experiences.",
+      "features": [
+        "Custom chatbot development",
+        "NLP and machine learning integration",
+        "Multi-channel support (web, WhatsApp, Telegram)",
+        "Context-aware conversations",
+        "Integration with existing systems",
+        "Analytics and reporting",
+        "Training data preparation",
+        "Continuous learning and improvement"
+      ],
+      "color": "cyan",
+      "category": "AI Development",
+      "link": "/services/ai-chatbot"
+    },
+    {
+      "id": "microservices",
+      "icon": "Network",
+      "title": "Microservice Architecture",
+      "short": "Modern microservice-based backend systems using Node.js and PHP for scalable applications.",
+      "description": "Design and implement scalable microservice architectures that enable your application to grow and adapt to changing requirements.",
+      "features": [
+        "Microservice architecture design",
+        "API gateway setup",
+        "Service communication (REST, GraphQL, gRPC)",
+        "Container orchestration (Docker, Kubernetes)",
+        "Service discovery and load balancing",
+        "Distributed logging and monitoring",
+        "Database per service pattern",
+        "CI/CD pipeline for microservices"
+      ],
+      "color": "blue",
+      "category": "Architecture",
+      "link": "/services/microservices"
+    },
+    {
+      "id": "server-script-setup",
+      "icon": "Settings",
+      "title": "Server-Side Script Setup",
+      "short": "Installation and configuration of any server-side technology stack tailored to your application requirements.",
+      "description": "We install and configure any server-side technology, from PHP applications to Node.js services, Python scripts, and more.",
+      "features": [
+        "Technology stack installation",
+        "Runtime environment setup",
+        "Dependency management",
+        "Configuration optimization",
+        "Process management (PM2, Supervisor)",
+        "Environment variables setup",
+        "Logging configuration",
+        "Error handling setup"
+      ],
+      "color": "cyan",
+      "category": "Installation",
+      "link": "/services/server-script-setup"
+    },
+    {
+      "id": "server-management",
+      "icon": "Activity",
+      "title": "Server Management & Monitoring",
+      "short": "Ongoing server maintenance, security updates, performance monitoring, and incident response.",
+      "description": "Comprehensive server management services to keep your infrastructure running smoothly, securely, and efficiently.",
+      "features": [
+        "24/7 server monitoring",
+        "Security updates and patches",
+        "Performance optimization",
+        "Incident response and resolution",
+        "Backup management",
+        "Log analysis and troubleshooting",
+        "Capacity planning",
+        "Monthly performance reports"
+      ],
+      "color": "blue",
+      "category": "Management",
+      "link": "/services/server-management"
+    },
+    {
+      "id": "ssl-management",
+      "icon": "Lock",
+      "title": "SSL/TLS Certificate Management",
+      "short": "Secure HTTPS implementation with automated SSL certificate management and renewal workflows.",
+      "description": "Ensure your website is secure with proper SSL/TLS certificate installation and automated renewal processes.",
+      "features": [
+        "SSL certificate installation",
+        "Let's Encrypt automation",
+        "Certificate renewal automation",
+        "Multi-domain certificate setup",
+        "Wildcard certificate configuration",
+        "Certificate monitoring",
+        "Security headers configuration",
+        "HTTPS redirect setup"
+      ],
+      "color": "cyan",
+      "category": "Security",
+      "link": "/services/ssl-management"
+    },
+    {
+      "id": "api-integration",
+      "icon": "Plug",
+      "title": "Third-Party API Integration",
+      "short": "Seamless integration of payment gateways, SaaS platforms, and external services into your applications.",
+      "description": "Integrate payment gateways, SaaS platforms, and external APIs to extend your application's functionality.",
+      "features": [
+        "Payment gateway integration (Stripe, PayPal)",
+        "SaaS platform integration",
+        "RESTful API integration",
+        "Webhook setup and management",
+        "API authentication (OAuth, API keys)",
+        "Error handling and retry logic",
+        "Rate limiting and throttling",
+        "API documentation"
+      ],
+      "color": "blue",
+      "category": "Integration",
+      "link": "/services/api-integration"
+    },
+    {
+      "id": "custom-development",
+      "icon": "Wrench",
+      "title": "Custom Software Development",
+      "short": "Professional customization of existing applications and development of bespoke software solutions.",
+      "description": "Custom software development tailored to your specific business needs, from feature additions to complete application development.",
+      "features": [
+        "Custom feature development",
+        "Application customization",
+        "Legacy system modernization",
+        "API development",
+        "Database design and optimization",
+        "Code refactoring",
+        "Testing and quality assurance",
+        "Documentation and training"
+      ],
+      "color": "cyan",
+      "category": "Development",
+      "link": "/services/custom-development"
+    }
+  ]
+}
+

@@ -1,67 +1,6 @@
-import { Server, Code2, ShoppingCart, Bot, Network, Settings, Activity, Lock, Plug, Wrench } from 'lucide-react';
-
-const services = [
-  {
-    icon: Server,
-    title: 'Unmanaged VPS Setup & Optimization',
-    short: 'Complete server provisioning, security hardening, and performance optimization for production environments.',
-    color: 'blue',
-  },
-  {
-    icon: Code2,
-    title: 'Laravel & CodeIgniter Installation',
-    short: 'Professional PHP framework setup with database configuration, environment optimization, and deployment automation.',
-    color: 'cyan',
-  },
-  {
-    icon: ShoppingCart,
-    title: 'CodeCanyon Script Installation',
-    short: 'Professional installation and custom modification of CodeCanyon scripts tailored to your business needs.',
-    color: 'blue',
-  },
-  {
-    icon: Bot,
-    title: 'AI Agent & Chatbot Development',
-    short: 'Custom AI agents and intelligent chatbots powered by NLP and machine learning for customer engagement and automation.',
-    color: 'cyan',
-  },
-  {
-    icon: Network,
-    title: 'Microservice Architecture',
-    short: 'Modern microservice-based backend systems using Node.js and PHP for scalable applications.',
-    color: 'blue',
-  },
-  {
-    icon: Settings,
-    title: 'Server-Side Script Setup',
-    short: 'Installation and configuration of any server-side technology stack tailored to your application requirements.',
-    color: 'cyan',
-  },
-  {
-    icon: Activity,
-    title: 'Server Management & Monitoring',
-    short: 'Ongoing server maintenance, security updates, performance monitoring, and incident response.',
-    color: 'blue',
-  },
-  {
-    icon: Lock,
-    title: 'SSL/TLS Certificate Management',
-    short: 'Secure HTTPS implementation with automated SSL certificate management and renewal workflows.',
-    color: 'cyan',
-  },
-  {
-    icon: Plug,
-    title: 'Third-Party API Integration',
-    short: 'Seamless integration of payment gateways, SaaS platforms, and external services into your applications.',
-    color: 'blue',
-  },
-  {
-    icon: Wrench,
-    title: 'Custom Software Development',
-    short: 'Professional customization of existing applications and development of bespoke software solutions.',
-    color: 'cyan',
-  },
-];
+import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { allServices } from '@/lib/services-data';
 
 export default function Services() {
   return (
@@ -78,7 +17,7 @@ export default function Services() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {services.map((service, index) => {
+          {allServices.slice(0, 6).map((service) => {
             const Icon = service.icon;
             const colorClass = service.color === 'blue'
               ? 'from-blue-600 to-blue-700'
@@ -86,26 +25,36 @@ export default function Services() {
 
             return (
               <div
-                key={index}
+                key={service.id}
                 className="bg-white p-8 rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 border border-gray-100"
               >
                 <div className={`w-14 h-14 bg-gradient-to-br ${colorClass} rounded-xl flex items-center justify-center mb-4`}>
                   <Icon className="text-white" size={28} />
                 </div>
                 <h3 className="text-xl font-bold mb-3 text-gray-900">{service.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{service.short}</p>
+                <p className="text-gray-600 leading-relaxed mb-4">{service.short}</p>
+                {service.link && (
+                  <Link
+                    href={service.link}
+                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
+                  >
+                    View Plans & Pricing
+                    <ArrowRight size={16} />
+                  </Link>
+                )}
               </div>
             );
           })}
         </div>
 
         <div className="mt-16 text-center">
-          <a
-            href="#contact"
+          <Link
+            href="/services"
             className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-8 py-4 rounded-lg hover:shadow-xl transition-all hover:scale-105 font-semibold text-lg"
           >
-            Discuss Your Project
-          </a>
+            View All Services
+            <ArrowRight size={20} />
+          </Link>
         </div>
       </div>
     </section>

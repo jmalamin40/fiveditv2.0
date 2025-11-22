@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Mail, Phone, MessageCircle, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import axios from "axios";
 
 export default function Contact() {
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -15,6 +17,26 @@ export default function Contact() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // Pre-fill form from URL parameters
+  useEffect(() => {
+    const service = searchParams.get('service');
+    const plan = searchParams.get('plan');
+    const script = searchParams.get('script');
+    
+    if (service || plan || script) {
+      let message = '';
+      if (service) message += `Service: ${service}\n`;
+      if (plan) message += `Plan: ${plan}\n`;
+      if (script) message += `Script: ${script}\n`;
+      message += '\n';
+      
+      setFormData(prev => ({
+        ...prev,
+        message: message + prev.message,
+      }));
+    }
+  }, [searchParams]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({
