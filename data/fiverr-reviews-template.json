@@ -1,0 +1,47 @@
+{
+  "reviews": [
+    {
+      "id": 1,
+      "reviewerName": "clientname1",
+      "reviewerInitial": "C",
+      "location": "United States",
+      "countryCode": "US",
+      "isRepeatClient": false,
+      "rating": 5,
+      "timePosted": "1 month ago",
+      "reviewText": "Review text here",
+      "priceRange": "$50-$100",
+      "duration": "1 day",
+      "helpfulCount": 0
+    },
+    {
+      "id": 2,
+      "reviewerName": "clientname2",
+      "reviewerInitial": "C",
+      "location": "Germany",
+      "countryCode": "DE",
+      "isRepeatClient": true,
+      "rating": 5,
+      "timePosted": "2 months ago",
+      "reviewText": "Review text here",
+      "priceRange": "Up to $50",
+      "duration": "1 day",
+      "helpfulCount": 0
+    },
+    {
+      "id": 3,
+      "reviewerName": "clientname3",
+      "reviewerInitial": "C",
+      "location": "United Kingdom",
+      "countryCode": "GB",
+      "isRepeatClient": false,
+      "rating": 5,
+      "timePosted": "3 months ago",
+      "reviewText": "Review text here",
+      "priceRange": "$100-$200",
+      "duration": "2 days",
+      "helpfulCount": 0
+    }
+  ]
+}
+

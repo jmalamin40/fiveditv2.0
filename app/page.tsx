@@ -6,6 +6,7 @@ import Services from '@/components/Services'
 import Technologies from '@/components/Technologies'
 import WhyChooseUs from '@/components/WhyChooseUs'
 import Industries from '@/components/Industries'
+import CustomerReviews from '@/components/CustomerReviews'
 import Contact from '@/components/Contact'
 import Footer from '@/components/Footer'
 import Chat from '@/components/Chat'
@@ -21,6 +22,7 @@ export default function Home() {
         <Technologies />
         <WhyChooseUs />
         <Industries />
+        <CustomerReviews />
         <Suspense fallback={<div className="py-20 px-4">Loading...</div>}>
           <Contact />
         </Suspense>
