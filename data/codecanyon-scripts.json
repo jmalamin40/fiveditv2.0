@@ -1,0 +1,124 @@
+{
+  "scripts": [
+    {
+      "id": "laravel-script-1",
+      "name": "Laravel Multi-Vendor Marketplace",
+      "category": "E-Commerce",
+      "shortDescription": "Complete multi-vendor marketplace solution built with Laravel",
+      "description": "Complete multi-vendor marketplace solution built with Laravel. Perfect for creating online marketplaces where multiple vendors can sell their products. Includes vendor management, product management, order processing, payment integration, and more.",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": "",
+      "useDefaultPlans": true
+    },
+    {
+      "id": "php-script-1",
+      "name": "PHP Job Portal Script",
+      "category": "Job Portal",
+      "shortDescription": "Professional job portal with employer and candidate management",
+      "description": "Professional job portal with employer and candidate management. Features include job posting, candidate search, resume management, application tracking, employer dashboard, candidate dashboard, and advanced filtering options.",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": "",
+      "useDefaultPlans": true
+    },
+    {
+      "id": "wordpress-theme-1",
+      "name": "WordPress Business Theme",
+      "category": "WordPress",
+      "shortDescription": "Modern WordPress theme for business websites",
+      "description": "Modern WordPress theme for business websites. Fully responsive design with drag-and-drop page builder, multiple homepage layouts, WooCommerce ready, SEO optimized, and includes premium plugins.",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": "",
+      "useDefaultPlans": true
+    },
+    {
+      "id": "laravel-saas-1",
+      "name": "Laravel SaaS Application",
+      "category": "SaaS",
+      "shortDescription": "Complete SaaS platform with subscription management",
+      "description": "Complete SaaS platform with subscription management, multi-tenancy support, billing integration, user management, and admin dashboard. Perfect for building subscription-based applications.",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": "",
+      "useDefaultPlans": true
+    },
+    {
+      "id": "php-lms-1",
+      "name": "PHP Learning Management System",
+      "category": "Education",
+      "shortDescription": "Complete LMS for online courses and training",
+      "description": "Complete Learning Management System for online courses and training. Features include course creation, student enrollment, progress tracking, quizzes, certificates, and instructor dashboard.",
+      "codecanyonUrl": "https://codecanyon.net/item/example",
+      "imageUrl": "",
+      "useDefaultPlans": true
+    }
+  ],
+  "defaultPlans": [
+    {
+      "id": "basic",
+      "name": "Basic Installation",
+      "price": 99,
+      "currency": "USD",
+      "description": "Perfect for getting started quickly",
+      "deliveryTime": "24-48 hours",
+      "popular": false,
+      "features": [
+        { "name": "Script installation on your server", "included": true },
+        { "name": "Database configuration", "included": true },
+        { "name": "Basic server requirements check", "included": true },
+        { "name": "Initial setup and configuration", "included": true },
+        { "name": "Email configuration", "included": false },
+        { "name": "Payment gateway setup", "included": false },
+        { "name": "Custom modifications", "included": false },
+        { "name": "Theme customization", "included": false },
+        { "name": "Plugin installation", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Security hardening", "included": false },
+        { "name": "30 days support", "included": false }
+      ]
+    },
+    {
+      "id": "standard",
+      "name": "Standard Installation",
+      "price": 199,
+      "currency": "USD",
+      "description": "Most popular choice with essential features",
+      "deliveryTime": "48-72 hours",
+      "popular": true,
+      "features": [
+        { "name": "Everything in Basic", "included": true },
+        { "name": "Email configuration (SMTP/SendGrid)", "included": true },
+        { "name": "Payment gateway setup (Stripe/PayPal)", "included": true },
+        { "name": "Basic theme customization", "included": true },
+        { "name": "Essential plugin installation", "included": true },
+        { "name": "SEO basic configuration", "included": true },
+        { "name": "Custom modifications", "included": false },
+        { "name": "Advanced theme customization", "included": false },
+        { "name": "Performance optimization", "included": false },
+        { "name": "Security hardening", "included": false },
+        { "name": "30 days support", "included": true }
+      ]
+    },
+    {
+      "id": "advanced",
+      "name": "Advanced Installation",
+      "price": 399,
+      "currency": "USD",
+      "description": "Complete solution with all features",
+      "deliveryTime": "72-96 hours",
+      "popular": false,
+      "features": [
+        { "name": "Everything in Standard", "included": true },
+        { "name": "Custom modifications (up to 5 hours)", "included": true },
+        { "name": "Advanced theme customization", "included": true },
+        { "name": "Performance optimization", "included": true },
+        { "name": "Security hardening & SSL setup", "included": true },
+        { "name": "CDN configuration", "included": true },
+        { "name": "Backup system setup", "included": true },
+        { "name": "Advanced SEO configuration", "included": true },
+        { "name": "Analytics integration", "included": true },
+        { "name": "60 days support", "included": true },
+        { "name": "Priority support", "included": true }
+      ]
+    }
+  ]
+}
+
