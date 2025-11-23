@@ -41,20 +41,27 @@ jobs:
           # Wait a moment to ensure all files are written
           sleep 2
           
+          # Create exclude file for tar
+          echo "node_modules" > /tmp/tar-exclude.txt
+          echo ".git" >> /tmp/tar-exclude.txt
+          echo ".next/cache" >> /tmp/tar-exclude.txt
+          echo ".github" >> /tmp/tar-exclude.txt
+          echo "dist" >> /tmp/tar-exclude.txt
+          echo ".env.local" >> /tmp/tar-exclude.txt
+          echo ".env*.local" >> /tmp/tar-exclude.txt
+          echo "*.log" >> /tmp/tar-exclude.txt
+          echo ".DS_Store" >> /tmp/tar-exclude.txt
+          echo "deploy.tar.gz" >> /tmp/tar-exclude.txt
+          
           # Create a tarball of essential files (built .next, config files, package files)
           # Using --warning=no-file-changed to ignore file changes during archive creation
           echo "Creating tarball..."
           tar --warning=no-file-changed \
-              --exclude='node_modules' \
-              --exclude='.git' \
-              --exclude='.next/cache' \
-              --exclude='.github' \
-              --exclude='dist' \
-              --exclude='.env.local' \
-              --exclude='.env*.local' \
-              --exclude='*.log' \
-              --exclude='.DS_Store' \
-              -czf deploy.tar.gz . 2>&1
+              --exclude-from=/tmp/tar-exclude.txt \
+              -czf deploy.tar.gz . 2>&1 || { echo "Tar command failed with exit code: $?"; exit 1; }
+          
+          # Clean up exclude file
+          rm -f /tmp/tar-exclude.txt
           
           # Verify tarball was created
           if [ ! -f deploy.tar.gz ]; then
