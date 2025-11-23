@@ -1,4 +1,4 @@
-name: Deploy nodejs app to Cpanel
+name: Deploy Node.js App to cPanel
 
 on:
   push:
@@ -8,14 +8,15 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
         run: npm install
@@ -34,94 +35,41 @@ jobs:
           ssh-add ~/.ssh/id_rsa
           ssh-keyscan -p 25552 -H 198.251.84.129 >> ~/.ssh/known_hosts
 
-      - name: Deploy to Cpanel
+      - name: Deploy using rsync
         run: |
-          set -x  # Enable command tracing
-          
-          # Wait a moment to ensure all files are written
-          sleep 2
-          
-          # Create exclude file for tar
-          echo "node_modules" > /tmp/tar-exclude.txt
-          echo ".git" >> /tmp/tar-exclude.txt
-          echo ".next/cache" >> /tmp/tar-exclude.txt
-          echo ".github" >> /tmp/tar-exclude.txt
-          echo "dist" >> /tmp/tar-exclude.txt
-          echo ".env.local" >> /tmp/tar-exclude.txt
-          echo ".env*.local" >> /tmp/tar-exclude.txt
-          echo "*.log" >> /tmp/tar-exclude.txt
-          echo ".DS_Store" >> /tmp/tar-exclude.txt
-          echo "deploy.tar.gz" >> /tmp/tar-exclude.txt
-          
-          # Create a tarball of essential files (built .next, config files, package files)
-          # Using --warning=no-file-changed to ignore file changes during archive creation
-          echo "Creating tarball..."
-          tar --warning=no-file-changed \
-              --exclude-from=/tmp/tar-exclude.txt \
-              -czf deploy.tar.gz . 2>&1 || { echo "Tar command failed with exit code: $?"; exit 1; }
-          
-          # Clean up exclude file
-          rm -f /tmp/tar-exclude.txt
-          
-          # Verify tarball was created
-          if [ ! -f deploy.tar.gz ]; then
-            echo "Error: Failed to create tarball"
-            exit 1
-          fi
-          
-          echo "Tarball created successfully: $(ls -lh deploy.tar.gz)"
-          
-          # Copy the tarball to the server
-          echo "Copying tarball to server..."
-          scp -v -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/ 2>&1 || { echo "Failed to copy tarball to server"; exit 1; }
-          
-          echo "Tarball copied successfully"
-          
-          # Extract and deploy on the server
-          echo "Connecting to server for deployment..."
-          ssh -v -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF' 2>&1
+          echo "Starting deployment via rsync..."
+
+          rsync -avz --delete \
+            --exclude "node_modules" \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".next/cache" \
+            --exclude ".env.local" \
+            --exclude ".env*.local" \
+            --exclude "*.log" \
+            --exclude ".DS_Store" \
+            --exclude "deploy.tar.gz" \
+            -e "ssh -p 25552 -o StrictHostKeyChecking=no" \
+            ./ fiveditc@198.251.84.129:/home/fiveditc/domains/fivedit.com/public_html/
+
+      - name: Restart Node App on cPanel
+        run: |
+          echo "Restarting Node.js app on server..."
+
+          ssh -p 25552 -o StrictHostKeyChecking=no fiveditc@198.251.84.129 << EOF
           set -e
-          set -x  # Enable command tracing
-          echo "Starting deployment..."
-          
-          cd /home/fiveditc/domains/fivedit.com/public_html || { echo "Failed to change directory"; exit 1; }
-          echo "Current directory: $(pwd)"
-          
-          # Pull latest code to get any new files
-          echo "Pulling latest code..."
-          git pull origin production || echo "Warning: git pull failed, continuing..."
-          
-          # Verify tarball exists
-          if [ ! -f /tmp/deploy.tar.gz ]; then
-            echo "Error: Tarball not found on server"
-            exit 1
-          fi
-          
-          # Extract built files (this will overwrite with the built version)
-          echo "Extracting deployment files..."
-          tar -xzf /tmp/deploy.tar.gz || { echo "Failed to extract tarball"; exit 1; }
-          
-          # Remove tarball
-          echo "Cleaning up tarball..."
-          rm -f /tmp/deploy.tar.gz
-          
-          # Install/update dependencies
-          echo "Installing dependencies..."
-          npm install --production || { echo "Failed to install dependencies"; exit 1; }
-          
-          # Restart the application
-          echo "Restarting application..."
-          cloudlinux-selector restart --user fiveditc --interpreter nodejs --app-root /home/fiveditc/domains/fivedit.com/public_html --json || { echo "Failed to restart application"; exit 1; }
-          
-          echo "Deployment completed successfully!"
+
+          cd /home/fiveditc/domains/fivedit.com/public_html
+
+          echo "Installing production dependencies..."
+          npm install --production
+
+          echo "Restarting Node app using CloudLinux selector..."
+          cloudlinux-selector restart \
+            --user fiveditc \
+            --interpreter nodejs \
+            --app-root /home/fiveditc/domains/fivedit.com/public_html \
+            --json
+
+          echo "✅ Deployment finished successfully"
           EOF
-          
-          DEPLOY_EXIT_CODE=$?
-          if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-            echo "Deployment failed with exit code: $DEPLOY_EXIT_CODE"
-            exit $DEPLOY_EXIT_CODE
-          fi
-          
-          # Clean up local tarball
-          rm -f deploy.tar.gz
-          echo "Deployment workflow completed successfully"
