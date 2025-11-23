@@ -1,4 +1,4 @@
-name: Deploy Node.js App to cPanel
+name: Deploy NodeJS App to cPanel
 
 on:
   push:
@@ -31,45 +31,72 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/id_rsa
           ssh-keyscan -p 25552 -H 198.251.84.129 >> ~/.ssh/known_hosts
 
-      - name: Deploy using rsync
+      - name: Create deployment tarball
         run: |
-          echo "Starting deployment via rsync..."
-
-          rsync -avz --delete \
-            --exclude "node_modules" \
-            --exclude ".git" \
-            --exclude ".github" \
-            --exclude ".next/cache" \
-            --exclude ".env.local" \
-            --exclude ".env*.local" \
-            --exclude "*.log" \
-            --exclude ".DS_Store" \
-            --exclude "deploy.tar.gz" \
-            -e "ssh -p 25552 -o StrictHostKeyChecking=no" \
-            ./ fiveditc@198.251.84.129:/home/fiveditc/domains/fivedit.com/public_html/
-
-      - name: Restart Node App on cPanel
-        run: |
-          echo "Restarting Node.js app on server..."
-
-          ssh -p 25552 -o StrictHostKeyChecking=no fiveditc@198.251.84.129 << EOF
           set -e
 
-          cd /home/fiveditc/domains/fivedit.com/public_html
+          echo "Preparing tar exclude list..."
+          cat <<EOF > /tmp/tar-exclude.txt
+          node_modules
+          .git
+          .github
+          .next/cache
+          .env.local
+          .env*.local
+          *.log
+          .DS_Store
+          deploy.tar.gz
+          EOF
+
+          echo "Creating tarball..."
+          tar \
+            --warning=no-file-changed \
+            --ignore-failed-read \
+            --exclude-from=/tmp/tar-exclude.txt \
+            -czf deploy.tar.gz .
+
+          TAR_EXIT=$?
+          if [ $TAR_EXIT -gt 1 ]; then
+            echo "Tar failed with exit code: $TAR_EXIT"
+            exit 1
+          fi
+
+          ls -lh deploy.tar.gz
+
+      - name: Upload tarball to server
+        run: |
+          echo "Uploading tarball..."
+          scp -P 25552 deploy.tar.gz fiveditc@198.251.84.129:/tmp/
+
+      - name: Deploy on cPanel server
+        run: |
+          echo "Starting remote deployment..."
+
+          ssh -p 25552 fiveditc@198.251.84.129 << 'EOF'
+          set -e
+
+          APP_DIR="/home/fiveditc/domains/fivedit.com/public_html"
+
+          echo "Moving to app directory..."
+          cd $APP_DIR
+
+          echo "Extracting upload..."
+          tar -xzf /tmp/deploy.tar.gz
+
+          echo "Cleaning tar file..."
+          rm -f /tmp/deploy.tar.gz
 
           echo "Installing production dependencies..."
           npm install --production
 
-          echo "Restarting Node app using CloudLinux selector..."
+          echo "Restarting Node app..."
           cloudlinux-selector restart \
             --user fiveditc \
             --interpreter nodejs \
-            --app-root /home/fiveditc/domains/fivedit.com/public_html \
+            --app-root $APP_DIR \
             --json
 
-          echo "✅ Deployment finished successfully"
+          echo "✅ Deployment completed successfully"
           EOF
