@@ -36,13 +36,28 @@ jobs:
 
       - name: Deploy to Cpanel
         run: |
+          # Wait a moment to ensure all files are written
+          sleep 2
+          
           # Create a tarball of essential files (built .next, config files, package files)
-          tar --exclude='node_modules' \
+          # Using --warning=no-file-changed to ignore file changes during archive creation
+          tar --warning=no-file-changed \
+              --exclude='node_modules' \
               --exclude='.git' \
               --exclude='.next/cache' \
               --exclude='.github' \
               --exclude='dist' \
+              --exclude='.env.local' \
+              --exclude='.env*.local' \
+              --exclude='*.log' \
+              --exclude='.DS_Store' \
               -czf deploy.tar.gz .
+          
+          # Verify tarball was created
+          if [ ! -f deploy.tar.gz ]; then
+            echo "Error: Failed to create tarball"
+            exit 1
+          fi
           
           # Copy the tarball to the server
           scp -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/
