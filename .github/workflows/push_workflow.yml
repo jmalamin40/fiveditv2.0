@@ -36,11 +36,14 @@ jobs:
 
       - name: Deploy to Cpanel
         run: |
+          set -x  # Enable command tracing
+          
           # Wait a moment to ensure all files are written
           sleep 2
           
           # Create a tarball of essential files (built .next, config files, package files)
           # Using --warning=no-file-changed to ignore file changes during archive creation
+          echo "Creating tarball..."
           tar --warning=no-file-changed \
               --exclude='node_modules' \
               --exclude='.git' \
@@ -51,7 +54,7 @@ jobs:
               --exclude='.env*.local' \
               --exclude='*.log' \
               --exclude='.DS_Store' \
-              -czf deploy.tar.gz .
+              -czf deploy.tar.gz . 2>&1
           
           # Verify tarball was created
           if [ ! -f deploy.tar.gz ]; then
@@ -63,19 +66,29 @@ jobs:
           
           # Copy the tarball to the server
           echo "Copying tarball to server..."
-          scp -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/ || { echo "Failed to copy tarball to server"; exit 1; }
+          scp -v -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/ 2>&1 || { echo "Failed to copy tarball to server"; exit 1; }
           
           echo "Tarball copied successfully"
           
           # Extract and deploy on the server
-          ssh -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF'
+          echo "Connecting to server for deployment..."
+          ssh -v -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF' 2>&1
           set -e
+          set -x  # Enable command tracing
           echo "Starting deployment..."
+          
           cd /home/fiveditc/domains/fivedit.com/public_html || { echo "Failed to change directory"; exit 1; }
+          echo "Current directory: $(pwd)"
           
           # Pull latest code to get any new files
           echo "Pulling latest code..."
           git pull origin production || echo "Warning: git pull failed, continuing..."
+          
+          # Verify tarball exists
+          if [ ! -f /tmp/deploy.tar.gz ]; then
+            echo "Error: Tarball not found on server"
+            exit 1
+          fi
           
           # Extract built files (this will overwrite with the built version)
           echo "Extracting deployment files..."
@@ -96,5 +109,12 @@ jobs:
           echo "Deployment completed successfully!"
           EOF
           
+          DEPLOY_EXIT_CODE=$?
+          if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+            echo "Deployment failed with exit code: $DEPLOY_EXIT_CODE"
+            exit $DEPLOY_EXIT_CODE
+          fi
+          
           # Clean up local tarball
-          rm deploy.tar.gz
+          rm -f deploy.tar.gz
+          echo "Deployment workflow completed successfully"
