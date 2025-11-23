@@ -1,24 +1,32 @@
-name: Publish Website to Web Hosting
+name: Deploy nodejs app to Cpanel
+
 on:
   push:
     branches:
-      - main
+      - production
+
 jobs:
   deploy:
-    name: 🚀 Deploy website every commit
     runs-on: ubuntu-latest
     steps:
-      - name: 🚚 Get latest code
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: FTP-Deploy-Action
-        uses: SamKirkland/FTP-Deploy-Action@4.3.2
-        with:
-          server: ftp.fivedit.com
-          username: dev@fivedit.com
-          password: ${{ secrets.FIVEDIT_DEV_PASSWORD }}
-          protocol: ftp
-          port: 21 # 
-          # ignore files
-          ignore: |
-            - frontend/
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa
+          ssh-keyscan -H 198.251.84.129 >> ~/.ssh/known_hosts
+
+      - name: Deploy to Cpanel
+        run: |
+          ssh fiveditc@198.251.84.129 << 'EOF'
+          cd /home/fiveditc/domains/fivedit.com/public_html
+          git pull
+          source /home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate && cd /home/fiveditc/domains/fivedit.com/public_html
+          npm install
+          cloudlinux-selector restart --user fiveditc --interpreter nodejs --app-root /home/fiveditc/domains/fivedit.com/public_html --json
+          EOF
