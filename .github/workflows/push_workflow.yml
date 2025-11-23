@@ -23,7 +23,8 @@ jobs:
 
       - name: Deploy to Cpanel
         run: |
-          ssh fiveditc@198.251.84.129 << 'EOF'
+          ssh -o StrictHostKeyChecking=no fiveditc@198.251.84.129 bash << 'EOF'
+          set -e
           cd /home/fiveditc/domains/fivedit.com/public_html
           git pull
           source /home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate && cd /home/fiveditc/domains/fivedit.com/public_html
