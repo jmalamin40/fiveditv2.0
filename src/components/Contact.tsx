@@ -77,7 +77,7 @@ export default function Contact() {
           </h2>
           <div className="w-24 h-1 bg-gradient-to-r from-blue-600 to-cyan-500 mx-auto mb-8"></div>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Ready to build something great? Let's discuss your project and transform your technical infrastructure.
+            Ready to build something great? Let&apos;s discuss your project and transform your technical infrastructure.
           </p>
         </div>
 
@@ -228,7 +228,7 @@ export default function Contact() {
               {submitStatus === 'success' && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
                   <CheckCircle className="text-green-600 flex-shrink-0" size={20} />
-                  <p className="text-green-800">Thank you! We'll get back to you soon.</p>
+                  <p className="text-green-800">Thank you! We&apos;ll get back to you soon.</p>
                 </div>
               )}
 

@@ -85,7 +85,7 @@ export default function Industries() {
               href="#contact"
               className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-8 py-3 rounded-lg hover:shadow-xl transition-all hover:scale-105 font-semibold"
             >
-              Let's Discuss Your Needs
+              Let&apos;s Discuss Your Needs
             </a>
           </div>
         </div>

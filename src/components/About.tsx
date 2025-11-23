@@ -20,7 +20,7 @@ export default function About() {
               We combine deep technical expertise in microservice architecture with hands-on server management experience to deliver solutions that work—not just in theory, but in production environments handling real-world traffic and complexity.
             </p>
             <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-              From unmanaged VPS setup to AI agent development, from Laravel installations to complete AWS cloud architectures, we've helped dozens of companies transform their technical infrastructure from fragile to resilient.
+              From unmanaged VPS setup to AI agent development, from Laravel installations to complete AWS cloud architectures, we&apos;ve helped dozens of companies transform their technical infrastructure from fragile to resilient.
             </p>
           </div>
 

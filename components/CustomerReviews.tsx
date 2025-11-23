@@ -29,7 +29,7 @@ const getCountryFlag = (countryCode: string): string => {
     PL: '🇵🇱', IE: '🇮🇪', PT: '🇵🇹', GR: '🇬🇷', IN: '🇮🇳', BR: '🇧🇷', MX: '🇲🇽', JP: '🇯🇵',
     KR: '🇰🇷', CN: '🇨🇳', SG: '🇸🇬', MY: '🇲🇾', TH: '🇹🇭', ID: '🇮🇩', PH: '🇵🇭', VN: '🇻🇳',
     ZA: '🇿🇦', NG: '🇳🇬', EG: '🇪🇬', AE: '🇦🇪', SA: '🇸🇦', IL: '🇮🇱', TR: '🇹🇷', RU: '🇷🇺',
-    MA: '🇲🇦', SC: '🇸🇨', KE: '🇰🇪', SE: '🇸🇪', MU: '🇲🇺', PK: '🇵🇰', RS: '🇷🇸', QA: '🇶🇦', AO: '🇦🇴',
+    MA: '🇲🇦', SC: '🇸🇨', KE: '🇰🇪', MU: '🇲🇺', PK: '🇵🇰', RS: '🇷🇸', QA: '🇶🇦', AO: '🇦🇴',
   };
   return flags[countryCode] || '🌍';
 };
