@@ -59,23 +59,41 @@ jobs:
             exit 1
           fi
           
+          echo "Tarball created successfully: $(ls -lh deploy.tar.gz)"
+          
           # Copy the tarball to the server
-          scp -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/
+          echo "Copying tarball to server..."
+          scp -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/ || { echo "Failed to copy tarball to server"; exit 1; }
+          
+          echo "Tarball copied successfully"
           
           # Extract and deploy on the server
           ssh -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF'
           set -e
-          cd /home/fiveditc/domains/fivedit.com/public_html
+          echo "Starting deployment..."
+          cd /home/fiveditc/domains/fivedit.com/public_html || { echo "Failed to change directory"; exit 1; }
+          
           # Pull latest code to get any new files
-          git pull origin production || true
+          echo "Pulling latest code..."
+          git pull origin production || echo "Warning: git pull failed, continuing..."
+          
           # Extract built files (this will overwrite with the built version)
-          tar -xzf /tmp/deploy.tar.gz
+          echo "Extracting deployment files..."
+          tar -xzf /tmp/deploy.tar.gz || { echo "Failed to extract tarball"; exit 1; }
+          
           # Remove tarball
-          rm /tmp/deploy.tar.gz
+          echo "Cleaning up tarball..."
+          rm -f /tmp/deploy.tar.gz
+          
           # Install/update dependencies
-          npm install --production
+          echo "Installing dependencies..."
+          npm install --production || { echo "Failed to install dependencies"; exit 1; }
+          
           # Restart the application
-          cloudlinux-selector restart --user fiveditc --interpreter nodejs --app-root /home/fiveditc/domains/fivedit.com/public_html --json
+          echo "Restarting application..."
+          cloudlinux-selector restart --user fiveditc --interpreter nodejs --app-root /home/fiveditc/domains/fivedit.com/public_html --json || { echo "Failed to restart application"; exit 1; }
+          
+          echo "Deployment completed successfully!"
           EOF
           
           # Clean up local tarball
