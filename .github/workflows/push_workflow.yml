@@ -25,9 +25,17 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF'
           set -e
-          cd /home/fiveditc/domains/fivedit.com/public_html
-          git pull
+          # Activate Node.js environment and navigate to project directory
           source /home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate && cd /home/fiveditc/domains/fivedit.com/public_html
+          # Pull latest code
+          git pull origin production
+          # Install dependencies
           npm install
+          # Build Next.js project with limited parallelism to avoid thread pool issues
+          export NODE_OPTIONS="--max-old-space-size=2048"
+          export NEXT_TELEMETRY_DISABLED=1
+          export RAYON_NUM_THREADS=1
+          npm run build
+          # Restart the application
           cloudlinux-selector restart --user fiveditc --interpreter nodejs --app-root /home/fiveditc/domains/fivedit.com/public_html --json
           EOF
