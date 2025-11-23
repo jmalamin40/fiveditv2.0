@@ -19,11 +19,11 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/id_rsa
-          ssh-keyscan -H 198.251.84.129 >> ~/.ssh/known_hosts
+          ssh-keyscan -p 25552 -H 198.251.84.129 >> ~/.ssh/known_hosts
 
       - name: Deploy to Cpanel
         run: |
-          ssh -o StrictHostKeyChecking=no fiveditc@198.251.84.129 bash << 'EOF'
+          ssh -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF'
           set -e
           cd /home/fiveditc/domains/fivedit.com/public_html
           git pull
