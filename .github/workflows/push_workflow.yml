@@ -12,6 +12,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Next.js project
+        run: |
+          export NEXT_TELEMETRY_DISABLED=1
+          npm run build
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -23,19 +36,32 @@ jobs:
 
       - name: Deploy to Cpanel
         run: |
+          # Create a tarball of essential files (built .next, config files, package files)
+          tar --exclude='node_modules' \
+              --exclude='.git' \
+              --exclude='.next/cache' \
+              --exclude='.github' \
+              --exclude='dist' \
+              -czf deploy.tar.gz .
+          
+          # Copy the tarball to the server
+          scp -P 25552 -o StrictHostKeyChecking=no deploy.tar.gz fiveditc@198.251.84.129:/tmp/
+          
+          # Extract and deploy on the server
           ssh -o StrictHostKeyChecking=no -p 25552 fiveditc@198.251.84.129 bash << 'EOF'
           set -e
-          # Activate Node.js environment and navigate to project directory
-          source /home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate && cd /home/fiveditc/domains/fivedit.com/public_html
-          # Pull latest code
-          git pull origin production
-          # Install dependencies
-          npm install
-          # Build Next.js project with limited parallelism to avoid thread pool issues
-          export NODE_OPTIONS="--max-old-space-size=2048"
-          export NEXT_TELEMETRY_DISABLED=1
-          export RAYON_NUM_THREADS=1
-          npm run build
+          cd /home/fiveditc/domains/fivedit.com/public_html
+          # Pull latest code to get any new files
+          git pull origin production || true
+          # Extract built files (this will overwrite with the built version)
+          tar -xzf /tmp/deploy.tar.gz
+          # Remove tarball
+          rm /tmp/deploy.tar.gz
+          # Install/update dependencies
+          npm install --production
           # Restart the application
           cloudlinux-selector restart --user fiveditc --interpreter nodejs --app-root /home/fiveditc/domains/fivedit.com/public_html --json
           EOF
+          
+          # Clean up local tarball
+          rm deploy.tar.gz
