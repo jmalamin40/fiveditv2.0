@@ -1,8 +1,41 @@
+'use client'
+
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { allServices } from '@/lib/services-data';
+import { useEffect, useState } from 'react';
+import { fetchServices, Service } from '@/lib/api';
+import { Server, Code2, ShoppingCart, Bot, Network, Settings, Activity, Lock, Plug, Wrench, LucideIcon } from 'lucide-react';
+
+const iconMap: Record<string, LucideIcon> = {
+  Server,
+  Code2,
+  ShoppingCart,
+  Bot,
+  Network,
+  Settings,
+  Activity,
+  Lock,
+  Plug,
+  Wrench,
+};
 
 export default function Services() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const data = await fetchServices();
+        setServices(data);
+      } catch (error) {
+        console.error('Error loading services:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadServices();
+  }, []);
   return (
     <section id="services" className="py-20 px-4 bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="container mx-auto max-w-6xl">
@@ -17,8 +50,13 @@ export default function Services() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {allServices.slice(0, 6).map((service) => {
-            const Icon = service.icon;
+          {loading ? (
+            <div className="col-span-2 text-center py-12">
+              <p className="text-gray-500">Loading services...</p>
+            </div>
+          ) : (
+            services.slice(0, 6).map((service) => {
+              const Icon = iconMap[service.icon] || Settings;
             const colorClass = service.color === 'blue'
               ? 'from-blue-600 to-blue-700'
               : 'from-cyan-600 to-cyan-700';
@@ -44,7 +82,8 @@ export default function Services() {
                 )}
               </div>
             );
-          })}
+          })
+          )}
         </div>
 
         <div className="mt-16 text-center">

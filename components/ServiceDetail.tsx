@@ -1,7 +1,7 @@
 'use client'
 
 import { ShoppingCart, Check, X, Clock, ArrowLeft, Server, Code2, Bot, Network, Settings, Activity, Lock, Plug, Wrench, LucideIcon } from 'lucide-react';
-import { ServiceWithPlans, ServicePlan } from '@/lib/services-data';
+import { Service, ServicePlan } from '@/lib/api';
 import Link from 'next/link';
 
 // Icon mapping - maps icon names from JSON to actual icon components
@@ -19,7 +19,7 @@ const iconMap: Record<string, LucideIcon> = {
 };
 
 interface ServiceDetailProps {
-  service: ServiceWithPlans;
+  service: Service;
 }
 
 export default function ServiceDetail({ service }: ServiceDetailProps) {
@@ -27,6 +27,11 @@ export default function ServiceDetail({ service }: ServiceDetailProps) {
   const colorClass = service.color === 'blue'
     ? 'from-blue-600 to-blue-700'
     : 'from-cyan-600 to-cyan-700';
+  
+  // Handle features - can be string[] or JSON parsed
+  const features = Array.isArray(service.features) 
+    ? service.features 
+    : (typeof service.features === 'string' ? JSON.parse(service.features) : []);
 
   return (
     <section className="py-20 px-4 bg-gradient-to-br from-slate-50 to-blue-50">
@@ -61,7 +66,7 @@ export default function ServiceDetail({ service }: ServiceDetailProps) {
               <div className="mt-6">
                 <h3 className="font-semibold text-gray-900 mb-3">Key Features:</h3>
                 <ul className="grid md:grid-cols-2 gap-2">
-                  {service.features.map((feature, index) => (
+                  {features.map((feature: string, index: number) => (
                     <li key={index} className="flex items-start gap-2">
                       <Check className="text-green-600 flex-shrink-0 mt-0.5" size={18} />
                       <span className="text-sm text-gray-700">{feature}</span>
@@ -84,7 +89,7 @@ export default function ServiceDetail({ service }: ServiceDetailProps) {
             </p>
           </div>
 
-          <PlansGrid plans={service.plans} serviceName={service.title} />
+          <PlansGrid plans={service.plans || []} serviceName={service.title} />
         </div>
       </div>
     </section>
