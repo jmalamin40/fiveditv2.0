@@ -8,10 +8,12 @@ const dbConfig = {
   database: process.env.DB_NAME || 'fivedit_db',
   port: process.env.DB_PORT || 3306,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 5, // Reduced from 10 to avoid hitting connection limits
   queueLimit: 0,
   enableKeepAlive: true,
-  keepAliveInitialDelay: 0
+  keepAliveInitialDelay: 0,
+  acquireTimeout: 10000, // 10 second timeout for getting connection from pool
+  timeout: 60000, // 60 second timeout for queries
 };
 
 // Create connection pool

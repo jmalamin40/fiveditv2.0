@@ -20,8 +20,11 @@ async function seed() {
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'fivedit_db',
       port: process.env.DB_PORT || 3306,
+      connectTimeout: 10000, // 10 second timeout
+      multipleStatements: false, // Prevent multiple statements
     });
 
+    console.log('✅ Connected to database');
     console.log('🌱 Starting database seeding...\n');
 
     // Clear existing data
@@ -189,10 +192,29 @@ async function seed() {
     
   } catch (error) {
     console.error('❌ Seeding failed:', error);
+    
+    // If it's a connection limit error, provide helpful message
+    if (error.code === 'ER_TOO_MANY_USER_CONNECTIONS') {
+      console.error('\n⚠️  Too many database connections active.');
+      console.error('   This usually means:');
+      console.error('   1. The API server is running and holding connections');
+      console.error('   2. Previous migration/seed scripts didn\'t close connections');
+      console.error('   3. Database connection limit is too low\n');
+      console.error('   Solutions:');
+      console.error('   - Stop the API server: pkill -f "node.*server.js"');
+      console.error('   - Wait a few minutes for connections to timeout');
+      console.error('   - Contact your hosting provider to increase max_user_connections');
+    }
+    
     process.exit(1);
   } finally {
     if (connection) {
-      await connection.end();
+      try {
+        await connection.end();
+        console.log('✅ Database connection closed');
+      } catch (err) {
+        console.error('⚠️  Error closing connection:', err.message);
+      }
     }
   }
 }
