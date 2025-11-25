@@ -12,9 +12,13 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/services', require('./routes/services'));
 app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/codecanyon', require('./routes/codecanyon'));
+app.use('/api/admin/categories', require('./routes/adminCategories'));
+app.use('/api/admin/services', require('./routes/adminServices'));
+app.use('/api/admin/codecanyon', require('./routes/adminScripts'));
 
 // Health check
 app.get('/api/health', (req, res) => {
