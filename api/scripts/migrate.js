@@ -6,12 +6,17 @@ async function migrate() {
   
   try {
     // Connect to MySQL (without database first)
+    // Use connectionLimit: 1 to avoid creating multiple connections
     connection = await mysql.createConnection({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
       password: process.env.DB_PASSWORD || '',
       port: process.env.DB_PORT || 3306,
+      connectTimeout: 10000, // 10 second timeout
+      multipleStatements: false, // Prevent multiple statements
     });
+    
+    console.log('✅ Connected to MySQL server');
 
     const dbName = process.env.DB_NAME || 'fivedit_db';
 
@@ -170,10 +175,30 @@ async function migrate() {
     
   } catch (error) {
     console.error('❌ Migration failed:', error);
+    
+    // If it's a connection limit error, provide helpful message
+    if (error.code === 'ER_TOO_MANY_USER_CONNECTIONS') {
+      console.error('\n⚠️  Too many database connections active.');
+      console.error('   This usually means:');
+      console.error('   1. The API server is running and holding connections');
+      console.error('   2. Previous migration/seed scripts didn\'t close connections');
+      console.error('   3. Database connection limit is too low\n');
+      console.error('   Solutions:');
+      console.error('   - Stop the API server: pkill -f "node.*server.js"');
+      console.error('   - Wait a few minutes for connections to timeout');
+      console.error('   - Contact your hosting provider to increase max_user_connections');
+      console.error('   - Or run: mysql -u root -p -e "KILL USER \'' + (process.env.DB_USER || 'root') + '\'@\'%\';"');
+    }
+    
     process.exit(1);
   } finally {
     if (connection) {
-      await connection.end();
+      try {
+        await connection.end();
+        console.log('✅ Database connection closed');
+      } catch (err) {
+        console.error('⚠️  Error closing connection:', err.message);
+      }
     }
   }
 }

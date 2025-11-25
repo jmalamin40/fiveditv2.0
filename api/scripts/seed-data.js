@@ -291,7 +291,7 @@ const services = [
     ]
   },
   {
-    id: 'codecanyon-installation',
+    id: 'codecanyon',
     icon: 'Package',
     title: 'CodeCanyon Script Installation',
     short: 'Professional installation and configuration of any CodeCanyon script.',
