@@ -25,12 +25,33 @@ router.get('/', async (req, res) => {
               `SELECT * FROM plan_features WHERE plan_id = ? AND plan_type = 'script' ORDER BY id`,
               [plan.id]
             );
-            return { ...plan, features };
+            
+            // Transform plan fields to camelCase
+            return {
+              id: plan.plan_id,
+              name: plan.name,
+              price: Number(plan.price),
+              currency: plan.currency || 'USD',
+              description: plan.description,
+              deliveryTime: plan.delivery_time,
+              popular: plan.popular === 1 || plan.popular === true,
+              features: features.map(f => ({
+                name: f.name,
+                included: f.included === 1 || f.included === true
+              }))
+            };
           })
         );
 
+        // Transform script fields to camelCase
         return {
-          ...script,
+          id: script.id,
+          name: script.name,
+          category: script.category,
+          shortDescription: script.short_description,
+          description: script.description,
+          codecanyonUrl: script.codecanyon_url,
+          imageUrl: script.image_url || '',
           plans: plansWithFeatures
         };
       })
@@ -72,12 +93,35 @@ router.get('/:id', async (req, res) => {
           `SELECT * FROM plan_features WHERE plan_id = ? AND plan_type = 'script' ORDER BY id`,
           [plan.id]
         );
-        return { ...plan, features };
+        
+        // Transform plan fields to camelCase
+        const transformedPlan = {
+          id: plan.plan_id, // Use plan_id as the frontend expects
+          name: plan.name,
+          price: Number(plan.price),
+          currency: plan.currency || 'USD',
+          description: plan.description,
+          deliveryTime: plan.delivery_time,
+          popular: plan.popular === 1 || plan.popular === true,
+          features: features.map(f => ({
+            name: f.name,
+            included: f.included === 1 || f.included === true
+          }))
+        };
+        
+        return transformedPlan;
       })
     );
 
+    // Transform script fields to camelCase
     const scriptWithPlans = {
-      ...script,
+      id: script.id,
+      name: script.name,
+      category: script.category,
+      shortDescription: script.short_description,
+      description: script.description,
+      codecanyonUrl: script.codecanyon_url,
+      imageUrl: script.image_url || '',
       plans: plansWithFeatures
     };
 
@@ -97,7 +141,18 @@ router.get('/category/:category', async (req, res) => {
       [category]
     );
 
-    res.json({ scripts });
+    // Transform script fields to camelCase
+    const transformedScripts = scripts.map(script => ({
+      id: script.id,
+      name: script.name,
+      category: script.category,
+      shortDescription: script.short_description,
+      description: script.description,
+      codecanyonUrl: script.codecanyon_url,
+      imageUrl: script.image_url || ''
+    }));
+
+    res.json({ scripts: transformedScripts });
   } catch (error) {
     console.error('Error fetching scripts by category:', error);
     res.status(500).json({ error: 'Failed to fetch scripts' });

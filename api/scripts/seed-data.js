@@ -289,7 +289,84 @@ const services = [
         ]
       }
     ]
-  }
+  },
+  {
+    id: 'codecanyon-installation',
+    icon: 'Package',
+    title: 'CodeCanyon Script Installation',
+    short: 'Professional installation and configuration of any CodeCanyon script.',
+    description: 'We install and configure CodeCanyon scripts with proper database setup, server configuration, payment gateway integration, and customization. Get your script running quickly with expert setup.',
+    features: [
+      'Script upload and installation',
+      'Database configuration and migration',
+      'Server environment setup',
+      'Payment gateway integration (Stripe, PayPal)',
+      'Email/SMTP configuration',
+      'Basic customization and branding',
+      'Security hardening and SSL setup',
+      'Performance optimization'
+    ],
+    color: 'blue',
+    categoryId: 'installation',
+    categoryName: 'Script Installation',
+    link: '/services/codecanyon-installation',
+    plans: [
+      {
+        id: 'basic',
+        name: 'Basic Installation',
+        price: 99,
+        currency: 'USD',
+        description: 'Script installation and essential configuration.',
+        deliveryTime: '2-3 days',
+        popular: false,
+        features: [
+          { name: 'Script upload and installation', included: true },
+          { name: 'Database setup and configuration', included: true },
+          { name: 'Basic environment configuration', included: true },
+          { name: 'Admin panel access setup', included: true },
+          { name: 'Payment gateway setup', included: false },
+          { name: 'Email/SMTP configuration', included: false },
+          { name: 'Customization', included: false }
+        ]
+      },
+      {
+        id: 'standard',
+        name: 'Standard Installation',
+        price: 199,
+        currency: 'USD',
+        description: 'Complete setup with payment gateways and email configuration.',
+        deliveryTime: '3-4 days',
+        popular: true,
+        features: [
+          { name: 'Everything in Basic', included: true },
+          { name: 'Payment gateway integration (Stripe/PayPal)', included: true },
+          { name: 'Email/SMTP configuration', included: true },
+          { name: 'Basic theme customization', included: true },
+          { name: 'Logo and branding updates', included: true },
+          { name: 'Security hardening', included: false },
+          { name: 'Performance optimization', included: false }
+        ]
+      },
+      {
+        id: 'premium',
+        name: 'Premium Installation',
+        price: 399,
+        currency: 'USD',
+        description: 'Full installation with optimization, security, and customization.',
+        deliveryTime: '5-7 days',
+        popular: false,
+        features: [
+          { name: 'Everything in Standard', included: true },
+          { name: 'Advanced security hardening', included: true },
+          { name: 'SSL/HTTPS setup and configuration', included: true },
+          { name: 'Performance optimization', included: true },
+          { name: 'Advanced customization', included: true },
+          { name: 'Mobile responsiveness check', included: true },
+          { name: '30-day priority support', included: true }
+        ]
+      }
+    ]
+  },
 ];
 
 const scripts = [
