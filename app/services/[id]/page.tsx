@@ -5,27 +5,27 @@ import ServiceDetail from '@/components/ServiceDetail'
 import Contact from '@/components/Contact'
 import Footer from '@/components/Footer'
 import Chat from '@/components/Chat'
-import { getServiceWithPlansById } from '@/lib/services-data'
+import { fetchServiceById } from '@/lib/api'
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
-  const service = getServiceWithPlansById(params.id)
-  
-  if (!service) {
+  try {
+    const service = await fetchServiceById(params.id)
+    return {
+      title: `${service.title} - Service Plans | FivedIT`,
+      description: service.short,
+    }
+  } catch {
     return {
       title: 'Service Not Found - FivedIT',
     }
   }
-
-  return {
-    title: `${service.title} - Service Plans | FivedIT`,
-    description: service.short,
-  }
 }
 
-export default function ServiceDetailPage({ params }: { params: { id: string } }) {
-  const service = getServiceWithPlansById(params.id)
-
-  if (!service) {
+export default async function ServiceDetailPage({ params }: { params: { id: string } }) {
+  let service;
+  try {
+    service = await fetchServiceById(params.id)
+  } catch {
     notFound()
   }
 

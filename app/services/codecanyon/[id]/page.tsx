@@ -5,27 +5,27 @@ import CodeCanyonScriptDetail from '@/components/CodeCanyonScriptDetail'
 import Contact from '@/components/Contact'
 import Footer from '@/components/Footer'
 import Chat from '@/components/Chat'
-import { getScriptById } from '@/lib/codecanyon-scripts'
+import { fetchCodeCanyonScriptById } from '@/lib/api'
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
-  const script = getScriptById(params.id)
-  
-  if (!script) {
+  try {
+    const script = await fetchCodeCanyonScriptById(params.id)
+    return {
+      title: `${script.name} - Installation Plans | FivedIT`,
+      description: script.shortDescription,
+    }
+  } catch {
     return {
       title: 'Script Not Found - FivedIT',
     }
   }
-
-  return {
-    title: `${script.name} - Installation Plans | FivedIT`,
-    description: script.shortDescription,
-  }
 }
 
-export default function CodeCanyonScriptPage({ params }: { params: { id: string } }) {
-  const script = getScriptById(params.id)
-
-  if (!script) {
+export default async function CodeCanyonScriptPage({ params }: { params: { id: string } }) {
+  let script;
+  try {
+    script = await fetchCodeCanyonScriptById(params.id)
+  } catch {
     notFound()
   }
 

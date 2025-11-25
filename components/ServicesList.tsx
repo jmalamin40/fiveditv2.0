@@ -1,18 +1,50 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, ArrowRight, Check } from 'lucide-react';
-import { allServices, Service, getAllCategories } from '@/lib/services-data';
+import { fetchServices, Service } from '@/lib/api';
+import { Server, Code2, ShoppingCart, Bot, Network, Settings, Activity, Lock, Plug, Wrench, LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
+const iconMap: Record<string, LucideIcon> = {
+  Server,
+  Code2,
+  ShoppingCart,
+  Bot,
+  Network,
+  Settings,
+  Activity,
+  Lock,
+  Plug,
+  Wrench,
+};
+
 export default function ServicesList() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [expandedService, setExpandedService] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const data = await fetchServices();
+        setServices(data);
+      } catch (error) {
+        console.error('Error loading services:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadServices();
+  }, []);
+
+  // Get unique categories
+  const categories = ['All', ...Array.from(new Set(services.map(s => s.category).filter((cat): cat is string => Boolean(cat))))];
   
-  const categories = ['All', ...getAllCategories()];
   const filteredServices = selectedCategory === 'All' 
-    ? allServices 
-    : allServices.filter(s => s.category === selectedCategory);
+    ? services 
+    : services.filter(s => s.category === selectedCategory);
 
   const toggleService = (serviceId: string) => {
     setExpandedService(expandedService === serviceId ? null : serviceId);
@@ -53,14 +85,24 @@ export default function ServicesList() {
 
         {/* Services Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {filteredServices.map((service) => (
-            <ServiceCard
-              key={service.id}
-              service={service}
-              isExpanded={expandedService === service.id}
-              onToggle={() => toggleService(service.id)}
-            />
-          ))}
+          {loading ? (
+            <div className="col-span-3 text-center py-12">
+              <p className="text-gray-500">Loading services...</p>
+            </div>
+          ) : filteredServices.length > 0 ? (
+            filteredServices.map((service) => (
+              <ServiceCard
+                key={service.id}
+                service={service}
+                isExpanded={expandedService === service.id}
+                onToggle={() => toggleService(service.id)}
+              />
+            ))
+          ) : (
+            <div className="col-span-3 text-center py-12">
+              <p className="text-gray-500">No services found in this category.</p>
+            </div>
+          )}
         </div>
 
         {/* CTA Section */}
@@ -101,10 +143,15 @@ function ServiceCard({
   isExpanded: boolean; 
   onToggle: () => void;
 }) {
-  const Icon = service.icon;
+  const Icon = iconMap[service.icon] || Settings;
   const colorClass = service.color === 'blue'
     ? 'from-blue-600 to-blue-700'
     : 'from-cyan-600 to-cyan-700';
+  
+  // Handle features - can be string[] or JSON parsed
+  const features = Array.isArray(service.features) 
+    ? service.features 
+    : (typeof service.features === 'string' ? JSON.parse(service.features) : []);
 
   return (
     <div className="bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 border border-gray-100 overflow-hidden">
@@ -130,7 +177,7 @@ function ServiceCard({
             <div className="mb-4">
               <h4 className="font-semibold text-gray-900 mb-3">Key Features:</h4>
               <ul className="space-y-2">
-                {service.features.map((feature, index) => (
+                {features.map((feature: string, index: number) => (
                   <li key={index} className="flex items-start gap-2">
                     <Check className="text-green-600 flex-shrink-0 mt-0.5" size={18} />
                     <span className="text-sm text-gray-700">{feature}</span>

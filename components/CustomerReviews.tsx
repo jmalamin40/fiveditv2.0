@@ -2,24 +2,9 @@
 
 import { Star, RotateCcw, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, Search, Filter } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import fiverrReviewsData from '@/data/fiverr-reviews.json';
+import { fetchReviews, updateReviewHelpful, Review } from '@/lib/api';
 
-interface FiverrReview {
-  id: number;
-  reviewerName: string;
-  reviewerInitial: string;
-  location: string;
-  countryCode: string;
-  isRepeatClient: boolean;
-  rating: number;
-  timePosted: string;
-  reviewText: string;
-  priceRange: string;
-  duration: string;
-  helpfulCount?: number;
-}
-
-const reviews: FiverrReview[] = fiverrReviewsData.reviews as FiverrReview[];
+const REVIEWS_PER_PAGE = 10;
 
 // Country flag emoji mapping
 const getCountryFlag = (countryCode: string): string => {
@@ -34,80 +19,83 @@ const getCountryFlag = (countryCode: string): string => {
   return flags[countryCode] || '🌍';
 };
 
-const REVIEWS_PER_PAGE = 10;
-
 export default function CustomerReviews() {
-  const [helpfulCounts, setHelpfulCounts] = useState<Record<number, number>>(
-    reviews.reduce((acc, review) => {
-      acc[review.id] = review.helpfulCount || 0;
-      return acc;
-    }, {} as Record<number, number>)
-  );
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [stats, setStats] = useState({
+    totalReviews: 0,
+    averageRating: '0',
+    repeatClients: 0,
+    fiveStarReviews: 0,
+    satisfactionRate: '0',
+  });
+  const [loading, setLoading] = useState(true);
+  const [helpfulCounts, setHelpfulCounts] = useState<Record<number, number>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRating, setFilterRating] = useState<number | null>(null);
   const [filterRepeatClient, setFilterRepeatClient] = useState<boolean | null>(null);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'rating'>('newest');
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalReviews, setTotalReviews] = useState(0);
 
-  // Filter and sort reviews
-  const filteredAndSortedReviews = useMemo(() => {
-    let filtered = [...reviews];
+  // Fetch reviews from API
+  useEffect(() => {
+    const loadReviews = async () => {
+      try {
+        setLoading(true);
+        const response = await fetchReviews({
+          rating: filterRating || undefined,
+          repeatClient: filterRepeatClient !== null ? filterRepeatClient : undefined,
+          search: searchQuery || undefined,
+          page: currentPage,
+          limit: REVIEWS_PER_PAGE,
+        });
 
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (review) =>
-          review.reviewText.toLowerCase().includes(query) ||
-          review.reviewerName.toLowerCase().includes(query) ||
-          review.location.toLowerCase().includes(query)
-      );
-    }
+        setReviews(response.reviews);
+        setStats(response.stats);
+        setTotalPages(response.pagination.totalPages);
+        setTotalReviews(response.pagination.total);
 
-    // Rating filter
-    if (filterRating !== null) {
-      filtered = filtered.filter((review) => review.rating === filterRating);
-    }
-
-    // Repeat client filter
-    if (filterRepeatClient !== null) {
-      filtered = filtered.filter((review) => review.isRepeatClient === filterRepeatClient);
-    }
-
-    // Sort
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'newest':
-          // Parse time posted - simple heuristic (you might want to add actual dates)
-          return 0; // Keep original order for now
-        case 'oldest':
-          return 0; // Keep original order for now
-        case 'rating':
-          return b.rating - a.rating;
-        default:
-          return 0;
+        // Initialize helpful counts
+        const counts: Record<number, number> = {};
+        response.reviews.forEach((review) => {
+          counts[review.id] = review.helpfulCount;
+        });
+        setHelpfulCounts(counts);
+      } catch (error) {
+        console.error('Error loading reviews:', error);
+      } finally {
+        setLoading(false);
       }
-    });
+    };
 
-    return filtered;
-  }, [searchQuery, filterRating, filterRepeatClient, sortBy]);
-
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedReviews.length / REVIEWS_PER_PAGE);
-  const startIndex = (currentPage - 1) * REVIEWS_PER_PAGE;
-  const paginatedReviews = filteredAndSortedReviews.slice(startIndex, startIndex + REVIEWS_PER_PAGE);
+    loadReviews();
+  }, [currentPage, searchQuery, filterRating, filterRepeatClient]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filterRating, filterRepeatClient, sortBy]);
 
-  const handleHelpful = (reviewId: number) => {
-    setHelpfulCounts((prev) => ({
-      ...prev,
-      [reviewId]: (prev[reviewId] || 0) + 1,
-    }));
+  const handleHelpful = async (reviewId: number) => {
+    try {
+      const response = await updateReviewHelpful(reviewId);
+      setHelpfulCounts((prev) => ({
+        ...prev,
+        [reviewId]: response.helpfulCount,
+      }));
+    } catch (error) {
+      console.error('Error updating helpful count:', error);
+    }
   };
+
+  // Sort reviews client-side if needed
+  const sortedReviews = useMemo(() => {
+    if (sortBy === 'rating') {
+      return [...reviews].sort((a, b) => b.rating - a.rating);
+    }
+    return reviews;
+  }, [reviews, sortBy]);
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -119,20 +107,6 @@ export default function CustomerReviews() {
     ));
   };
 
-  const stats = useMemo(() => {
-    const totalReviews = reviews.length;
-    const averageRating = reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews;
-    const repeatClients = reviews.filter((r) => r.isRepeatClient).length;
-    const fiveStarReviews = reviews.filter((r) => r.rating === 5).length;
-
-    return {
-      totalReviews,
-      averageRating: averageRating.toFixed(1),
-      repeatClients,
-      fiveStarReviews,
-      satisfactionRate: ((fiveStarReviews / totalReviews) * 100).toFixed(0),
-    };
-  }, []);
 
   return (
     <section id="reviews" className="py-20 px-4 bg-gradient-to-br from-slate-50 to-blue-50">
@@ -233,14 +207,18 @@ export default function CustomerReviews() {
 
           {/* Results count */}
           <div className="mt-4 text-sm text-gray-600">
-            Showing {paginatedReviews.length} of {filteredAndSortedReviews.length} reviews
+            Showing {sortedReviews.length} of {totalReviews} reviews
           </div>
         </div>
 
         {/* Fiverr-Style Review Cards */}
         <div className="space-y-6 mb-8">
-          {paginatedReviews.length > 0 ? (
-            paginatedReviews.map((review) => (
+          {loading ? (
+            <div className="bg-white rounded-lg shadow-md p-12 text-center">
+              <p className="text-gray-500 text-lg">Loading reviews...</p>
+            </div>
+          ) : sortedReviews.length > 0 ? (
+            sortedReviews.map((review) => (
               <div
                 key={review.id}
                 className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"

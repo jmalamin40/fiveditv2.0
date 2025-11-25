@@ -1,0 +1,152 @@
+const mysql = require('mysql2/promise');
+require('dotenv').config();
+
+async function migrate() {
+  let connection;
+  
+  try {
+    // Connect to MySQL (without database first)
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST || 'localhost',
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      port: process.env.DB_PORT || 3306,
+    });
+
+    const dbName = process.env.DB_NAME || 'fivedit_db';
+
+    // Create database if it doesn't exist
+    await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+    console.log(`✅ Database '${dbName}' created or already exists`);
+
+    // Switch to the database
+    await connection.execute(`USE \`${dbName}\``);
+
+    // Create services table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS services (
+        id VARCHAR(100) PRIMARY KEY,
+        icon VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        short TEXT,
+        description TEXT,
+        features JSON,
+        color VARCHAR(20),
+        category VARCHAR(100),
+        link VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Services table created');
+
+    // Create service_plans table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS service_plans (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        service_id VARCHAR(100) NOT NULL,
+        plan_id VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        price DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'USD',
+        description TEXT,
+        delivery_time VARCHAR(100),
+        popular BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_service_plan (service_id, plan_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Service plans table created');
+
+    // Create plan_features table (supports both service and script plans)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS plan_features (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        plan_id INT NOT NULL,
+        plan_type ENUM('service', 'script') NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        included BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_plan (plan_id, plan_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Plan features table created');
+
+    // Create reviews table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reviewer_name VARCHAR(255) NOT NULL,
+        reviewer_initial VARCHAR(10) NOT NULL,
+        location VARCHAR(255) NOT NULL,
+        country_code VARCHAR(10) NOT NULL,
+        is_repeat_client BOOLEAN DEFAULT FALSE,
+        rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        time_posted VARCHAR(100),
+        review_text TEXT NOT NULL,
+        price_range VARCHAR(100),
+        duration VARCHAR(100),
+        helpful_count INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_rating (rating),
+        INDEX idx_repeat_client (is_repeat_client),
+        INDEX idx_country (country_code)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Reviews table created');
+
+    // Create codecanyon_scripts table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS codecanyon_scripts (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100),
+        short_description TEXT,
+        description TEXT,
+        codecanyon_url VARCHAR(500),
+        image_url VARCHAR(500),
+        use_default_plans BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_category (category)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ CodeCanyon scripts table created');
+
+    // Create script_plans table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS script_plans (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        script_id VARCHAR(100) NOT NULL,
+        plan_id VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        price DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'USD',
+        description TEXT,
+        delivery_time VARCHAR(100),
+        popular BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (script_id) REFERENCES codecanyon_scripts(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_script_plan (script_id, plan_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Script plans table created');
+
+    console.log('\n🎉 Database migration completed successfully!');
+    
+  } catch (error) {
+    console.error('❌ Migration failed:', error);
+    process.exit(1);
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+}
+
+migrate();
+

@@ -1,7 +1,7 @@
 'use client'
 
 import { ShoppingCart, Check, X, Clock, ExternalLink, ArrowLeft } from 'lucide-react';
-import { CodeCanyonScript, InstallationPlan } from '@/lib/codecanyon-scripts';
+import { CodeCanyonScript, ServicePlan } from '@/lib/api';
 import Link from 'next/link';
 
 interface CodeCanyonScriptDetailProps {
@@ -60,14 +60,14 @@ export default function CodeCanyonScriptDetail({ script }: CodeCanyonScriptDetai
             </p>
           </div>
 
-          <PlansGrid plans={script.plans} scriptName={script.name} />
+          <PlansGrid plans={script.plans || []} scriptName={script.name} />
         </div>
       </div>
     </section>
   );
 }
 
-function PlansGrid({ plans, scriptName }: { plans: InstallationPlan[]; scriptName: string }) {
+function PlansGrid({ plans, scriptName }: { plans: ServicePlan[]; scriptName: string }) {
   return (
     <div className="grid md:grid-cols-3 gap-6">
       {plans.map((plan) => (
@@ -77,7 +77,7 @@ function PlansGrid({ plans, scriptName }: { plans: InstallationPlan[]; scriptNam
   );
 }
 
-function PlanCard({ plan, scriptName }: { plan: InstallationPlan; scriptName: string }) {
+function PlanCard({ plan, scriptName }: { plan: ServicePlan; scriptName: string }) {
   return (
     <div
       className={`relative bg-gradient-to-br ${

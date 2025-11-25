@@ -1,17 +1,35 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowRight, ExternalLink, Package } from 'lucide-react';
-import { codecanyonScripts, CodeCanyonScriptSummary, getAllCategories } from '@/lib/codecanyon-scripts';
+import { fetchCodeCanyonScripts, CodeCanyonScript } from '@/lib/api';
 import Link from 'next/link';
 
 export default function CodeCanyonScripts() {
+  const [scripts, setScripts] = useState<CodeCanyonScript[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+  useEffect(() => {
+    const loadScripts = async () => {
+      try {
+        const data = await fetchCodeCanyonScripts();
+        setScripts(data);
+      } catch (error) {
+        console.error('Error loading scripts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadScripts();
+  }, []);
+
+  // Get unique categories
+  const categories = ['All', ...Array.from(new Set(scripts.map(s => s.category).filter(Boolean)))];
   
-  const categories = ['All', ...getAllCategories()];
   const filteredScripts = selectedCategory === 'All' 
-    ? codecanyonScripts 
-    : codecanyonScripts.filter(s => s.category === selectedCategory);
+    ? scripts 
+    : scripts.filter(s => s.category === selectedCategory);
 
   return (
     <section id="codecanyon-scripts" className="py-20 px-4 bg-gradient-to-br from-slate-50 to-blue-50">
@@ -49,9 +67,19 @@ export default function CodeCanyonScripts() {
 
         {/* Scripts List Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {filteredScripts.map((script) => (
-            <ScriptListItem key={script.id} script={script} />
-          ))}
+          {loading ? (
+            <div className="col-span-3 text-center py-12">
+              <p className="text-gray-500">Loading scripts...</p>
+            </div>
+          ) : filteredScripts.length > 0 ? (
+            filteredScripts.map((script) => (
+              <ScriptListItem key={script.id} script={script} />
+            ))
+          ) : (
+            <div className="col-span-3 text-center py-12">
+              <p className="text-gray-500">No scripts found in this category.</p>
+            </div>
+          )}
         </div>
 
         {/* Generic Plans Section */}
@@ -70,7 +98,7 @@ export default function CodeCanyonScripts() {
   );
 }
 
-function ScriptListItem({ script }: { script: CodeCanyonScriptSummary }) {
+function ScriptListItem({ script }: { script: CodeCanyonScript }) {
   return (
     <div className="bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 border border-gray-100 overflow-hidden">
       <div className="p-6">
