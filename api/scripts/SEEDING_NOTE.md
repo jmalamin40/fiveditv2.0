@@ -1,20 +1,24 @@
 # Seeding Note
 
-⚠️ **Important**: The seeding scripts (`seed.js` and `reseed.js`) require the JSON data files to populate the database.
+The seeding scripts (`seed.js` and `reseed.js`) now use in-memory seed data defined in `scripts/seed-data.js`.
 
-If you've deleted the JSON files from the `data/` directory, you have two options:
+## Customising seed data
+Update `seed-data.js` to modify:
 
-## Option 1: Restore JSON files from Git
-```bash
-git checkout data/
-```
+- Default categories
+- Default services (and plans/features)
+- Default CodeCanyon scripts
+- Default reviews
+- Default admin credentials
 
-## Option 2: Seed from existing database
-If you already have data in your database, you can skip seeding. The API will work with existing database data.
+## Admin credentials
+By default, the seeder creates an admin user with:
 
-## Option 3: Manual data entry
-You can manually insert data into the database using SQL or a database management tool.
+- Email: `admin@fivedit.com`
+- Password: `ChangeMe123!`
 
-## Note
-The JSON files are only needed for initial seeding. Once the database is populated, the application runs entirely from the MySQL database via the API.
+Override these by exporting `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your environment before running `npm run seed` or `npm run reseed`.
+
+## Production note
+Seeding wipes existing data (truncates tables). Run it only on development or when you intentionally want to reset the database.
 
