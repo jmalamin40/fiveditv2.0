@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { fetchServices, Service } from '@/lib/api';
-import { Server, Code2, ShoppingCart, Bot, Network, Settings, Activity, Lock, Plug, Wrench, LucideIcon } from 'lucide-react';
+import { Server, Code2, ShoppingCart, Bot, Network, Settings, Activity, Lock, Plug, Wrench, Package, LucideIcon } from 'lucide-react';
 
 const iconMap: Record<string, LucideIcon> = {
   Server,
@@ -17,6 +17,7 @@ const iconMap: Record<string, LucideIcon> = {
   Lock,
   Plug,
   Wrench,
+  Package,
 };
 
 export default function Services() {
