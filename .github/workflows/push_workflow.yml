@@ -26,6 +26,15 @@ jobs:
           export NEXT_TELEMETRY_DISABLED=1
           npm run build
 
+      - name: Build Admin app
+        run: |
+          echo "Building admin app..."
+          cd admin
+          npm install
+          npm run build
+          echo "✅ Admin build completed"
+          ls -lh dist/
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -41,6 +50,8 @@ jobs:
           cat <<EOF > /tmp/tar-exclude.txt
           node_modules
           api/node_modules
+          admin/node_modules
+          admin/dist
           .git
           .github
           .next/cache
@@ -50,6 +61,7 @@ jobs:
           *.log
           .DS_Store
           deploy.tar.gz
+          admin-deploy.tar.gz
           EOF
 
           echo "Creating tarball..."
@@ -67,10 +79,23 @@ jobs:
 
           ls -lh deploy.tar.gz
 
+      - name: Create admin deployment tarball
+        run: |
+          echo "Creating admin tarball..."
+          cd admin/dist
+          tar -czf ../../admin-deploy.tar.gz .
+          cd ../..
+          ls -lh admin-deploy.tar.gz
+
       - name: Upload tarball to server
         run: |
           echo "Uploading tarball..."
           scp -P 25552 deploy.tar.gz fiveditc@198.251.84.129:/tmp/
+
+      - name: Upload admin tarball to server
+        run: |
+          echo "Uploading admin tarball..."
+          scp -P 25552 admin-deploy.tar.gz fiveditc@198.251.84.129:/tmp/
 
       - name: Deploy on cPanel server
         run: |
@@ -86,10 +111,22 @@ jobs:
           cd $APP_DIR
 
           echo "Extracting upload..."
-          tar -xzf /tmp/deploy.tar.gz
+          tar -xzf /tmp/deploy.tar.gz --exclude='admin'
 
           echo "Cleaning tar file..."
           rm -f /tmp/deploy.tar.gz
+
+          # Deploy Admin app
+          echo "Deploying Admin app..."
+          ADMIN_DIR="/home/fiveditc/domains/admin.fivedit.com/public_html"
+          mkdir -p $ADMIN_DIR
+          
+          echo "Extracting admin files..."
+          cd $ADMIN_DIR
+          tar -xzf /tmp/admin-deploy.tar.gz
+          rm -f /tmp/admin-deploy.tar.gz
+          
+          echo "✅ Admin app deployed to $ADMIN_DIR"
 
           # Deploy API
           echo "Deploying API..."
@@ -143,3 +180,8 @@ jobs:
 
           echo "✅ Deployment completed successfully"
           EOF
+
+      - name: Cleanup
+        run: |
+          rm -f deploy.tar.gz admin-deploy.tar.gz
+          echo "✅ Cleanup completed"
