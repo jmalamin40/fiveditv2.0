@@ -40,11 +40,13 @@ jobs:
           echo "Preparing tar exclude list..."
           cat <<EOF > /tmp/tar-exclude.txt
           node_modules
+          api/node_modules
           .git
           .github
           .next/cache
           .env.local
           .env*.local
+          api/.env
           *.log
           .DS_Store
           deploy.tar.gz
@@ -78,6 +80,7 @@ jobs:
           set -e
 
           APP_DIR="/home/fiveditc/domains/fivedit.com/public_html"
+          API_DIR="/home/fiveditc/domains/fivedit.com/api"
 
           echo "Moving to app directory..."
           cd $APP_DIR
@@ -88,10 +91,50 @@ jobs:
           echo "Cleaning tar file..."
           rm -f /tmp/deploy.tar.gz
 
-          echo "Installing production dependencies..."
+          # Deploy API
+          echo "Deploying API..."
+          if [ -d "$APP_DIR/api" ]; then
+            echo "Setting up API directory..."
+            mkdir -p $API_DIR
+            
+            # Backup existing .env if it exists
+            if [ -f "$API_DIR/.env" ]; then
+              cp $API_DIR/.env $API_DIR/.env.backup
+              echo "✅ Backed up existing API .env file"
+            fi
+            
+            echo "Copying API files..."
+            # Copy all API files
+            cp -r $APP_DIR/api/* $API_DIR/ 2>/dev/null || true
+            
+            # Restore .env backup if it existed
+            if [ -f "$API_DIR/.env.backup" ]; then
+              mv $API_DIR/.env.backup $API_DIR/.env
+              echo "✅ Restored API .env file"
+            elif [ ! -f "$API_DIR/.env" ]; then
+              echo "⚠️ API .env file not found - configure database credentials in $API_DIR/.env"
+            fi
+            
+            echo "Installing API dependencies..."
+            cd $API_DIR
+            npm install --production
+            
+            echo "Restarting API..."
+            cloudlinux-selector restart \
+              --user fiveditc \
+              --interpreter nodejs \
+              --app-root $API_DIR \
+              --json || echo "⚠️ API restart failed - ensure API is configured in CloudLinux"
+          else
+            echo "⚠️ API directory not found in deployment - skipping API deployment"
+          fi
+
+          # Deploy Next.js app
+          echo "Installing Next.js production dependencies..."
+          cd $APP_DIR
           npm install --production
 
-          echo "Restarting Node app..."
+          echo "Restarting Next.js app..."
           cloudlinux-selector restart \
             --user fiveditc \
             --interpreter nodejs \
