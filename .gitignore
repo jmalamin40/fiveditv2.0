@@ -36,5 +36,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .htaccess
+.htaccess
 
 /admin/node_modules
