@@ -35,6 +35,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
+.htaccess
 
 /admin/node_modules
