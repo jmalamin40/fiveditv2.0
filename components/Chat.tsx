@@ -4,8 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, MessageCircle, X, Bot, User } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3004/api';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3004';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.fivedit.com/api';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.fivedit.com';
 
 interface Message {
   id: number | string;
