@@ -118,8 +118,18 @@ async function getActiveAdmins() {
 }
 
 function setupSocketHandlers(io) {
+  console.log('Setting up Socket.IO handlers on path:', io._opts.path);
+  
+  // Log connection attempts
+  io.engine.on('connection_error', (err) => {
+    console.error('Socket.IO connection error:', err.req?.url, err.message);
+  });
+  
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
+    console.log('  - Handshake URL:', socket.handshake.url);
+    console.log('  - Handshake path:', socket.handshake.path);
+    console.log('  - Transport:', socket.conn.transport.name);
 
     // User connects with session
     socket.on('user:connect', async (data) => {

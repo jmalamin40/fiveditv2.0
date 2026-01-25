@@ -3,6 +3,7 @@ import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock } from 'luc
 import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3004';
+const SOCKET_PATH = '/api/socket.io';
 
 interface ChatSession {
   id: string;
@@ -52,12 +53,17 @@ export default function ChatManager({ token }: ChatManagerProps) {
     }
 
     try {
-      const socket = io(SOCKET_URL, {
+      const socketOptions = {
+        path: SOCKET_PATH,
         transports: ['websocket', 'polling'],
         auth: {
           token: token
-        }
-      });
+        },
+        namespace: 'api'
+      };
+      
+      console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
+      const socket = io(SOCKET_URL, socketOptions);
 
       socketRef.current = socket;
 
