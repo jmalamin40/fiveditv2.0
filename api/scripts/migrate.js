@@ -165,11 +165,62 @@ async function migrate() {
         email VARCHAR(255) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role ENUM('admin', 'user') DEFAULT 'user',
+        profile_picture VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ Users table created');
+
+    // Create chat_sessions table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id VARCHAR(36) PRIMARY KEY,
+        user_identifier VARCHAR(255),
+        status ENUM('active', 'closed', 'pending') DEFAULT 'active',
+        last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_status (status),
+        INDEX idx_last_message (last_message_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Chat sessions table created');
+
+    // Create chat_messages table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(36) NOT NULL,
+        message TEXT NOT NULL,
+        sender_type ENUM('user', 'admin') NOT NULL,
+        sender_id INT,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        INDEX idx_session (session_id),
+        INDEX idx_created (created_at),
+        INDEX idx_read (is_read)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Chat messages table created');
+
+    // Create user_online_status table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS user_online_status (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(36),
+        user_id INT,
+        user_type ENUM('user', 'admin') NOT NULL,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        is_online BOOLEAN DEFAULT TRUE,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_session_user (session_id, user_id, user_type),
+        INDEX idx_last_seen (last_seen),
+        INDEX idx_is_online (is_online)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ User online status table created');
 
     console.log('\n🎉 Database migration completed successfully!');
     
