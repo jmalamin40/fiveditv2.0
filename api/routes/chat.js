@@ -32,11 +32,11 @@ router.post('/sessions', async (req, res) => {
         return res.status(404).json({ error: 'Session not found' });
       }
     } else {
-      // Create new session
+      // Create new session - mark as new traffic
       const newSessionId = generateUUID();
       await pool.execute(
-        'INSERT INTO chat_sessions (id, user_identifier, status) VALUES (?, ?, ?)',
-        [newSessionId, userIdentifier || null, 'active']
+        'INSERT INTO chat_sessions (id, user_identifier, status, is_new_traffic) VALUES (?, ?, ?, ?)',
+        [newSessionId, userIdentifier || null, 'active', true]
       );
       
       const [sessions] = await pool.execute(
@@ -44,6 +44,9 @@ router.post('/sessions', async (req, res) => {
         [newSessionId]
       );
       session = sessions[0];
+      
+      // Notify admins about new traffic in real-time via Socket.IO
+      // This will be handled by the socket handler when user connects
     }
     
     res.json(session);

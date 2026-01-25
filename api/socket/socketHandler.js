@@ -182,10 +182,44 @@ function setupSocketHandlers(io) {
         const activeAdminsList = await getActiveAdmins();
         socket.emit('admins:active', { count: activeAdminsList.length, admins: activeAdminsList });
 
+        // Check if this is a new session (new traffic)
+        const [sessionData] = await pool.execute(
+          'SELECT is_new_traffic FROM chat_sessions WHERE id = ?',
+          [sessionId]
+        );
+        
+        const isNewTraffic = sessionData.length > 0 && sessionData[0].is_new_traffic;
+        
+        // If it's new traffic, notify admins and mark session as no longer new
+        if (isNewTraffic) {
+          // Get full session data with message count
+          const [newSession] = await pool.execute(
+            `SELECT 
+              cs.*,
+              COUNT(cm.id) as message_count,
+              MAX(cm.created_at) as last_message_time,
+              SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+            FROM chat_sessions cs
+            LEFT JOIN chat_messages cm ON cs.id = cm.session_id
+            WHERE cs.id = ?
+            GROUP BY cs.id`,
+            [sessionId]
+          );
+          
+          // Emit new traffic event to admins
+          io.to('admins').emit('session:new-traffic', newSession[0]);
+          
+          // Mark session as no longer new traffic
+          await pool.execute(
+            'UPDATE chat_sessions SET is_new_traffic = FALSE WHERE id = ?',
+            [sessionId]
+          );
+        }
+        
         // Notify admins of new user connection
         io.to('admins').emit('user:connected', { sessionId });
 
-        console.log(`User connected: session ${sessionId}`);
+        console.log(`User connected: session ${sessionId}${isNewTraffic ? ' (NEW TRAFFIC)' : ''}`);
       } catch (error) {
         console.error('Error in user:connect:', error);
         socket.emit('error', { message: 'Connection failed' });
@@ -212,7 +246,7 @@ function setupSocketHandlers(io) {
         // Update online status
         await updateOnlineStatus(admin.id, 'admin');
 
-        // Load and send all sessions with unread count
+        // Load and send all sessions with unread count and new traffic flag
         const [sessions] = await pool.execute(
           `SELECT 
             cs.*,
@@ -222,7 +256,7 @@ function setupSocketHandlers(io) {
           FROM chat_sessions cs
           LEFT JOIN chat_messages cm ON cs.id = cm.session_id
           GROUP BY cs.id 
-          ORDER BY cs.last_message_at DESC`
+          ORDER BY cs.is_new_traffic DESC, cs.last_message_at DESC`
         );
         socket.emit('sessions:list', sessions);
 

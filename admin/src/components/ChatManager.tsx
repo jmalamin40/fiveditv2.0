@@ -37,6 +37,7 @@ interface ChatSession {
   last_message_time: string | null;
   last_message_at: string;
   created_at: string;
+  is_new_traffic?: boolean;
 }
 
 interface ChatMessage {
@@ -217,6 +218,21 @@ export default function ChatManager({ token }: ChatManagerProps) {
     // Receive unread count
     socket.on('unread:count', (data: { count: number }) => {
       setUnreadCount(data.count);
+    });
+
+    // New traffic session created
+    socket.on('session:new-traffic', (newSession: ChatSession) => {
+      // Add new session to the top of the list
+      setSessions(prev => {
+        // Check if session already exists
+        const exists = prev.some(s => s.id === newSession.id);
+        if (exists) {
+          // Update existing session
+          return prev.map(s => s.id === newSession.id ? { ...newSession, is_new_traffic: true } : s);
+        }
+        // Add new session at the top
+        return [{ ...newSession, is_new_traffic: true }, ...prev];
+      });
     });
 
     // User connected/disconnected
@@ -419,15 +435,27 @@ export default function ChatManager({ token }: ChatManagerProps) {
                 const unreadCount = session.unread_count || 0;
                 const isOnline = userOnlineStatus[session.id] === true;
                 const hasUnread = unreadCount > 0;
+                const isNewTraffic = session.is_new_traffic === true;
                 
                 return (
                   <div
                     key={session.id}
-                    className={`session-item ${selectedSession === session.id ? 'active' : ''} ${hasUnread ? 'has-unread' : ''}`}
-                    onClick={() => setSelectedSession(session.id)}
+                    className={`session-item ${selectedSession === session.id ? 'active' : ''} ${hasUnread ? 'has-unread' : ''} ${isNewTraffic ? 'new-traffic' : ''}`}
+                    onClick={() => {
+                      setSelectedSession(session.id);
+                      // Mark as no longer new traffic when clicked
+                      if (isNewTraffic) {
+                        setSessions(prev => prev.map(s => 
+                          s.id === session.id ? { ...s, is_new_traffic: false } : s
+                        ));
+                      }
+                    }}
                   >
                     <div className="session-header">
                       <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        {isNewTraffic && (
+                          <span className="new-traffic-badge" title="New Traffic">NEW</span>
+                        )}
                         {getStatusIcon(session.status)}
                         <span className="session-id" title={session.user_identifier || `Session ${session.id}`}>
                           {session.user_identifier || `Session ${session.id.substring(0, 8)}`}
@@ -674,6 +702,30 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .session-item.has-unread.active {
           background-color: #dbeafe;
+        }
+
+        .session-item.new-traffic {
+          background-color: #fef3c7;
+          border-left: 3px solid #f59e0b;
+        }
+
+        .session-item.new-traffic.active {
+          background-color: #fef3c7;
+          border-left: 3px solid #f59e0b;
+        }
+
+        .new-traffic-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.125rem 0.375rem;
+          background-color: #f59e0b;
+          color: white;
+          border-radius: 0.25rem;
+          font-size: 0.625rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-right: 0.25rem;
         }
 
         .session-header {

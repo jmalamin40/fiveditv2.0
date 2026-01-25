@@ -86,15 +86,15 @@ const Chat: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Initialize session and connect to socket
+  // Initialize session automatically when page loads (not just when chat opens)
   useEffect(() => {
-    const initializeChat = async () => {
+    const initializeSession = async () => {
       try {
         // Get or create session from localStorage
         let storedSessionId = localStorage.getItem('chat_session_id');
         
         if (!storedSessionId) {
-          // Create new session via HTTP (one-time setup)
+          // Create new session automatically when user visits website
           const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -105,20 +105,36 @@ const Chat: React.FC = () => {
             const session: ChatSession = await response.json();
             storedSessionId = session.id;
             localStorage.setItem('chat_session_id', storedSessionId);
+            // Session is created and will be notified to admins via socket
           }
         }
         
+        // Store session ID for socket connection
         if (storedSessionId) {
           setSessionId(storedSessionId);
-          
-          // Connect to Socket.IO
-          const socketOptions = {
-            path: SOCKET_PATH,
-            transports: ['websocket', 'polling'],
-            namespace: 'api'
-          };
-          console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
-          const socket = io(SOCKET_URL, socketOptions);
+        }
+      } catch (error) {
+        console.error('Error initializing session:', error);
+      }
+    };
+    
+    initializeSession();
+  }, []);
+
+  // Connect to socket after session is initialized
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    const initializeChat = async () => {
+      try {
+        // Connect to Socket.IO
+        const socketOptions = {
+          path: SOCKET_PATH,
+          transports: ['websocket', 'polling'],
+          namespace: 'api'
+        };
+        console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
+        const socket = io(SOCKET_URL, socketOptions);
           
           socketRef.current = socket;
           
@@ -129,7 +145,7 @@ const Chat: React.FC = () => {
             setIsInitializing(false);
             
             // Connect user with session
-            socket.emit('user:connect', { sessionId: storedSessionId });
+            socket.emit('user:connect', { sessionId });
           });
           
           socket.on('disconnect', () => {
@@ -191,7 +207,6 @@ const Chat: React.FC = () => {
               socket.emit('heartbeat');
             }
           }, 15000);
-        }
       } catch (error) {
         console.error('Error initializing chat:', error);
         setIsInitializing(false);
@@ -208,7 +223,7 @@ const Chat: React.FC = () => {
         clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, []);
+  }, [sessionId]);
 
 
   useEffect(() => {
