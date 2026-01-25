@@ -65,6 +65,8 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [userOnlineStatus, setUserOnlineStatus] = useState<{ [sessionId: string]: boolean }>({});
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [onlineFilter, setOnlineFilter] = useState<'all' | 'online' | 'offline'>('all');
+  const [trafficFilter, setTrafficFilter] = useState<'all' | 'new'>('all');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -378,6 +380,21 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
   const selectedSessionData = sessions.find(s => s.id === selectedSession);
 
+  // Filter sessions based on selected filters
+  const filteredSessions = sessions.filter(session => {
+    const isOnline = userOnlineStatus[session.id] === true;
+    const isNewTraffic = session.is_new_traffic === true;
+    
+    // Online status filter
+    if (onlineFilter === 'online' && !isOnline) return false;
+    if (onlineFilter === 'offline' && isOnline) return false;
+    
+    // Traffic filter
+    if (trafficFilter === 'new' && !isNewTraffic) return false;
+    
+    return true;
+  });
+
   return (
     <div className="chat-manager">
       <div className="chat-header">
@@ -407,6 +424,33 @@ export default function ChatManager({ token }: ChatManagerProps) {
             </button>
           </div>
           
+          {/* Filter Options */}
+          <div className="filter-section">
+            <div className="filter-group">
+              <label className="filter-label">Online Status:</label>
+              <select 
+                value={onlineFilter} 
+                onChange={(e) => setOnlineFilter(e.target.value as 'all' | 'online' | 'offline')}
+                className="filter-select"
+              >
+                <option value="all">All</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <label className="filter-label">Traffic:</label>
+              <select 
+                value={trafficFilter} 
+                onChange={(e) => setTrafficFilter(e.target.value as 'all' | 'new')}
+                className="filter-select"
+              >
+                <option value="all">All</option>
+                <option value="new">New Traffic</option>
+              </select>
+            </div>
+          </div>
+          
           {connectionError ? (
             <div className="error-state">
               <p>{connectionError}</p>
@@ -427,11 +471,11 @@ export default function ChatManager({ token }: ChatManagerProps) {
             <div className="loading-state">Connecting to chat...</div>
           ) : !isConnected ? (
             <div className="loading-state">Reconnecting...</div>
-          ) : sessions.length === 0 ? (
-            <div className="empty-state">No conversations yet</div>
+          ) : filteredSessions.length === 0 ? (
+            <div className="empty-state">No conversations match the selected filters</div>
           ) : (
             <div className="sessions-list">
-              {sessions.map((session) => {
+              {filteredSessions.map((session) => {
                 const unreadCount = session.unread_count || 0;
                 const isOnline = userOnlineStatus[session.id] === true;
                 const hasUnread = unreadCount > 0;
@@ -672,6 +716,49 @@ export default function ChatManager({ token }: ChatManagerProps) {
         .sessions-header h2 {
           font-size: 1rem;
           font-weight: 600;
+        }
+
+        .filter-section {
+          padding: 1rem;
+          border-bottom: 1px solid #e5e7eb;
+          background-color: #f9fafb;
+          display: flex;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .filter-group {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .filter-label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #374151;
+          white-space: nowrap;
+        }
+
+        .filter-select {
+          padding: 0.375rem 0.75rem;
+          border: 1px solid #d1d5db;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          background-color: white;
+          color: #374151;
+          cursor: pointer;
+          transition: border-color 0.2s;
+        }
+
+        .filter-select:hover {
+          border-color: #9ca3af;
+        }
+
+        .filter-select:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
         .sessions-list {
