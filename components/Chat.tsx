@@ -8,6 +8,29 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.fivedit.com
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
 
+// Beep sound notification function
+const playBeepSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Beep frequency (Hz)
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+  } catch (error) {
+    console.error('Error playing beep sound:', error);
+  }
+};
+
 interface Message {
   id: number | string;
   message: string;
@@ -54,22 +77,24 @@ const Chat: React.FC = () => {
   const [isAdminOnline, setIsAdminOnline] = useState(false);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isOpenRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Initialize session and connect to socket
+  // Initialize session automatically when page loads (not just when chat opens)
   useEffect(() => {
-    const initializeChat = async () => {
+    const initializeSession = async () => {
       try {
         // Get or create session from localStorage
         let storedSessionId = localStorage.getItem('chat_session_id');
         
         if (!storedSessionId) {
-          // Create new session via HTTP (one-time setup)
+          // Create new session automatically when user visits website
           const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -80,20 +105,36 @@ const Chat: React.FC = () => {
             const session: ChatSession = await response.json();
             storedSessionId = session.id;
             localStorage.setItem('chat_session_id', storedSessionId);
+            // Session is created and will be notified to admins via socket
           }
         }
         
+        // Store session ID for socket connection
         if (storedSessionId) {
           setSessionId(storedSessionId);
-          
-          // Connect to Socket.IO
-          const socketOptions = {
-            path: SOCKET_PATH,
-            transports: ['websocket', 'polling'],
-            namespace: 'api'
-          };
-          console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
-          const socket = io(SOCKET_URL, socketOptions);
+        }
+      } catch (error) {
+        console.error('Error initializing session:', error);
+      }
+    };
+    
+    initializeSession();
+  }, []);
+
+  // Connect to socket after session is initialized
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    const initializeChat = async () => {
+      try {
+        // Connect to Socket.IO
+        const socketOptions = {
+          path: SOCKET_PATH,
+          transports: ['websocket', 'polling'],
+          namespace: 'api'
+        };
+        console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
+        const socket = io(SOCKET_URL, socketOptions);
           
           socketRef.current = socket;
           
@@ -104,7 +145,7 @@ const Chat: React.FC = () => {
             setIsInitializing(false);
             
             // Connect user with session
-            socket.emit('user:connect', { sessionId: storedSessionId });
+            socket.emit('user:connect', { sessionId });
           });
           
           socket.on('disconnect', () => {
@@ -124,8 +165,25 @@ const Chat: React.FC = () => {
           });
           
           socket.on('message:new', (message: Message) => {
-            setMessages(prev => [...prev, message]);
+            // Play beep sound for incoming messages from admin
+            if (message.sender_type === 'admin') {
+              playBeepSound();
+              // Increment unread count if chat is closed (use ref to get current value)
+              if (!isOpenRef.current) {
+                setUnreadCount(prev => prev + 1);
+              }
+            }
+            setMessages(prev => {
+              const exists = prev.some(m => m.id === message.id);
+              if (exists) return prev;
+              return [...prev, message];
+            });
             scrollToBottom();
+          });
+          
+          // Receive unread count
+          socket.on('unread:count', (data: { count: number }) => {
+            setUnreadCount(data.count);
           });
           
           // Receive active admins
@@ -149,7 +207,6 @@ const Chat: React.FC = () => {
               socket.emit('heartbeat');
             }
           }, 15000);
-        }
       } catch (error) {
         console.error('Error initializing chat:', error);
         setIsInitializing(false);
@@ -166,7 +223,7 @@ const Chat: React.FC = () => {
         clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, []);
+  }, [sessionId]);
 
 
   useEffect(() => {
@@ -174,10 +231,24 @@ const Chat: React.FC = () => {
   }, [messages]);
 
   useEffect(() => {
+    isOpenRef.current = isOpen;
+    
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isOpen]);
+    
+    // Reset unread count when chat is opened
+    if (isOpen && unreadCount > 0) {
+      // Mark messages as read when chat is opened
+      if (sessionId) {
+        fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/mark-read`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }).catch(err => console.error('Error marking messages as read:', err));
+      }
+      setUnreadCount(0);
+    }
+  }, [isOpen, sessionId, unreadCount]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading || !sessionId || !socketRef.current || !isConnected) return;
@@ -221,15 +292,34 @@ const Chat: React.FC = () => {
       {/* Chat Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-110"
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 9999
+        }}
+        className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-110 relative"
         aria-label="Open chat"
       >
         {isOpen ? <X size={24} /> : <MessageCircle size={24} />}
+        {!isOpen && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center min-w-[24px]">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-40 w-80 h-96 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
+        <div 
+          style={{
+            position: 'fixed',
+            bottom: '100px',
+            right: '24px',
+            zIndex: 9998
+          }}
+          className="w-80 h-96 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col"
+        >
           {/* Chat Header */}
           <div className="bg-blue-600 text-white p-4 rounded-t-lg">
             <div className="flex items-center justify-between mb-2">

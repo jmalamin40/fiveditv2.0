@@ -5,14 +5,39 @@ import { io, Socket } from 'socket.io-client';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
 
+// Beep sound notification function
+const playBeepSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Beep frequency (Hz)
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+  } catch (error) {
+    console.error('Error playing beep sound:', error);
+  }
+};
+
 interface ChatSession {
   id: string;
   user_identifier: string | null;
   status: 'active' | 'closed' | 'pending';
   message_count: number;
+  unread_count: number;
   last_message_time: string | null;
   last_message_at: string;
   created_at: string;
+  is_new_traffic?: boolean;
 }
 
 interface ChatMessage {
@@ -43,6 +68,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectedSessionRef = useRef<string | null>(null);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -75,6 +101,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
       
       // Connect as admin
       socket.emit('admin:connect', { token });
+      
+      // If a session was selected before reconnection, reload its messages
+      // Use ref to get current value without dependency
+      if (selectedSessionRef.current) {
+        setTimeout(() => {
+          socket.emit('admin:session:load', { sessionId: selectedSessionRef.current });
+        }, 500); // Small delay to ensure admin:connect completes
+      }
     });
 
     socket.on('disconnect', () => {
@@ -92,6 +126,15 @@ export default function ChatManager({ token }: ChatManagerProps) {
     // Receive sessions list
     socket.on('sessions:list', (sessionsList: ChatSession[]) => {
       setSessions(sessionsList);
+      
+      // If a session was selected, reload its messages after receiving sessions list
+      // This handles the case when admin reconnects after page refresh
+      // Use ref to get current value without dependency
+      if (selectedSessionRef.current && socket.connected) {
+        setTimeout(() => {
+          socket.emit('admin:session:load', { sessionId: selectedSessionRef.current });
+        }, 300);
+      }
     });
 
     // Receive session update
@@ -110,20 +153,86 @@ export default function ChatManager({ token }: ChatManagerProps) {
     // Receive messages history
     socket.on('messages:history', (messagesList: ChatMessage[]) => {
       setMessages(messagesList);
+      setIsLoading(false);
       scrollToBottom();
+      
+      // Reset unread count for the selected session since messages are now loaded (marked as read)
+      if (selectedSessionRef.current) {
+        setSessions(prev => {
+          const index = prev.findIndex(s => s.id === selectedSessionRef.current);
+          if (index >= 0) {
+            const updated = [...prev];
+            updated[index] = {
+              ...updated[index],
+              unread_count: 0
+            };
+            return updated;
+          }
+          return prev;
+        });
+      }
     });
 
     // Receive new message
     socket.on('message:new', (message: ChatMessage) => {
-      if (message.session_id === selectedSession) {
-        setMessages(prev => [...prev, message]);
+      // Play beep sound for incoming messages (only from users, not from admin themselves)
+      if (message.sender_type === 'user') {
+        playBeepSound();
+      }
+      
+      // Update messages if this is for the currently selected session
+      // Use ref to get current value without dependency
+      if (message.session_id === selectedSessionRef.current) {
+        setMessages(prev => {
+          // Check if message already exists (prevent duplicates)
+          const exists = prev.some(m => m.id === message.id);
+          if (exists) return prev;
+          return [...prev, message];
+        });
+        // Always scroll to bottom when new message arrives for selected session
         scrollToBottom();
       }
+      
+      // Always update the session list to reflect new message
+      setSessions(prev => {
+        const index = prev.findIndex(s => s.id === message.session_id);
+        if (index >= 0) {
+          const updated = [...prev];
+          const currentUnread = updated[index].unread_count || 0;
+          updated[index] = {
+            ...updated[index],
+            message_count: updated[index].message_count + 1,
+            last_message_at: message.created_at,
+            last_message_time: message.created_at,
+            // Increment unread count if message is from user
+            unread_count: message.sender_type === 'user' ? currentUnread + 1 : currentUnread
+          };
+          // Move updated session to top
+          const session = updated.splice(index, 1)[0];
+          return [session, ...updated];
+        }
+        return prev;
+      });
     });
 
     // Receive unread count
     socket.on('unread:count', (data: { count: number }) => {
       setUnreadCount(data.count);
+    });
+
+    // New traffic session created
+    socket.on('session:new-traffic', (newSession: ChatSession) => {
+      // Add new session to the top of the list
+      setSessions(prev => {
+        // Check if session already exists
+        const exists = prev.some(s => s.id === newSession.id);
+        if (exists) {
+          // Update existing session
+          return prev.map(s => s.id === newSession.id ? { ...newSession, is_new_traffic: true } : s);
+        }
+        // Add new session at the top
+        return [{ ...newSession, is_new_traffic: true }, ...prev];
+      });
     });
 
     // User connected/disconnected
@@ -159,6 +268,11 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setIsLoadingSessions(false);
     }
   }, [token]);
+  
+  // Update ref when selectedSession changes
+  useEffect(() => {
+    selectedSessionRef.current = selectedSession;
+  }, [selectedSession]);
 
   // Update user online status based on sessions
   useEffect(() => {
@@ -168,17 +282,34 @@ export default function ChatManager({ token }: ChatManagerProps) {
       statusMap[session.id] = userOnlineStatus[session.id] || false;
     });
     setUserOnlineStatus(prev => ({ ...prev, ...statusMap }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions]);
 
-  // Load messages when session is selected
+  // Load messages when session is selected or when reconnected
   useEffect(() => {
     if (selectedSession && socketRef.current && isConnected) {
+      // Clear existing messages first to show loading state
+      setMessages([]);
+      setIsLoading(true);
+      
+      // Request messages for the selected session
       socketRef.current.emit('admin:session:load', { sessionId: selectedSession });
+    } else if (!selectedSession) {
+      // Clear messages when no session is selected
+      setMessages([]);
+      setIsLoading(false);
     }
   }, [selectedSession, isConnected]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Use requestAnimationFrame and setTimeout to ensure DOM is fully updated before scrolling
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 50);
+    });
   };
 
   useEffect(() => {
@@ -198,6 +329,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
         message: messageText
       });
       setIsLoading(false);
+      // Note: scrollToBottom will be called automatically when message arrives via socket
     } catch (error) {
       console.error('Error sending message:', error);
       setIsLoading(false);
@@ -299,36 +431,70 @@ export default function ChatManager({ token }: ChatManagerProps) {
             <div className="empty-state">No conversations yet</div>
           ) : (
             <div className="sessions-list">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={`session-item ${selectedSession === session.id ? 'active' : ''}`}
-                  onClick={() => setSelectedSession(session.id)}
-                >
-                  <div className="session-header">
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(session.status)}
-                      <span className="session-id">
-                        {session.user_identifier || `Session ${session.id.substring(0, 8)}`}
-                      </span>
+              {sessions.map((session) => {
+                const unreadCount = session.unread_count || 0;
+                const isOnline = userOnlineStatus[session.id] === true;
+                const hasUnread = unreadCount > 0;
+                const isNewTraffic = session.is_new_traffic === true;
+                
+                return (
+                  <div
+                    key={session.id}
+                    className={`session-item ${selectedSession === session.id ? 'active' : ''} ${hasUnread ? 'has-unread' : ''} ${isNewTraffic ? 'new-traffic' : ''}`}
+                    onClick={() => {
+                      setSelectedSession(session.id);
+                      // Mark as no longer new traffic when clicked
+                      if (isNewTraffic) {
+                        setSessions(prev => prev.map(s => 
+                          s.id === session.id ? { ...s, is_new_traffic: false } : s
+                        ));
+                      }
+                    }}
+                  >
+                    <div className="session-header">
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        {isNewTraffic && (
+                          <span className="new-traffic-badge" title="New Traffic">NEW</span>
+                        )}
+                        {getStatusIcon(session.status)}
+                        <span className="session-id" title={session.user_identifier || `Session ${session.id}`}>
+                          {session.user_identifier || `Session ${session.id.substring(0, 8)}`}
+                        </span>
+                        {hasUnread && (
+                          <span className="unread-badge">{unreadCount}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {isOnline !== undefined && (
+                          <div className="flex items-center space-x-1" title={isOnline ? 'Online' : 'Offline'}>
+                            <div className={`online-indicator ${isOnline ? 'online' : 'offline'}`}></div>
+                            <span className="online-text">{isOnline ? 'Online' : 'Offline'}</span>
+                          </div>
+                        )}
+                        <span className="session-time">
+                          {formatTime(session.last_message_at)}
+                        </span>
+                      </div>
                     </div>
-                    <span className="session-time">
-                      {formatTime(session.last_message_at)}
-                    </span>
-                  </div>
                     <div className="session-meta">
                       <div className="flex items-center space-x-2">
                         <span className="session-status">{session.status}</span>
-                        {userOnlineStatus[session.id] !== undefined && (
-                          <div className="flex items-center space-x-1">
-                            <div className={`w-1.5 h-1.5 rounded-full ${userOnlineStatus[session.id] ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                          </div>
+                        {hasUnread && (
+                          <span className="unread-flag" title={`${unreadCount} unread message${unreadCount !== 1 ? 's' : ''}`}>
+                            ●
+                          </span>
                         )}
                       </div>
-                      <span className="session-count">{session.message_count} messages</span>
+                      <div className="flex items-center space-x-2">
+                        {hasUnread && (
+                          <span className="unread-count-text">{unreadCount} unread</span>
+                        )}
+                        <span className="session-count">{session.message_count} total</span>
+                      </div>
                     </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -370,8 +536,10 @@ export default function ChatManager({ token }: ChatManagerProps) {
                 </div>
               </div>
 
-              <div className="messages-container" ref={messagesEndRef}>
-                {messages.length === 0 ? (
+              <div className="messages-container">
+                {isLoading && messages.length === 0 ? (
+                  <div className="loading-state">Loading messages...</div>
+                ) : messages.length === 0 ? (
                   <div className="empty-state">No messages yet. Start the conversation!</div>
                 ) : (
                   messages.map((message) => {
@@ -405,6 +573,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               <div className="chat-input-area">
@@ -526,6 +695,39 @@ export default function ChatManager({ token }: ChatManagerProps) {
           border-left: 3px solid #3b82f6;
         }
 
+        .session-item.has-unread {
+          background-color: #fef3c7;
+          font-weight: 500;
+        }
+
+        .session-item.has-unread.active {
+          background-color: #dbeafe;
+        }
+
+        .session-item.new-traffic {
+          background-color: #fef3c7;
+          border-left: 3px solid #f59e0b;
+        }
+
+        .session-item.new-traffic.active {
+          background-color: #fef3c7;
+          border-left: 3px solid #f59e0b;
+        }
+
+        .new-traffic-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.125rem 0.375rem;
+          background-color: #f59e0b;
+          color: white;
+          border-radius: 0.25rem;
+          font-size: 0.625rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-right: 0.25rem;
+        }
+
         .session-header {
           display: flex;
           justify-content: space-between;
@@ -552,6 +754,61 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .session-status {
           text-transform: capitalize;
+        }
+
+        .online-indicator {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          display: inline-block;
+        }
+
+        .online-indicator.online {
+          background-color: #10b981;
+          box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+        }
+
+        .online-indicator.offline {
+          background-color: #9ca3af;
+        }
+
+        .online-text {
+          font-size: 0.7rem;
+          color: #6b7280;
+          font-weight: 500;
+        }
+
+        .unread-badge {
+          background-color: #ef4444;
+          color: white;
+          border-radius: 10px;
+          padding: 0.125rem 0.375rem;
+          font-size: 0.7rem;
+          font-weight: 600;
+          min-width: 18px;
+          text-align: center;
+          line-height: 1.2;
+        }
+
+        .unread-flag {
+          color: #ef4444;
+          font-size: 0.75rem;
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+
+        .unread-count-text {
+          color: #ef4444;
+          font-weight: 600;
+          font-size: 0.75rem;
         }
 
         .chat-area {

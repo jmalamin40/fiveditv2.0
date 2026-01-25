@@ -178,6 +178,7 @@ async function migrate() {
         id VARCHAR(36) PRIMARY KEY,
         user_identifier VARCHAR(255),
         status ENUM('active', 'closed', 'pending') DEFAULT 'active',
+        is_new_traffic BOOLEAN DEFAULT TRUE,
         last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_status (status),
