@@ -135,31 +135,95 @@ router.post('/sessions/:sessionId/mark-read', async (req, res) => {
   }
 });
 
-// Admin: Get all chat sessions
+// Admin: Get all chat sessions with filtering and pagination
 router.get('/admin/sessions', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { status } = req.query;
+    const { 
+      status, 
+      online_status, 
+      is_new_traffic, 
+      page = 1, 
+      limit = 20 
+    } = req.query;
     
-    let query = `
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 20;
+    const offset = (pageNum - 1) * limitNum;
+    
+    // Build WHERE conditions
+    const whereConditions = [];
+    const params = [];
+    
+    if (status) {
+      whereConditions.push('cs.status = ?');
+      params.push(status);
+    }
+    
+    if (is_new_traffic === 'true') {
+      whereConditions.push('cs.is_new_traffic = TRUE');
+    }
+    
+    // Build base query with online status check
+    let baseQuery = `
       SELECT 
         cs.*,
         COUNT(cm.id) as message_count,
-        MAX(cm.created_at) as last_message_time
+        MAX(cm.created_at) as last_message_time,
+        SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM user_online_status uos 
+            WHERE uos.session_id = cs.id 
+            AND uos.user_type = 'user' 
+            AND TIMESTAMPDIFF(SECOND, uos.last_seen, NOW()) <= 30
+          ) THEN TRUE 
+          ELSE FALSE 
+        END as is_online
       FROM chat_sessions cs
       LEFT JOIN chat_messages cm ON cs.id = cm.session_id
     `;
     
-    const params = [];
-    if (status) {
-      query += ' WHERE cs.status = ?';
-      params.push(status);
+    if (whereConditions.length > 0) {
+      baseQuery += ' WHERE ' + whereConditions.join(' AND ');
     }
     
-    query += ' GROUP BY cs.id ORDER BY cs.last_message_at DESC';
+    baseQuery += ' GROUP BY cs.id';
     
-    const [sessions] = await pool.execute(query, params);
+    // Apply online status filter after grouping
+    if (online_status === 'online') {
+      baseQuery += ' HAVING is_online = TRUE';
+    } else if (online_status === 'offline') {
+      baseQuery += ' HAVING is_online = FALSE';
+    }
     
-    res.json(sessions);
+    // Order by
+    baseQuery += ' ORDER BY cs.is_new_traffic DESC, cs.last_message_at DESC';
+    
+    // Get total count for pagination
+    const countQuery = baseQuery.replace(
+      'SELECT cs.*, COUNT(cm.id) as message_count, MAX(cm.created_at) as last_message_time, SUM(CASE WHEN cm.sender_type = \'user\' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count, CASE WHEN EXISTS (SELECT 1 FROM user_online_status uos WHERE uos.session_id = cs.id AND uos.user_type = \'user\' AND TIMESTAMPDIFF(SECOND, uos.last_seen, NOW()) <= 30) THEN TRUE ELSE FALSE END as is_online',
+      'SELECT COUNT(DISTINCT cs.id) as total'
+    ).replace(' GROUP BY cs.id', '').replace(/HAVING.*/, '').replace(/ORDER BY.*/, '');
+    
+    const [countResult] = await pool.execute(countQuery, params);
+    const total = countResult[0]?.total || 0;
+    
+    // Apply pagination
+    baseQuery += ` LIMIT ? OFFSET ?`;
+    params.push(limitNum, offset);
+    
+    const [sessions] = await pool.execute(baseQuery, params);
+    
+    res.json({
+      sessions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+        hasMore: pageNum * limitNum < total
+      }
+    });
   } catch (error) {
     console.error('Error fetching sessions:', error);
     res.status(500).json({ error: 'Failed to fetch sessions' });
