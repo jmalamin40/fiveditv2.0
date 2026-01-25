@@ -134,4 +134,128 @@ export async function deleteScript(token: string, id: string) {
   await client.delete(`/admin/codecanyon/${id}`, authHeaders(token));
 }
 
+// Chat interfaces
+export interface ChatSession {
+  id: string;
+  user_identifier: string | null;
+  status: 'active' | 'closed' | 'pending';
+  message_count: number;
+  last_message_time: string | null;
+  last_message_at: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  session_id: string;
+  message: string;
+  sender_type: 'user' | 'admin';
+  sender_id: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+// Chat API functions
+export async function fetchChatSessions(token: string, status?: string) {
+  const url = status ? `/chat/admin/sessions?status=${status}` : '/chat/admin/sessions';
+  const { data } = await client.get<ChatSession[]>(url, authHeaders(token));
+  return data;
+}
+
+export async function fetchChatMessages(token: string, sessionId: string) {
+  const { data } = await client.get<ChatMessage[]>(`/chat/admin/sessions/${sessionId}/messages`, authHeaders(token));
+  return data;
+}
+
+export async function sendAdminMessage(token: string, sessionId: string, message: string) {
+  const { data } = await client.post<ChatMessage>('/chat/admin/messages', {
+    sessionId,
+    message
+  }, authHeaders(token));
+  return data;
+}
+
+export async function updateSessionStatus(token: string, sessionId: string, status: 'active' | 'closed' | 'pending') {
+  const { data } = await client.put(`/chat/admin/sessions/${sessionId}/status`, { status }, authHeaders(token));
+  return data;
+}
+
+export async function fetchUnreadCount(token: string) {
+  const { data } = await client.get<{ count: number }>('/chat/admin/unread-count', authHeaders(token));
+  return data;
+}
+
+// Online status interfaces
+export interface OnlineStatus {
+  user: {
+    is_online: boolean;
+    last_seen: string | null;
+  };
+  admin?: {
+    is_online: boolean;
+    online_count: number;
+    last_seen: string | null;
+  };
+}
+
+// Online status API functions
+export async function updateAdminOnlineStatus(token: string) {
+  const { data } = await client.post<{ success: boolean; online: boolean }>('/chat/admin/online-status', {}, authHeaders(token));
+  return data;
+}
+
+export async function fetchUserOnlineStatus(token: string, sessionId: string) {
+  const { data } = await client.get<OnlineStatus>(`/chat/admin/sessions/${sessionId}/online-status`, authHeaders(token));
+  return data;
+}
+
+// Admin Profile interfaces
+export interface AdminProfile {
+  id: number;
+  name: string;
+  email: string;
+  profile_picture: string | null;
+  created_at: string;
+}
+
+// Admin Profile API functions
+export async function fetchAdminProfile(token: string) {
+  const { data } = await client.get<AdminProfile>('/admin/profile', authHeaders(token));
+  return data;
+}
+
+export async function uploadProfilePicture(token: string, formData: FormData) {
+  const { data } = await client.post<{ success: boolean; profile_picture: string }>(
+    '/admin/profile/picture',
+    formData,
+    {
+      ...authHeaders(token),
+      headers: {
+        ...authHeaders(token).headers,
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+  return data;
+}
+
+// Active Admins interface
+export interface ActiveAdmin {
+  id: number;
+  name: string;
+  email: string;
+  profile_picture: string | null;
+  last_seen: string;
+}
+
+export interface ActiveAdminsResponse {
+  count: number;
+  admins: ActiveAdmin[];
+}
+
+export async function fetchActiveAdmins() {
+  const { data } = await client.get<ActiveAdminsResponse>('/admin/active-admins');
+  return data;
+}
+
 

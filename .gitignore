@@ -39,3 +39,5 @@ next-env.d.ts
 .htaccess
 
 /admin/node_modules
+/uploads
+/uploads/profiles
