@@ -54,7 +54,7 @@ const Chat: React.FC = () => {
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
-  const heartbeatIntervalRef = useRef<number | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
