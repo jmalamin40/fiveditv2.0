@@ -1,7 +1,35 @@
+'use client'
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, MessageCircle, X, Bot, User } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3004/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.fivedit.com/api';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.fivedit.com';
+const SOCKET_PATH = '/api/socket.io';
+
+// Beep sound notification function
+const playBeepSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Beep frequency (Hz)
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+  } catch (error) {
+    console.error('Error playing beep sound:', error);
+  }
+};
 
 interface Message {
   id: number | string;
@@ -28,15 +56,6 @@ interface ActiveAdminsResponse {
   admins: ActiveAdmin[];
 }
 
-// Browser-compatible UUID generation
-const generateUUID = (): string => {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-};
-
 const Chat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,16 +67,15 @@ const Chat: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isAdminOnline, setIsAdminOnline] = useState(false);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const adminsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Initialize session and load messages
+  // Initialize session and connect to socket
   useEffect(() => {
     const initializeChat = async () => {
       try {
@@ -65,7 +83,7 @@ const Chat: React.FC = () => {
         let storedSessionId = localStorage.getItem('chat_session_id');
         
         if (!storedSessionId) {
-          // Create new session
+          // Create new session via HTTP (one-time setup)
           const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -82,128 +100,91 @@ const Chat: React.FC = () => {
         if (storedSessionId) {
           setSessionId(storedSessionId);
           
-          // Load existing messages
-          const messagesResponse = await fetch(`${API_BASE_URL}/chat/sessions/${storedSessionId}/messages`);
-          if (messagesResponse.ok) {
-            const loadedMessages: Message[] = await messagesResponse.json();
-            setMessages(loadedMessages);
-          }
-        }
-      } catch (error) {
-        console.error('Error initializing chat:', error);
-      } finally {
-        setIsInitializing(false);
-      }
-    };
-
-    initializeChat();
-  }, []);
-
-  // Send heartbeat to update online status
-  useEffect(() => {
-    if (sessionId) {
-      const sendHeartbeat = async () => {
-        try {
-          await fetch(`${API_BASE_URL}/chat/online-status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId })
+          // Connect to Socket.IO
+          const socketOptions = {
+            path: SOCKET_PATH,
+            transports: ['websocket', 'polling']
+          };
+          console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
+          const socket = io(SOCKET_URL, socketOptions);
+          
+          socketRef.current = socket;
+          
+          // Connection events
+          socket.on('connect', () => {
+            console.log('Socket connected');
+            setIsConnected(true);
+            setIsInitializing(false);
+            
+            // Connect user with session
+            socket.emit('user:connect', { sessionId: storedSessionId });
           });
-        } catch (error) {
-          console.error('Error sending heartbeat:', error);
-        }
-      };
-
-      // Send heartbeat immediately and then every 15 seconds
-      sendHeartbeat();
-      heartbeatIntervalRef.current = setInterval(sendHeartbeat, 15000);
-    }
-
-    return () => {
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-      }
-    };
-  }, [sessionId]);
-
-  // Check admin online status and fetch active admins
-  useEffect(() => {
-    if (sessionId) {
-      const checkAdminStatus = async () => {
-        try {
-          const response = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/online-status`);
-          if (response.ok) {
-            const status = await response.json();
-            setIsAdminOnline(status.admin.is_online);
-          }
-        } catch (error) {
-          console.error('Error checking admin status:', error);
-        }
-      };
-
-      const fetchActiveAdmins = async () => {
-        try {
-          const response = await fetch(`${API_BASE_URL}/admin/active-admins`);
-          if (response.ok) {
-            const data: ActiveAdminsResponse = await response.json();
+          
+          socket.on('disconnect', () => {
+            console.log('Socket disconnected');
+            setIsConnected(false);
+          });
+          
+          socket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
+            setIsInitializing(false);
+          });
+          
+          // Receive messages
+          socket.on('messages:history', (messages: Message[]) => {
+            setMessages(messages);
+            scrollToBottom();
+          });
+          
+          socket.on('message:new', (message: Message) => {
+            // Play beep sound for incoming messages from admin
+            if (message.sender_type === 'admin') {
+              playBeepSound();
+            }
+            setMessages(prev => [...prev, message]);
+            scrollToBottom();
+          });
+          
+          // Receive active admins
+          socket.on('admins:active', (data: ActiveAdminsResponse) => {
             // Deduplicate admins by ID to prevent showing duplicates
             const uniqueAdmins = data.admins.filter((admin, index, self) => 
               index === self.findIndex(a => a.id === admin.id)
             );
             setActiveAdmins(uniqueAdmins);
             setIsAdminOnline(uniqueAdmins.length > 0);
-          }
-        } catch (error) {
-          console.error('Error fetching active admins:', error);
+          });
+          
+          // Error handling
+          socket.on('error', (error: { message: string }) => {
+            console.error('Socket error:', error);
+          });
+          
+          // Send heartbeat every 15 seconds
+          heartbeatIntervalRef.current = setInterval(() => {
+            if (socket.connected) {
+              socket.emit('heartbeat');
+            }
+          }, 15000);
         }
-      };
-
-      // Check status immediately and then every 5 seconds
-      checkAdminStatus();
-      statusIntervalRef.current = setInterval(checkAdminStatus, 5000);
-
-      // Fetch active admins immediately and then every 10 seconds
-      fetchActiveAdmins();
-      adminsIntervalRef.current = setInterval(fetchActiveAdmins, 10000);
-    }
-
-    return () => {
-      if (statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-      }
-      if (adminsIntervalRef.current) {
-        clearInterval(adminsIntervalRef.current);
+      } catch (error) {
+        console.error('Error initializing chat:', error);
+        setIsInitializing(false);
       }
     };
-  }, [sessionId]);
 
-  // Poll for new messages when chat is open
-  useEffect(() => {
-    if (isOpen && sessionId) {
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const response = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/messages`);
-          if (response.ok) {
-            const loadedMessages: Message[] = await response.json();
-            setMessages(loadedMessages);
-          }
-        } catch (error) {
-          console.error('Error polling messages:', error);
-        }
-      }, 3000); // Poll every 3 seconds
-    } else {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    }
-
+    initializeChat();
+    
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
       }
     };
-  }, [isOpen, sessionId]);
+  }, []);
+
 
   useEffect(() => {
     scrollToBottom();
@@ -216,37 +197,19 @@ const Chat: React.FC = () => {
   }, [isOpen]);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading || !sessionId) return;
+    if (!text.trim() || isLoading || !sessionId || !socketRef.current || !isConnected) return;
 
+    const messageText = text.trim();
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chat/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId,
-          message: text.trim()
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to send message');
-      }
-
-      const newMessage: Message = await response.json();
-      
-      // Refresh messages to get the latest
-      const messagesResponse = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/messages`);
-      if (messagesResponse.ok) {
-        const loadedMessages: Message[] = await messagesResponse.json();
-        setMessages(loadedMessages);
-      }
+      // Send message via socket
+      socketRef.current.emit('message:send', { message: messageText });
+      setIsLoading(false);
     } catch (error) {
       console.error('Error sending message:', error);
+      setIsLoading(false);
       // Show error message to user
       const errorMessage: Message = {
         id: Date.now().toString(),
@@ -255,8 +218,6 @@ const Chat: React.FC = () => {
         created_at: new Date().toISOString()
       };
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -411,12 +372,12 @@ const Chat: React.FC = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Type your message..."
-                disabled={isLoading || !sessionId}
+                disabled={isLoading || !sessionId || !isConnected}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
               />
               <button
                 type="submit"
-                disabled={!inputValue.trim() || isLoading || !sessionId}
+                disabled={!inputValue.trim() || isLoading || !sessionId || !isConnected}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-2 rounded-lg transition-colors"
               >
                 <Send size={18} />

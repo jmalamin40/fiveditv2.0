@@ -5,6 +5,29 @@ import { io, Socket } from 'socket.io-client';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
 
+// Beep sound notification function
+const playBeepSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Beep frequency (Hz)
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+  } catch (error) {
+    console.error('Error playing beep sound:', error);
+  }
+};
+
 interface ChatSession {
   id: string;
   user_identifier: string | null;
@@ -43,6 +66,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectedSessionRef = useRef<string | null>(null);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -75,6 +99,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
       
       // Connect as admin
       socket.emit('admin:connect', { token });
+      
+      // If a session was selected before reconnection, reload its messages
+      // Use ref to get current value without dependency
+      if (selectedSessionRef.current) {
+        setTimeout(() => {
+          socket.emit('admin:session:load', { sessionId: selectedSessionRef.current });
+        }, 500); // Small delay to ensure admin:connect completes
+      }
     });
 
     socket.on('disconnect', () => {
@@ -92,6 +124,15 @@ export default function ChatManager({ token }: ChatManagerProps) {
     // Receive sessions list
     socket.on('sessions:list', (sessionsList: ChatSession[]) => {
       setSessions(sessionsList);
+      
+      // If a session was selected, reload its messages after receiving sessions list
+      // This handles the case when admin reconnects after page refresh
+      // Use ref to get current value without dependency
+      if (selectedSessionRef.current && socket.connected) {
+        setTimeout(() => {
+          socket.emit('admin:session:load', { sessionId: selectedSessionRef.current });
+        }, 300);
+      }
     });
 
     // Receive session update
@@ -110,15 +151,46 @@ export default function ChatManager({ token }: ChatManagerProps) {
     // Receive messages history
     socket.on('messages:history', (messagesList: ChatMessage[]) => {
       setMessages(messagesList);
+      setIsLoading(false);
       scrollToBottom();
     });
 
     // Receive new message
     socket.on('message:new', (message: ChatMessage) => {
-      if (message.session_id === selectedSession) {
-        setMessages(prev => [...prev, message]);
+      // Play beep sound for incoming messages (only from users, not from admin themselves)
+      if (message.sender_type === 'user') {
+        playBeepSound();
+      }
+      
+      // Update messages if this is for the currently selected session
+      // Use ref to get current value without dependency
+      if (message.session_id === selectedSessionRef.current) {
+        setMessages(prev => {
+          // Check if message already exists (prevent duplicates)
+          const exists = prev.some(m => m.id === message.id);
+          if (exists) return prev;
+          return [...prev, message];
+        });
         scrollToBottom();
       }
+      
+      // Always update the session list to reflect new message
+      setSessions(prev => {
+        const index = prev.findIndex(s => s.id === message.session_id);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            message_count: updated[index].message_count + 1,
+            last_message_at: message.created_at,
+            last_message_time: message.created_at
+          };
+          // Move updated session to top
+          const session = updated.splice(index, 1)[0];
+          return [session, ...updated];
+        }
+        return prev;
+      });
     });
 
     // Receive unread count
@@ -159,6 +231,11 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setIsLoadingSessions(false);
     }
   }, [token]);
+  
+  // Update ref when selectedSession changes
+  useEffect(() => {
+    selectedSessionRef.current = selectedSession;
+  }, [selectedSession]);
 
   // Update user online status based on sessions
   useEffect(() => {
@@ -168,12 +245,22 @@ export default function ChatManager({ token }: ChatManagerProps) {
       statusMap[session.id] = userOnlineStatus[session.id] || false;
     });
     setUserOnlineStatus(prev => ({ ...prev, ...statusMap }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions]);
 
-  // Load messages when session is selected
+  // Load messages when session is selected or when reconnected
   useEffect(() => {
     if (selectedSession && socketRef.current && isConnected) {
+      // Clear existing messages first to show loading state
+      setMessages([]);
+      setIsLoading(true);
+      
+      // Request messages for the selected session
       socketRef.current.emit('admin:session:load', { sessionId: selectedSession });
+    } else if (!selectedSession) {
+      // Clear messages when no session is selected
+      setMessages([]);
+      setIsLoading(false);
     }
   }, [selectedSession, isConnected]);
 
@@ -371,7 +458,9 @@ export default function ChatManager({ token }: ChatManagerProps) {
               </div>
 
               <div className="messages-container" ref={messagesEndRef}>
-                {messages.length === 0 ? (
+                {isLoading && messages.length === 0 ? (
+                  <div className="loading-state">Loading messages...</div>
+                ) : messages.length === 0 ? (
                   <div className="empty-state">No messages yet. Start the conversation!</div>
                 ) : (
                   messages.map((message) => {

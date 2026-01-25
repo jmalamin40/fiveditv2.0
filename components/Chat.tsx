@@ -8,6 +8,29 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.fivedit.com
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
 
+// Beep sound notification function
+const playBeepSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Beep frequency (Hz)
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+  } catch (error) {
+    console.error('Error playing beep sound:', error);
+  }
+};
+
 interface Message {
   id: number | string;
   message: string;
@@ -124,6 +147,10 @@ const Chat: React.FC = () => {
           });
           
           socket.on('message:new', (message: Message) => {
+            // Play beep sound for incoming messages from admin
+            if (message.sender_type === 'admin') {
+              playBeepSound();
+            }
             setMessages(prev => [...prev, message]);
             scrollToBottom();
           });
