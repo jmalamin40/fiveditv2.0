@@ -33,6 +33,7 @@ interface ChatSession {
   user_identifier: string | null;
   status: 'active' | 'closed' | 'pending';
   message_count: number;
+  unread_count: number;
   last_message_time: string | null;
   last_message_at: string;
   created_at: string;
@@ -153,6 +154,22 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setMessages(messagesList);
       setIsLoading(false);
       scrollToBottom();
+      
+      // Reset unread count for the selected session since messages are now loaded (marked as read)
+      if (selectedSessionRef.current) {
+        setSessions(prev => {
+          const index = prev.findIndex(s => s.id === selectedSessionRef.current);
+          if (index >= 0) {
+            const updated = [...prev];
+            updated[index] = {
+              ...updated[index],
+              unread_count: 0
+            };
+            return updated;
+          }
+          return prev;
+        });
+      }
     });
 
     // Receive new message
@@ -171,6 +188,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
           if (exists) return prev;
           return [...prev, message];
         });
+        // Always scroll to bottom when new message arrives for selected session
         scrollToBottom();
       }
       
@@ -179,11 +197,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
         const index = prev.findIndex(s => s.id === message.session_id);
         if (index >= 0) {
           const updated = [...prev];
+          const currentUnread = updated[index].unread_count || 0;
           updated[index] = {
             ...updated[index],
             message_count: updated[index].message_count + 1,
             last_message_at: message.created_at,
-            last_message_time: message.created_at
+            last_message_time: message.created_at,
+            // Increment unread count if message is from user
+            unread_count: message.sender_type === 'user' ? currentUnread + 1 : currentUnread
           };
           // Move updated session to top
           const session = updated.splice(index, 1)[0];
@@ -265,7 +286,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
   }, [selectedSession, isConnected]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Use requestAnimationFrame and setTimeout to ensure DOM is fully updated before scrolling
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 50);
+    });
   };
 
   useEffect(() => {
@@ -285,6 +313,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
         message: messageText
       });
       setIsLoading(false);
+      // Note: scrollToBottom will be called automatically when message arrives via socket
     } catch (error) {
       console.error('Error sending message:', error);
       setIsLoading(false);
@@ -386,36 +415,58 @@ export default function ChatManager({ token }: ChatManagerProps) {
             <div className="empty-state">No conversations yet</div>
           ) : (
             <div className="sessions-list">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={`session-item ${selectedSession === session.id ? 'active' : ''}`}
-                  onClick={() => setSelectedSession(session.id)}
-                >
-                  <div className="session-header">
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(session.status)}
-                      <span className="session-id">
-                        {session.user_identifier || `Session ${session.id.substring(0, 8)}`}
-                      </span>
+              {sessions.map((session) => {
+                const unreadCount = session.unread_count || 0;
+                const isOnline = userOnlineStatus[session.id] === true;
+                const hasUnread = unreadCount > 0;
+                
+                return (
+                  <div
+                    key={session.id}
+                    className={`session-item ${selectedSession === session.id ? 'active' : ''} ${hasUnread ? 'has-unread' : ''}`}
+                    onClick={() => setSelectedSession(session.id)}
+                  >
+                    <div className="session-header">
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        {getStatusIcon(session.status)}
+                        <span className="session-id" title={session.user_identifier || `Session ${session.id}`}>
+                          {session.user_identifier || `Session ${session.id.substring(0, 8)}`}
+                        </span>
+                        {hasUnread && (
+                          <span className="unread-badge">{unreadCount}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {isOnline !== undefined && (
+                          <div className="flex items-center space-x-1" title={isOnline ? 'Online' : 'Offline'}>
+                            <div className={`online-indicator ${isOnline ? 'online' : 'offline'}`}></div>
+                            <span className="online-text">{isOnline ? 'Online' : 'Offline'}</span>
+                          </div>
+                        )}
+                        <span className="session-time">
+                          {formatTime(session.last_message_at)}
+                        </span>
+                      </div>
                     </div>
-                    <span className="session-time">
-                      {formatTime(session.last_message_at)}
-                    </span>
-                  </div>
                     <div className="session-meta">
                       <div className="flex items-center space-x-2">
                         <span className="session-status">{session.status}</span>
-                        {userOnlineStatus[session.id] !== undefined && (
-                          <div className="flex items-center space-x-1">
-                            <div className={`w-1.5 h-1.5 rounded-full ${userOnlineStatus[session.id] ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                          </div>
+                        {hasUnread && (
+                          <span className="unread-flag" title={`${unreadCount} unread message${unreadCount !== 1 ? 's' : ''}`}>
+                            ●
+                          </span>
                         )}
                       </div>
-                      <span className="session-count">{session.message_count} messages</span>
+                      <div className="flex items-center space-x-2">
+                        {hasUnread && (
+                          <span className="unread-count-text">{unreadCount} unread</span>
+                        )}
+                        <span className="session-count">{session.message_count} total</span>
+                      </div>
                     </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -457,7 +508,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
                 </div>
               </div>
 
-              <div className="messages-container" ref={messagesEndRef}>
+              <div className="messages-container">
                 {isLoading && messages.length === 0 ? (
                   <div className="loading-state">Loading messages...</div>
                 ) : messages.length === 0 ? (
@@ -494,6 +545,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               <div className="chat-input-area">
@@ -615,6 +667,15 @@ export default function ChatManager({ token }: ChatManagerProps) {
           border-left: 3px solid #3b82f6;
         }
 
+        .session-item.has-unread {
+          background-color: #fef3c7;
+          font-weight: 500;
+        }
+
+        .session-item.has-unread.active {
+          background-color: #dbeafe;
+        }
+
         .session-header {
           display: flex;
           justify-content: space-between;
@@ -641,6 +702,61 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .session-status {
           text-transform: capitalize;
+        }
+
+        .online-indicator {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          display: inline-block;
+        }
+
+        .online-indicator.online {
+          background-color: #10b981;
+          box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+        }
+
+        .online-indicator.offline {
+          background-color: #9ca3af;
+        }
+
+        .online-text {
+          font-size: 0.7rem;
+          color: #6b7280;
+          font-weight: 500;
+        }
+
+        .unread-badge {
+          background-color: #ef4444;
+          color: white;
+          border-radius: 10px;
+          padding: 0.125rem 0.375rem;
+          font-size: 0.7rem;
+          font-weight: 600;
+          min-width: 18px;
+          text-align: center;
+          line-height: 1.2;
+        }
+
+        .unread-flag {
+          color: #ef4444;
+          font-size: 0.75rem;
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+
+        .unread-count-text {
+          color: #ef4444;
+          font-weight: 600;
+          font-size: 0.75rem;
         }
 
         .chat-area {

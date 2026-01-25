@@ -201,12 +201,13 @@ function setupSocketHandlers(io) {
         // Update online status
         await updateOnlineStatus(admin.id, 'admin');
 
-        // Load and send all sessions
+        // Load and send all sessions with unread count
         const [sessions] = await pool.execute(
           `SELECT 
             cs.*,
             COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time
+            MAX(cm.created_at) as last_message_time,
+            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
           FROM chat_sessions cs
           LEFT JOIN chat_messages cm ON cs.id = cm.session_id
           GROUP BY cs.id 
@@ -279,7 +280,8 @@ function setupSocketHandlers(io) {
           `SELECT 
             cs.*,
             COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time
+            MAX(cm.created_at) as last_message_time,
+            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
           FROM chat_sessions cs
           LEFT JOIN chat_messages cm ON cs.id = cm.session_id
           WHERE cs.id = ?
@@ -358,7 +360,8 @@ function setupSocketHandlers(io) {
           `SELECT 
             cs.*,
             COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time
+            MAX(cm.created_at) as last_message_time,
+            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
           FROM chat_sessions cs
           LEFT JOIN chat_messages cm ON cs.id = cm.session_id
           WHERE cs.id = ?
@@ -412,6 +415,21 @@ function setupSocketHandlers(io) {
            WHERE sender_type = 'user' AND is_read = FALSE`
         );
         io.to('admins').emit('unread:count', { count: unreadResult[0].count });
+
+        // Update session with new unread count (should be 0 after marking as read)
+        const [updatedSessions] = await pool.execute(
+          `SELECT 
+            cs.*,
+            COUNT(cm.id) as message_count,
+            MAX(cm.created_at) as last_message_time,
+            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+          FROM chat_sessions cs
+          LEFT JOIN chat_messages cm ON cs.id = cm.session_id
+          WHERE cs.id = ?
+          GROUP BY cs.id`,
+          [sessionId]
+        );
+        io.to('admins').emit('session:updated', updatedSessions[0]);
       } catch (error) {
         console.error('Error in admin:session:load:', error);
         socket.emit('error', { message: 'Failed to load messages' });
@@ -442,7 +460,8 @@ function setupSocketHandlers(io) {
           `SELECT 
             cs.*,
             COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time
+            MAX(cm.created_at) as last_message_time,
+            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
           FROM chat_sessions cs
           LEFT JOIN chat_messages cm ON cs.id = cm.session_id
           WHERE cs.id = ?
