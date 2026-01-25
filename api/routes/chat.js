@@ -114,6 +114,24 @@ router.get('/sessions/:sessionId/messages', async (req, res) => {
   }
 });
 
+// Public: Mark messages as read for a session
+router.post('/sessions/:sessionId/mark-read', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    // Mark all admin messages as read for this session
+    await pool.execute(
+      'UPDATE chat_messages SET is_read = TRUE WHERE session_id = ? AND sender_type = ?',
+      [sessionId, 'admin']
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    res.status(500).json({ error: 'Failed to mark messages as read' });
+  }
+});
+
 // Admin: Get all chat sessions
 router.get('/admin/sessions', authenticate, requireAdmin, async (req, res) => {
   try {

@@ -167,6 +167,17 @@ function setupSocketHandlers(io) {
         );
         socket.emit('messages:history', messages);
 
+        // Calculate and send unread count (messages from admin that user hasn't seen)
+        // For user, we consider messages unread if they were sent while chat was closed
+        // We'll track this by checking if messages exist that user hasn't viewed
+        const [unreadResult] = await pool.execute(
+          `SELECT COUNT(*) as count 
+           FROM chat_messages 
+           WHERE session_id = ? AND sender_type = 'admin' AND is_read = FALSE`,
+          [sessionId]
+        );
+        socket.emit('unread:count', { count: unreadResult[0].count });
+
         // Send active admins list
         const activeAdminsList = await getActiveAdmins();
         socket.emit('admins:active', { count: activeAdminsList.length, admins: activeAdminsList });
@@ -354,6 +365,15 @@ function setupSocketHandlers(io) {
 
         // Send to user in that session
         io.to(`session:${sessionId}`).emit('message:new', newMessage);
+        
+        // Update unread count for user (admin messages are unread until user opens chat)
+        const [userUnreadResult] = await pool.execute(
+          `SELECT COUNT(*) as count 
+           FROM chat_messages 
+           WHERE session_id = ? AND sender_type = 'admin' AND is_read = FALSE`,
+          [sessionId]
+        );
+        io.to(`session:${sessionId}`).emit('unread:count', { count: userUnreadResult[0].count });
 
         // Update sessions list for admins
         const [updatedSessions] = await pool.execute(

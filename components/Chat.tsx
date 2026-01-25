@@ -77,8 +77,10 @@ const Chat: React.FC = () => {
   const [isAdminOnline, setIsAdminOnline] = useState(false);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isOpenRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -150,9 +152,22 @@ const Chat: React.FC = () => {
             // Play beep sound for incoming messages from admin
             if (message.sender_type === 'admin') {
               playBeepSound();
+              // Increment unread count if chat is closed (use ref to get current value)
+              if (!isOpenRef.current) {
+                setUnreadCount(prev => prev + 1);
+              }
             }
-            setMessages(prev => [...prev, message]);
+            setMessages(prev => {
+              const exists = prev.some(m => m.id === message.id);
+              if (exists) return prev;
+              return [...prev, message];
+            });
             scrollToBottom();
+          });
+          
+          // Receive unread count
+          socket.on('unread:count', (data: { count: number }) => {
+            setUnreadCount(data.count);
           });
           
           // Receive active admins
@@ -201,10 +216,24 @@ const Chat: React.FC = () => {
   }, [messages]);
 
   useEffect(() => {
+    isOpenRef.current = isOpen;
+    
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isOpen]);
+    
+    // Reset unread count when chat is opened
+    if (isOpen && unreadCount > 0) {
+      // Mark messages as read when chat is opened
+      if (sessionId) {
+        fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/mark-read`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }).catch(err => console.error('Error marking messages as read:', err));
+      }
+      setUnreadCount(0);
+    }
+  }, [isOpen, sessionId, unreadCount]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading || !sessionId || !socketRef.current || !isConnected) return;
@@ -248,15 +277,34 @@ const Chat: React.FC = () => {
       {/* Chat Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-110"
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 9999
+        }}
+        className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-110 relative"
         aria-label="Open chat"
       >
         {isOpen ? <X size={24} /> : <MessageCircle size={24} />}
+        {!isOpen && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center min-w-[24px]">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-40 w-80 h-96 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
+        <div 
+          style={{
+            position: 'fixed',
+            bottom: '100px',
+            right: '24px',
+            zIndex: 9998
+          }}
+          className="w-80 h-96 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col"
+        >
           {/* Chat Header */}
           <div className="bg-blue-600 text-white p-4 rounded-t-lg">
             <div className="flex items-center justify-between mb-2">
