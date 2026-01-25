@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3004';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
 
 interface ChatSession {
