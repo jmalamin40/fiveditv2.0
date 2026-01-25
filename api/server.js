@@ -9,10 +9,12 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
+  path: '/api/socket.io',
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  namespace: 'api'
 });
 
 const PORT = process.env.PORT || 3004;
@@ -67,7 +69,8 @@ app.use((err, req, res, next) => {
 server.listen(PORT, () => {
   console.log(`🚀 FivedIT API Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔌 Socket.IO server ready`);
+  console.log(`🔌 Socket.IO server ready at path: ${io._opts.path}`);
+  console.log(`   Full Socket.IO URL: http://localhost:${PORT}${io._opts.path}`);
 });
 
 module.exports = { app, server, io };

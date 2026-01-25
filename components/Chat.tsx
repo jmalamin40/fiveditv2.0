@@ -6,6 +6,7 @@ import { io, Socket } from 'socket.io-client';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.fivedit.com/api';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.fivedit.com';
+const SOCKET_PATH = '/api/socket.io';
 
 interface Message {
   id: number | string;
@@ -86,9 +87,13 @@ const Chat: React.FC = () => {
           setSessionId(storedSessionId);
           
           // Connect to Socket.IO
-          const socket = io(SOCKET_URL, {
-            transports: ['websocket', 'polling']
-          });
+          const socketOptions = {
+            path: SOCKET_PATH,
+            transports: ['websocket', 'polling'],
+            namespace: 'api'
+          };
+          console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
+          const socket = io(SOCKET_URL, socketOptions);
           
           socketRef.current = socket;
           
