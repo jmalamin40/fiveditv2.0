@@ -48,10 +48,10 @@ const Chat: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isAdminOnline, setIsAdminOnline] = useState(false);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
-  const pollIntervalRef = useRef<number | null>(null);
-  const heartbeatIntervalRef = useRef<number | null>(null);
-  const statusIntervalRef = useRef<number | null>(null);
-  const adminsIntervalRef = useRef<number | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const adminsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
