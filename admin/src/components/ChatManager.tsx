@@ -41,7 +41,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<number | null>(null);
 
   // Initialize Socket.IO connection
   useEffect(() => {
