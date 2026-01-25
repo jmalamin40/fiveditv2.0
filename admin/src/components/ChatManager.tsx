@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { fetchChatSessions, type ChatSessionsFilters } from '../api';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
@@ -38,6 +39,7 @@ interface ChatSession {
   last_message_at: string;
   created_at: string;
   is_new_traffic?: boolean;
+  is_online?: boolean;
 }
 
 interface ChatMessage {
@@ -65,10 +67,16 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [userOnlineStatus, setUserOnlineStatus] = useState<{ [sessionId: string]: boolean }>({});
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [onlineFilter, setOnlineFilter] = useState<'all' | 'online' | 'offline'>('all');
+  const [trafficFilter, setTrafficFilter] = useState<'all' | 'new'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedSessionRef = useRef<string | null>(null);
+  const sessionsListRef = useRef<HTMLDivElement>(null);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -378,6 +386,66 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
   const selectedSessionData = sessions.find(s => s.id === selectedSession);
 
+  // Load sessions from API with filters
+  const loadSessions = useCallback(async (page: number = 1, append: boolean = false) => {
+    if (!token) return;
+    
+    try {
+      setIsLoadingMore(true);
+      const filters: ChatSessionsFilters = {
+        page,
+        limit: 20,
+        online_status: onlineFilter !== 'all' ? onlineFilter : undefined,
+        is_new_traffic: trafficFilter === 'new' ? true : undefined
+      };
+      
+      const response = await fetchChatSessions(token, filters);
+      
+      if (append) {
+        setSessions(prev => [...prev, ...response.sessions]);
+      } else {
+        setSessions(response.sessions);
+      }
+      
+      setHasMore(response.pagination.hasMore);
+      setCurrentPage(page);
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+    } finally {
+      setIsLoadingMore(false);
+      setIsLoadingSessions(false);
+    }
+  }, [token, onlineFilter, trafficFilter]);
+
+  // Load initial sessions and reload when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setHasMore(true);
+    setIsLoadingSessions(true);
+    loadSessions(1, false);
+  }, [onlineFilter, trafficFilter, loadSessions]);
+
+  // Infinite scroll handler
+  const handleScroll = useCallback(() => {
+    if (!sessionsListRef.current || isLoadingMore || !hasMore) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = sessionsListRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    if (isNearBottom) {
+      loadSessions(currentPage + 1, true);
+    }
+  }, [currentPage, hasMore, isLoadingMore, loadSessions]);
+
+  // Attach scroll listener
+  useEffect(() => {
+    const listElement = sessionsListRef.current;
+    if (listElement) {
+      listElement.addEventListener('scroll', handleScroll);
+      return () => listElement.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
   return (
     <div className="chat-manager">
       <div className="chat-header">
@@ -407,6 +475,33 @@ export default function ChatManager({ token }: ChatManagerProps) {
             </button>
           </div>
           
+          {/* Filter Options */}
+          <div className="filter-section">
+            <div className="filter-group">
+              <label className="filter-label">Online Status:</label>
+              <select 
+                value={onlineFilter} 
+                onChange={(e) => setOnlineFilter(e.target.value as 'all' | 'online' | 'offline')}
+                className="filter-select"
+              >
+                <option value="all">All</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <label className="filter-label">Traffic:</label>
+              <select 
+                value={trafficFilter} 
+                onChange={(e) => setTrafficFilter(e.target.value as 'all' | 'new')}
+                className="filter-select"
+              >
+                <option value="all">All</option>
+                <option value="new">New Traffic</option>
+              </select>
+            </div>
+          </div>
+          
           {connectionError ? (
             <div className="error-state">
               <p>{connectionError}</p>
@@ -428,12 +523,13 @@ export default function ChatManager({ token }: ChatManagerProps) {
           ) : !isConnected ? (
             <div className="loading-state">Reconnecting...</div>
           ) : sessions.length === 0 ? (
-            <div className="empty-state">No conversations yet</div>
+            <div className="empty-state">No conversations match the selected filters</div>
           ) : (
-            <div className="sessions-list">
+            <div className="sessions-list" ref={sessionsListRef}>
               {sessions.map((session) => {
                 const unreadCount = session.unread_count || 0;
-                const isOnline = userOnlineStatus[session.id] === true;
+                // Use is_online from API if available, otherwise fall back to userOnlineStatus
+                const isOnline = session.is_online !== undefined ? session.is_online : (userOnlineStatus[session.id] === true);
                 const hasUnread = unreadCount > 0;
                 const isNewTraffic = session.is_new_traffic === true;
                 
@@ -674,9 +770,65 @@ export default function ChatManager({ token }: ChatManagerProps) {
           font-weight: 600;
         }
 
+        .filter-section {
+          padding: 1rem;
+          border-bottom: 1px solid #e5e7eb;
+          background-color: #f9fafb;
+          display: flex;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .filter-group {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .filter-label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #374151;
+          white-space: nowrap;
+        }
+
+        .filter-select {
+          padding: 0.375rem 0.75rem;
+          border: 1px solid #d1d5db;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          background-color: white;
+          color: #374151;
+          cursor: pointer;
+          transition: border-color 0.2s;
+        }
+
+        .filter-select:hover {
+          border-color: #9ca3af;
+        }
+
+        .filter-select:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
         .sessions-list {
           flex: 1;
           overflow-y: auto;
+          max-height: calc(100vh - 300px);
+        }
+
+        .loading-more,
+        .no-more {
+          padding: 1rem;
+          text-align: center;
+          color: #6b7280;
+          font-size: 0.875rem;
+        }
+
+        .loading-more {
+          color: #3b82f6;
         }
 
         .session-item {

@@ -140,9 +140,12 @@ export interface ChatSession {
   user_identifier: string | null;
   status: 'active' | 'closed' | 'pending';
   message_count: number;
+  unread_count: number;
   last_message_time: string | null;
   last_message_at: string;
   created_at: string;
+  is_new_traffic?: boolean;
+  is_online?: boolean;
 }
 
 export interface ChatMessage {
@@ -156,9 +159,43 @@ export interface ChatMessage {
 }
 
 // Chat API functions
-export async function fetchChatSessions(token: string, status?: string) {
-  const url = status ? `/chat/admin/sessions?status=${status}` : '/chat/admin/sessions';
-  const { data } = await client.get<ChatSession[]>(url, authHeaders(token));
+export interface ChatSessionsResponse {
+  sessions: ChatSession[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
+export interface ChatSessionsFilters {
+  status?: 'active' | 'closed' | 'pending';
+  online_status?: 'all' | 'online' | 'offline';
+  is_new_traffic?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export async function fetchChatSessions(
+  token: string, 
+  filters?: ChatSessionsFilters
+): Promise<ChatSessionsResponse> {
+  const params = new URLSearchParams();
+  
+  if (filters?.status) params.append('status', filters.status);
+  if (filters?.online_status && filters.online_status !== 'all') {
+    params.append('online_status', filters.online_status);
+  }
+  if (filters?.is_new_traffic === true) {
+    params.append('is_new_traffic', 'true');
+  }
+  if (filters?.page) params.append('page', filters.page.toString());
+  if (filters?.limit) params.append('limit', filters.limit.toString());
+  
+  const url = `/chat/admin/sessions${params.toString() ? '?' + params.toString() : ''}`;
+  const { data } = await client.get<ChatSessionsResponse>(url, authHeaders(token));
   return data;
 }
 
