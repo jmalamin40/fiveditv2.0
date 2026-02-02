@@ -391,11 +391,11 @@ export default function HostingManager({ token }: Props) {
               <div className="stat-label">Terminated</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{formatBytes(stats.total_disk_used || 0)}</div>
+              <div className="stat-value">{formatBytes((stats.total_disk_used || 0) * 1024 * 1024)}</div>
               <div className="stat-label">Disk Used</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{formatBytes(stats.total_bandwidth_used || 0)}</div>
+              <div className="stat-value">{formatBytes((stats.total_bandwidth_used || 0) * 1024 * 1024)}</div>
               <div className="stat-label">Bandwidth Used</div>
             </div>
           </div>

@@ -160,7 +160,23 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                 try {
                   // Parse as URL-encoded query string
                   const urlParams = new URLSearchParams(data);
+                  
+                  // First, check if there are list[] entries (for CMD_API_SHOW_USERS)
+                  const listValues = urlParams.getAll('list[]');
+                  if (listValues.length > 0) {
+                    directAdminLogger.log(`Found ${listValues.length} users in list[] format`);
+                    result.list = listValues;
+                    // Also add them as list[0], list[1], etc. for compatibility
+                    listValues.forEach((user, index) => {
+                      result[`list[${index}]`] = user;
+                    });
+                  }
+                  
+                  // Parse all other key-value pairs
                   for (const [key, value] of urlParams.entries()) {
+                    // Skip if already processed as list[]
+                    if (key === 'list[]') continue;
+                    
                     // Try to parse as number or boolean
                     let parsedValue = value;
                     if (value === 'yes') parsedValue = true;
@@ -173,16 +189,33 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                   directAdminLogger.warn(`Failed to parse as URLSearchParams, trying manual parsing:`, urlErr.message);
                   // Fallback: manual parsing
                   const parts = data.split('&');
+                  const listUsers = [];
+                  
                   for (const part of parts) {
                     const [key, ...valueParts] = part.split('=');
                     if (key && valueParts.length > 0) {
                       let value = decodeURIComponent(valueParts.join('='));
+                      
+                      // Check if it's a list[] entry
+                      if (key === 'list[]' || key.toLowerCase() === 'list%5b%5d') {
+                        listUsers.push(value);
+                        continue;
+                      }
+                      
                       // Try to parse as number or boolean
                       if (value === 'yes') value = true;
                       else if (value === 'no') value = false;
                       else if (!isNaN(value) && value !== '') value = parseFloat(value);
                       result[key] = value;
                     }
+                  }
+                  
+                  if (listUsers.length > 0) {
+                    directAdminLogger.log(`Found ${listUsers.length} users in manual parsing`);
+                    result.list = listUsers;
+                    listUsers.forEach((user, index) => {
+                      result[`list[${index}]`] = user;
+                    });
                   }
                 }
               } else {
@@ -536,28 +569,26 @@ router.post('/accounts/sync', async (req, res) => {
       syncLogger.log('Response is an object, parsing...');
       syncLogger.debug('Full response:', usersResult);
       
-      // Check if response contains username field(s) - DirectAdmin might return user data directly
-      // Format could be: { username: 'user1', domain: '...', ... } or multiple users
-      if (usersResult.username && typeof usersResult.username === 'string') {
-        // Single user object with username field
-        syncLogger.log(`Found single user object with username: ${usersResult.username}`);
-        users = [usersResult.username];
-      } else {
-        // First, check if there's a 'list' array (from URL-encoded parsing)
-        if (Array.isArray(usersResult.list)) {
-          syncLogger.log(`Found list array property with ${usersResult.list.length} users`);
-          users = usersResult.list.filter(Boolean);
-          syncLogger.log(`Extracted ${users.length} users from list array`);
-        } else {
-        // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
+      // IMPORTANT: For CMD_API_SHOW_USERS, DirectAdmin typically returns:
+      // - list[]=user1&list[]=user2&... (URL-encoded format) - parsed into usersResult.list
+      // - OR list[0]=user1&list[1]=user2&... (indexed format)
+      // - OR multiple separate user objects
+      
+      // First priority: Check if there's a 'list' array (from URL-encoded parsing)
+      if (Array.isArray(usersResult.list)) {
+        syncLogger.log(`Found list array property with ${usersResult.list.length} users`);
+        users = usersResult.list.filter(Boolean);
+        syncLogger.log(`Extracted ${users.length} users from list array`);
+      } 
+      // Second: Check for indexed list keys (list[0], list[1], etc.)
+      else {
         const listKeys = Object.keys(usersResult).filter(k => {
           const lowerKey = k.toLowerCase();
           return lowerKey.startsWith('list[') || lowerKey.startsWith('user[') || lowerKey.startsWith('username[');
         });
         
-        syncLogger.log(`Found ${listKeys.length} list keys:`, listKeys);
-        
         if (listKeys.length > 0) {
+          syncLogger.log(`Found ${listKeys.length} list keys:`, listKeys);
           // Extract usernames from list[0], list[1], etc.
           users = listKeys
             .sort((a, b) => {
@@ -588,54 +619,60 @@ router.post('/accounts/sync', async (req, res) => {
               return true;
             });
           syncLogger.log(`Extracted ${users.length} users from list keys`);
-        } else {
-        syncLogger.log('No list keys found, trying alternative parsing...');
-        syncLogger.debug('All response keys:', Object.keys(usersResult));
-        
-        // Try to extract usernames from other keys (excluding error, etc.)
-        const excludedKeys = ['error', 'ERROR', 'list', 'LIST', 'success', 'SUCCESS', 'text', 'TEXT', 'account', 'domain', 'package', 'ip', 'email', 'quota', 'bandwidth'];
-        const candidateKeys = Object.keys(usersResult).filter(k => {
-          const upperKey = k.toUpperCase();
-          return !excludedKeys.some(ex => upperKey.includes(ex));
-        });
-        
-        syncLogger.debug(`Candidate keys (${candidateKeys.length}):`, candidateKeys);
-        
-        // Check if 'username' key exists (common in DirectAdmin responses)
-        if (usersResult.username) {
-          const usernameValue = usersResult.username;
-          if (typeof usernameValue === 'string' && usernameValue.length > 0) {
-            users.push(usernameValue);
-            syncLogger.log(`Found username field: ${usernameValue}`);
-          } else if (Array.isArray(usernameValue)) {
-            users.push(...usernameValue.filter(u => typeof u === 'string' && u.length > 0));
-            syncLogger.log(`Found username array with ${users.length} users`);
-          }
         }
-        
-        // Also check other candidate keys
-        const additionalUsers = candidateKeys
-          .map(key => {
-            const value = usersResult[key];
-            syncLogger.debug(`  Checking key "${key}": value="${value}" (type: ${typeof value})`);
-            
-            // If value looks like a username (not a number, not yes/no, not empty, not a common config key)
-            if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=') && !value.includes('&') && !value.includes('%')) {
-              // Additional validation: username should be alphanumeric with possible underscores/dots
-              if (value.match(/^[a-zA-Z0-9_\-\.]+$/) && value.length >= 3 && value.length <= 32) {
-                syncLogger.debug(`    ✓ Valid username: ${value}`);
-                return value;
-              }
+        // Third: Check if response contains a single username field
+        else if (usersResult.username && typeof usersResult.username === 'string') {
+          syncLogger.log(`Found single user object with username: ${usersResult.username}`);
+          users = [usersResult.username];
+        }
+        // Fourth: Try alternative parsing
+        else {
+          syncLogger.log('No list keys found, trying alternative parsing...');
+          syncLogger.debug('All response keys:', Object.keys(usersResult));
+          
+          // Try to extract usernames from other keys (excluding error, etc.)
+          const excludedKeys = ['error', 'ERROR', 'list', 'LIST', 'success', 'SUCCESS', 'text', 'TEXT', 'account', 'domain', 'package', 'ip', 'email', 'quota', 'bandwidth'];
+          const candidateKeys = Object.keys(usersResult).filter(k => {
+            const upperKey = k.toUpperCase();
+            return !excludedKeys.some(ex => upperKey.includes(ex));
+          });
+          
+          syncLogger.debug(`Candidate keys (${candidateKeys.length}):`, candidateKeys);
+          
+          // Check if 'username' key exists (common in DirectAdmin responses)
+          if (usersResult.username) {
+            const usernameValue = usersResult.username;
+            if (typeof usernameValue === 'string' && usernameValue.length > 0) {
+              users.push(usernameValue);
+              syncLogger.log(`Found username field: ${usernameValue}`);
+            } else if (Array.isArray(usernameValue)) {
+              users.push(...usernameValue.filter(u => typeof u === 'string' && u.length > 0));
+              syncLogger.log(`Found username array with ${users.length} users`);
             }
-            return null;
-          })
-          .filter(Boolean);
-        
-        // Merge and deduplicate
-        users = [...new Set([...users, ...additionalUsers])];
-        syncLogger.log(`Extracted ${users.length} unique users from candidate keys`);
+          }
+          
+          // Also check other candidate keys
+          const additionalUsers = candidateKeys
+            .map(key => {
+              const value = usersResult[key];
+              syncLogger.debug(`  Checking key "${key}": value="${value}" (type: ${typeof value})`);
+              
+              // If value looks like a username (not a number, not yes/no, not empty, not a common config key)
+              if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=') && !value.includes('&') && !value.includes('%')) {
+                // Additional validation: username should be alphanumeric with possible underscores/dots
+                if (value.match(/^[a-zA-Z0-9_\-\.]+$/) && value.length >= 3 && value.length <= 32) {
+                  syncLogger.debug(`    ✓ Valid username: ${value}`);
+                  return value;
+                }
+              }
+              return null;
+            })
+            .filter(Boolean);
+          
+          // Merge and deduplicate
+          users = [...new Set([...users, ...additionalUsers])];
+          syncLogger.log(`Extracted ${users.length} unique users from candidate keys`);
         }
-      }
       }
     } else {
       syncLogger.error(`Unexpected response type: ${typeof usersResult}`);
@@ -709,9 +746,440 @@ router.post('/accounts/sync', async (req, res) => {
         let usage = {};
         try {
           usage = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_USAGE', { user: username });
-          syncLogger.debug(`  Usage stats:`, usage);
+          syncLogger.debug(`  Usage stats received:`, usage);
+          syncLogger.debug(`  Usage stats keys:`, Object.keys(usage));
+          syncLogger.debug(`  Usage stats full data:`, JSON.stringify(usage, null, 2));
         } catch (usageErr) {
           syncLogger.warn(`  ⚠️  Could not fetch usage stats:`, usageErr.message);
+          usage = {};
+        }
+        
+        // IMPORTANT: DirectAdmin often returns quota/disk info in userInfo (CMD_API_SHOW_USER_CONFIG)
+        // not in usage (CMD_API_SHOW_USER_USAGE). Check userInfo first!
+        syncLogger.debug(`  UserInfo full data:`, JSON.stringify(userInfo, null, 2));
+        syncLogger.debug(`  UserInfo keys:`, Object.keys(userInfo));
+        
+        // Check userInfo for quota values - this is often where they are!
+        if (userInfo.quota || userInfo.QUOTA || userInfo.quota_mb || userInfo.quota_gb) {
+          syncLogger.log(`  Quota found in userInfo!`);
+        }
+        
+        // Parse usage data - DirectAdmin returns in various formats
+        // Common field names: quota_used, quota, bandwidth_used, bandwidth
+        // Values can be in bytes, KB, MB, GB, or as strings like "unlimited"
+        // Also check userInfo as quota might be there
+        let diskUsed = 0;
+        let diskLimit = 0;
+        let bandwidthUsed = 0;
+        let bandwidthLimit = 0;
+        
+        // Merge usage and userInfo to check all possible sources
+        // IMPORTANT: userInfo often contains quota, so merge with userInfo taking priority for quota
+        const allData = { ...usage, ...userInfo };
+        
+        // Log all keys to help debug
+        syncLogger.info(`  All available keys in usage:`, Object.keys(usage));
+        syncLogger.info(`  All available keys in userInfo:`, Object.keys(userInfo));
+        
+        // Log specific quota-related fields from both sources
+        syncLogger.debug(`  Quota fields in userInfo:`, {
+          quota: userInfo.quota,
+          QUOTA: userInfo.QUOTA,
+          quota_mb: userInfo.quota_mb,
+          quota_gb: userInfo.quota_gb,
+          quota_bytes: userInfo.quota_bytes,
+          limit: userInfo.limit,
+          LIMIT: userInfo.LIMIT,
+          quota_limit: userInfo.quota_limit
+        });
+        syncLogger.debug(`  Quota fields in usage:`, {
+          quota: usage.quota,
+          QUOTA: usage.QUOTA,
+          quota_mb: usage.quota_mb,
+          quota_gb: usage.quota_gb,
+          quota_bytes: usage.quota_bytes,
+          limit: usage.limit,
+          LIMIT: usage.LIMIT
+        });
+        
+        // IMPORTANT: Based on user feedback, usage.quota contains the USED disk amount!
+        // So we need:
+        // - disk_used: usage.quota (the used amount) - USER CONFIRMED THIS IS CORRECT
+        // - disk_limit: userInfo.quota or another field (the total/limit size like 1.07GB)
+        
+        // For disk USED: usage.quota is the correct field (user confirmed)
+        const quotaUsed = usage.quota || usage.QUOTA || 
+          usage.quota_used || usage.QUOTA_USED || 
+          usage.quota_used_mb || usage.QUOTA_USED_MB || 
+          usage.quota_used_bytes || usage.QUOTA_USED_BYTES || 
+          usage.quota_used_gb || usage.QUOTA_USED_GB || 
+          usage.used || usage.USED || 
+          userInfo.quota_used || userInfo.QUOTA_USED || 0;
+        
+        // For disk LIMIT (total size like 1.07GB): check userInfo first
+        const quotaLimitFromUserInfo = userInfo.quota || userInfo.QUOTA || 
+          userInfo.quota_mb || userInfo.QUOTA_MB || 
+          userInfo.quota_gb || userInfo.QUOTA_GB || 
+          userInfo.quota_bytes || userInfo.QUOTA_BYTES ||
+          userInfo.limit || userInfo.LIMIT || 
+          userInfo.quota_limit || userInfo.QUOTA_LIMIT ||
+          userInfo.quota_limit_mb || userInfo.QUOTA_LIMIT_MB ||
+          userInfo.quota_limit_gb || userInfo.QUOTA_LIMIT_GB || 0;
+        
+        // Also check usage for limit fields (but NOT usage.quota as that's the used amount)
+        const quotaLimitFromUsage = usage.quota_limit || usage.QUOTA_LIMIT ||
+          usage.quota_mb || usage.QUOTA_MB || 
+          usage.quota_gb || usage.QUOTA_GB || 
+          usage.limit || usage.LIMIT || 0;
+        
+        const quota = quotaLimitFromUserInfo || quotaLimitFromUsage;
+        
+        syncLogger.debug(`  Quota search results:`, {
+          quotaUsed: quotaUsed,
+          quotaLimitFromUserInfo: quotaLimitFromUserInfo,
+          quotaLimitFromUsage: quotaLimitFromUsage,
+          finalQuotaLimit: quota
+        });
+        
+        // For bandwidth USED: check usage first (similar to disk usage)
+        const bandwidthUsedVal = usage.bandwidth_used || usage.BANDWIDTH_USED || 
+          usage.bandwidth_used_mb || usage.BANDWIDTH_USED_MB || 
+          usage.bandwidth_used_bytes || usage.BANDWIDTH_USED_BYTES || 
+          usage.bandwidth_used_gb || usage.BANDWIDTH_USED_GB || 
+          usage.bandwidth || usage.BANDWIDTH ||  // Some DirectAdmin versions use bandwidth for used
+          userInfo.bandwidth_used || userInfo.BANDWIDTH_USED || 0;
+        
+        // For bandwidth LIMIT: check userInfo first (similar to disk limit)
+        const bandwidthLimitFromUserInfo = userInfo.bandwidth || userInfo.BANDWIDTH || 
+          userInfo.bandwidth_mb || userInfo.BANDWIDTH_MB || 
+          userInfo.bandwidth_gb || userInfo.BANDWIDTH_GB || 
+          userInfo.bandwidth_bytes || userInfo.BANDWIDTH_BYTES ||
+          userInfo.bandwidth_limit || userInfo.BANDWIDTH_LIMIT ||
+          userInfo.bandwidth_limit_mb || userInfo.BANDWIDTH_LIMIT_MB ||
+          userInfo.bandwidth_limit_gb || userInfo.BANDWIDTH_LIMIT_GB || 0;
+        
+        // Also check usage for limit fields (but NOT usage.bandwidth if it's the used amount)
+        const bandwidthLimitFromUsage = usage.bandwidth_limit || usage.BANDWIDTH_LIMIT ||
+          usage.bandwidth_mb || usage.BANDWIDTH_MB || 
+          usage.bandwidth_gb || usage.BANDWIDTH_GB || 0;
+        
+        const bandwidth = bandwidthLimitFromUserInfo || bandwidthLimitFromUsage;
+        
+        syncLogger.debug(`  Bandwidth search results:`, {
+          bandwidthUsedVal: bandwidthUsedVal,
+          bandwidthLimitFromUserInfo: bandwidthLimitFromUserInfo,
+          bandwidthLimitFromUsage: bandwidthLimitFromUsage,
+          finalBandwidthLimit: bandwidth
+        });
+        
+        syncLogger.debug(`  Final quota values:`, {
+          quotaLimitFromUserInfo,
+          quotaLimitFromUsage,
+          finalQuotaLimit: quota,
+          quotaUsed,
+          bandwidth,
+          bandwidthUsedVal
+        });
+        
+        // Helper function to convert value to MB
+        // DirectAdmin can return values in bytes, KB, MB, or GB
+        // Based on user feedback: 1.07GB total disk, 1000.5MB used disk
+        // For bandwidth: 1.09 MB (not GB!), 25.4 MB is correct
+        const convertToMB = (value, fieldName = '') => {
+          if (!value || value === 'unlimited' || value === 'UNLIMITED' || value === '0' || value === 0) {
+            return 0;
+          }
+          
+          // Check if field name indicates unit (e.g., quota_gb, bandwidth_gb)
+          const isGB = fieldName.toLowerCase().includes('_gb') || fieldName.toLowerCase().includes('gb');
+          const isMB = fieldName.toLowerCase().includes('_mb') || fieldName.toLowerCase().includes('mb');
+          const isKB = fieldName.toLowerCase().includes('_kb') || fieldName.toLowerCase().includes('kb');
+          const isBytes = fieldName.toLowerCase().includes('_bytes') || fieldName.toLowerCase().includes('bytes');
+          
+          // Check if this is a bandwidth field (bandwidth values are usually smaller and in MB)
+          const isBandwidth = fieldName.toLowerCase().includes('bandwidth');
+          
+          const num = parseFloat(value);
+          if (isNaN(num) || num <= 0) {
+            return 0;
+          }
+          
+          // If field name indicates unit, use that (highest priority)
+          if (isGB) {
+            return num * 1024; // GB to MB
+          } else if (isMB) {
+            return num; // Already in MB
+          } else if (isKB) {
+            return num / 1024; // KB to MB
+          } else if (isBytes) {
+            return num / 1024 / 1024; // Bytes to MB
+          }
+          
+          // Otherwise, detect based on value ranges and field type
+          if (num > 1000000000) {
+            // Over 1GB - definitely bytes, convert to MB
+            return num / 1024 / 1024;
+          } else if (num > 1000000) {
+            // Between 1MB and 1GB - likely bytes, convert to MB
+            return num / 1024 / 1024;
+          } else if (num > 10000) {
+            // Between 10MB and 1MB - likely KB (e.g., 747520 KB), convert to MB
+            return num / 1024;
+          } else if (num > 1000) {
+            // Between 1MB and 10MB - could be KB or MB
+            // If it's a round number > 5000, likely KB
+            // Otherwise likely MB (e.g., 1000.5 MB, 1100 MB)
+            if (num % 1 === 0 && num > 5000) {
+              return num / 1024; // KB to MB
+            } else {
+              return num; // Already in MB
+            }
+          } else if (num >= 1 && num <= 10) {
+            // Values between 1-10: Need to distinguish between disk quota (GB) and bandwidth (MB)
+            // For DISK QUOTA: values like 1.07, 2.5 are likely GB (total disk size)
+            // For BANDWIDTH: values like 1.09, 25.4 are likely MB (bandwidth usage)
+            
+            if (isBandwidth) {
+              // For bandwidth, values 1-10 are almost always MB, not GB
+              // User confirmed: 1.09 MB (not GB), 25.4 MB is correct
+              return num; // Already in MB
+            } else {
+              // For disk quota, check if it's likely GB
+              // Disk quotas can be 1.07 GB (total), but used is usually in MB (1000.5 MB)
+              // If it has decimals and is < 5, might be GB for total quota
+              // But if field name suggests "used", it's likely MB
+              const isUsed = fieldName.toLowerCase().includes('used') || 
+                            fieldName.toLowerCase().includes('quota') && !fieldName.toLowerCase().includes('limit');
+              
+              if (isUsed) {
+                // For "used" values, they're usually in MB
+                return num; // Already in MB
+              } else if (num % 1 !== 0 && num < 5) {
+                // For total/limit values, decimal values like 1.07, 2.5 might be GB
+                return num * 1024; // GB to MB
+              } else {
+                // Round number 1-10 or > 5 - likely MB
+                return num;
+              }
+            }
+          } else {
+            // Less than 1 - likely already in MB (e.g., 0.5 MB, 0.86 MB)
+            return num;
+          }
+        };
+        
+        // Find which field actually contains the quota LIMIT value (total disk size)
+        // Priority: quota_gb > quota_mb > quota > QUOTA > limit
+        // NOTE: Do NOT use usage.quota as that's the USED amount, not the limit!
+        let quotaFieldName = '';
+        let quotaValue = 0;
+        
+        // Check userInfo first for limit
+        if (userInfo.quota_gb || userInfo.QUOTA_GB) {
+          quotaFieldName = userInfo.quota_gb ? 'quota_gb' : 'QUOTA_GB';
+          quotaValue = userInfo.quota_gb || userInfo.QUOTA_GB;
+        } else if (userInfo.quota_mb || userInfo.QUOTA_MB) {
+          quotaFieldName = userInfo.quota_mb ? 'quota_mb' : 'QUOTA_MB';
+          quotaValue = userInfo.quota_mb || userInfo.QUOTA_MB;
+        } else if (userInfo.quota || userInfo.QUOTA) {
+          quotaFieldName = userInfo.quota ? 'quota' : 'QUOTA';
+          quotaValue = userInfo.quota || userInfo.QUOTA;
+        } else if (userInfo.limit || userInfo.LIMIT) {
+          quotaFieldName = userInfo.limit ? 'limit' : 'LIMIT';
+          quotaValue = userInfo.limit || userInfo.LIMIT;
+        } else if (userInfo.quota_limit || userInfo.QUOTA_LIMIT) {
+          quotaFieldName = userInfo.quota_limit ? 'quota_limit' : 'QUOTA_LIMIT';
+          quotaValue = userInfo.quota_limit || userInfo.QUOTA_LIMIT;
+        } else if (usage.quota_limit || usage.QUOTA_LIMIT) {
+          quotaFieldName = usage.quota_limit ? 'quota_limit' : 'QUOTA_LIMIT';
+          quotaValue = usage.quota_limit || usage.QUOTA_LIMIT;
+        } else if (usage.quota_gb || usage.QUOTA_GB) {
+          quotaFieldName = usage.quota_gb ? 'quota_gb' : 'QUOTA_GB';
+          quotaValue = usage.quota_gb || usage.QUOTA_GB;
+        } else if (usage.quota_mb || usage.QUOTA_MB) {
+          quotaFieldName = usage.quota_mb ? 'quota_mb' : 'QUOTA_MB';
+          quotaValue = usage.quota_mb || usage.QUOTA_MB;
+        } else if (usage.limit || usage.LIMIT) {
+          quotaFieldName = usage.limit ? 'limit' : 'LIMIT';
+          quotaValue = usage.limit || usage.LIMIT;
+        }
+        
+        // If quota is still 0, use the fallback
+        if (!quotaValue || quotaValue === 0) {
+          quotaValue = quota;
+        }
+        
+        // Find which field contains the quota USED value (disk used)
+        // NOTE: usage.quota is the USED amount (user confirmed this)
+        let quotaUsedFieldName = '';
+        let quotaUsedValue = 0;
+        
+        if (usage.quota || usage.QUOTA) {
+          // usage.quota is the USED amount (confirmed by user)
+          quotaUsedFieldName = usage.quota ? 'quota' : 'QUOTA';
+          quotaUsedValue = usage.quota || usage.QUOTA;
+        } else if (usage.quota_used_gb || usage.QUOTA_USED_GB) {
+          quotaUsedFieldName = usage.quota_used_gb ? 'quota_used_gb' : 'QUOTA_USED_GB';
+          quotaUsedValue = usage.quota_used_gb || usage.QUOTA_USED_GB;
+        } else if (usage.quota_used_mb || usage.QUOTA_USED_MB) {
+          quotaUsedFieldName = usage.quota_used_mb ? 'quota_used_mb' : 'QUOTA_USED_MB';
+          quotaUsedValue = usage.quota_used_mb || usage.QUOTA_USED_MB;
+        } else if (usage.quota_used || usage.QUOTA_USED) {
+          quotaUsedFieldName = usage.quota_used ? 'quota_used' : 'QUOTA_USED';
+          quotaUsedValue = usage.quota_used || usage.QUOTA_USED;
+        } else if (usage.used || usage.USED) {
+          quotaUsedFieldName = usage.used ? 'used' : 'USED';
+          quotaUsedValue = usage.used || usage.USED;
+        } else if (userInfo.quota_used || userInfo.QUOTA_USED) {
+          quotaUsedFieldName = userInfo.quota_used ? 'quota_used' : 'QUOTA_USED';
+          quotaUsedValue = userInfo.quota_used || userInfo.QUOTA_USED;
+        }
+        
+        // If quotaUsed is still 0, use the fallback
+        if (!quotaUsedValue || quotaUsedValue === 0) {
+          quotaUsedValue = quotaUsed;
+        }
+        
+        // Parse disk usage with field name context
+        diskUsed = convertToMB(quotaUsedValue, quotaUsedFieldName);
+        diskLimit = convertToMB(quotaValue, quotaFieldName);
+        
+        syncLogger.log(`  Disk USED: ${quotaUsedValue} from field "${quotaUsedFieldName}" → ${diskUsed.toFixed(2)} MB`);
+        syncLogger.log(`  Disk LIMIT: ${quotaValue} from field "${quotaFieldName}" → ${diskLimit.toFixed(2)} MB`);
+        
+        // Find which field contains the bandwidth USED value
+        let bandwidthUsedFieldName = '';
+        let bandwidthUsedValue = 0;
+        
+        if (usage.bandwidth_used || usage.BANDWIDTH_USED) {
+          bandwidthUsedFieldName = usage.bandwidth_used ? 'bandwidth_used' : 'BANDWIDTH_USED';
+          bandwidthUsedValue = usage.bandwidth_used || usage.BANDWIDTH_USED;
+        } else if (usage.bandwidth_used_gb || usage.BANDWIDTH_USED_GB) {
+          bandwidthUsedFieldName = usage.bandwidth_used_gb ? 'bandwidth_used_gb' : 'BANDWIDTH_USED_GB';
+          bandwidthUsedValue = usage.bandwidth_used_gb || usage.BANDWIDTH_USED_GB;
+        } else if (usage.bandwidth_used_mb || usage.BANDWIDTH_USED_MB) {
+          bandwidthUsedFieldName = usage.bandwidth_used_mb ? 'bandwidth_used_mb' : 'BANDWIDTH_USED_MB';
+          bandwidthUsedValue = usage.bandwidth_used_mb || usage.BANDWIDTH_USED_MB;
+        } else if (usage.bandwidth || usage.BANDWIDTH) {
+          // Some DirectAdmin versions use bandwidth for used amount
+          bandwidthUsedFieldName = usage.bandwidth ? 'bandwidth' : 'BANDWIDTH';
+          bandwidthUsedValue = usage.bandwidth || usage.BANDWIDTH;
+        } else if (userInfo.bandwidth_used || userInfo.BANDWIDTH_USED) {
+          bandwidthUsedFieldName = userInfo.bandwidth_used ? 'bandwidth_used' : 'BANDWIDTH_USED';
+          bandwidthUsedValue = userInfo.bandwidth_used || userInfo.BANDWIDTH_USED;
+        }
+        
+        // If bandwidthUsed is still 0, use the fallback
+        if (!bandwidthUsedValue || bandwidthUsedValue === 0) {
+          bandwidthUsedValue = bandwidthUsedVal;
+        }
+        
+        // Find which field contains the bandwidth LIMIT value
+        let bandwidthFieldName = '';
+        let bandwidthValue = 0;
+        
+        // Check userInfo first for limit
+        if (userInfo.bandwidth_gb || userInfo.BANDWIDTH_GB) {
+          bandwidthFieldName = userInfo.bandwidth_gb ? 'bandwidth_gb' : 'BANDWIDTH_GB';
+          bandwidthValue = userInfo.bandwidth_gb || userInfo.BANDWIDTH_GB;
+        } else if (userInfo.bandwidth_mb || userInfo.BANDWIDTH_MB) {
+          bandwidthFieldName = userInfo.bandwidth_mb ? 'bandwidth_mb' : 'BANDWIDTH_MB';
+          bandwidthValue = userInfo.bandwidth_mb || userInfo.BANDWIDTH_MB;
+        } else if (userInfo.bandwidth || userInfo.BANDWIDTH) {
+          bandwidthFieldName = userInfo.bandwidth ? 'bandwidth' : 'BANDWIDTH';
+          bandwidthValue = userInfo.bandwidth || userInfo.BANDWIDTH;
+        } else if (userInfo.bandwidth_limit || userInfo.BANDWIDTH_LIMIT) {
+          bandwidthFieldName = userInfo.bandwidth_limit ? 'bandwidth_limit' : 'BANDWIDTH_LIMIT';
+          bandwidthValue = userInfo.bandwidth_limit || userInfo.BANDWIDTH_LIMIT;
+        } else if (usage.bandwidth_limit || usage.BANDWIDTH_LIMIT) {
+          bandwidthFieldName = usage.bandwidth_limit ? 'bandwidth_limit' : 'BANDWIDTH_LIMIT';
+          bandwidthValue = usage.bandwidth_limit || usage.BANDWIDTH_LIMIT;
+        } else if (usage.bandwidth_gb || usage.BANDWIDTH_GB) {
+          bandwidthFieldName = usage.bandwidth_gb ? 'bandwidth_gb' : 'BANDWIDTH_GB';
+          bandwidthValue = usage.bandwidth_gb || usage.BANDWIDTH_GB;
+        } else if (usage.bandwidth_mb || usage.BANDWIDTH_MB) {
+          bandwidthFieldName = usage.bandwidth_mb ? 'bandwidth_mb' : 'BANDWIDTH_MB';
+          bandwidthValue = usage.bandwidth_mb || usage.BANDWIDTH_MB;
+        }
+        
+        // If bandwidth is still 0, use the fallback
+        if (!bandwidthValue || bandwidthValue === 0) {
+          bandwidthValue = bandwidth;
+        }
+        
+        // Parse bandwidth usage with field name context
+        bandwidthUsed = convertToMB(bandwidthUsedValue, bandwidthUsedFieldName);
+        bandwidthLimit = convertToMB(bandwidthValue, bandwidthFieldName);
+        
+        syncLogger.log(`  ✓ Bandwidth USED: ${bandwidthUsedValue} from field "${bandwidthUsedFieldName}" → ${bandwidthUsed.toFixed(2)} MB`);
+        syncLogger.log(`  ✓ Bandwidth LIMIT: ${bandwidthValue} from field "${bandwidthFieldName}" → ${bandwidthLimit.toFixed(2)} MB`);
+        
+        syncLogger.log(`  Quota field found: "${quotaFieldName}" = ${quotaValue} (type: ${typeof quotaValue})`);
+        syncLogger.log(`  Quota used field found: "${quotaUsedFieldName}" = ${quotaUsedValue} (type: ${typeof quotaUsedValue})`);
+        
+        syncLogger.log(`  Parsed usage - Disk: ${diskUsed.toFixed(2)}MB / ${diskLimit.toFixed(2)}MB, Bandwidth: ${bandwidthUsed.toFixed(2)}MB / ${bandwidthLimit.toFixed(2)}MB`);
+        
+        // Comprehensive logging of all quota-related fields
+        syncLogger.debug(`  ===== QUOTA DEBUG INFO =====`);
+        syncLogger.debug(`  userInfo.quota: ${userInfo.quota} (${typeof userInfo.quota})`);
+        syncLogger.debug(`  userInfo.QUOTA: ${userInfo.QUOTA} (${typeof userInfo.QUOTA})`);
+        syncLogger.debug(`  userInfo.quota_mb: ${userInfo.quota_mb} (${typeof userInfo.quota_mb})`);
+        syncLogger.debug(`  userInfo.quota_gb: ${userInfo.quota_gb} (${typeof userInfo.quota_gb})`);
+        syncLogger.debug(`  usage.quota: ${usage.quota} (${typeof usage.quota})`);
+        syncLogger.debug(`  usage.QUOTA: ${usage.QUOTA} (${typeof usage.QUOTA})`);
+        syncLogger.debug(`  Final quota value: ${quota} (${typeof quota})`);
+        syncLogger.debug(`  Final quotaUsed value: ${quotaUsed} (${typeof quotaUsed})`);
+        syncLogger.debug(`  Parsed diskLimit: ${diskLimit} MB`);
+        syncLogger.debug(`  Parsed diskUsed: ${diskUsed} MB`);
+        syncLogger.debug(`  ============================`);
+        
+        // Comprehensive logging of bandwidth-related fields
+        syncLogger.debug(`  ===== BANDWIDTH DEBUG INFO =====`);
+        syncLogger.debug(`  userInfo.bandwidth: ${userInfo.bandwidth} (${typeof userInfo.bandwidth})`);
+        syncLogger.debug(`  userInfo.BANDWIDTH: ${userInfo.BANDWIDTH} (${typeof userInfo.BANDWIDTH})`);
+        syncLogger.debug(`  userInfo.bandwidth_mb: ${userInfo.bandwidth_mb} (${typeof userInfo.bandwidth_mb})`);
+        syncLogger.debug(`  userInfo.bandwidth_gb: ${userInfo.bandwidth_gb} (${typeof userInfo.bandwidth_gb})`);
+        syncLogger.debug(`  usage.bandwidth: ${usage.bandwidth} (${typeof usage.bandwidth})`);
+        syncLogger.debug(`  usage.BANDWIDTH: ${usage.BANDWIDTH} (${typeof usage.BANDWIDTH})`);
+        syncLogger.debug(`  usage.bandwidth_used: ${usage.bandwidth_used} (${typeof usage.bandwidth_used})`);
+        syncLogger.debug(`  Final bandwidth value: ${bandwidth} (${typeof bandwidth})`);
+        syncLogger.debug(`  Final bandwidthUsedVal: ${bandwidthUsedVal} (${typeof bandwidthUsedVal})`);
+        syncLogger.debug(`  Parsed bandwidthLimit: ${bandwidthLimit} MB`);
+        syncLogger.debug(`  Parsed bandwidthUsed: ${bandwidthUsed} MB`);
+        syncLogger.debug(`  ===============================`);
+        
+        // If diskLimit is still 0, try to find it in ALL possible fields
+        if (diskLimit === 0) {
+          syncLogger.warn(`  ⚠️  diskLimit is 0! Searching all fields...`);
+          const allKeys = Object.keys(allData);
+          const quotaLikeKeys = allKeys.filter(k => 
+            k.toLowerCase().includes('quota') || 
+            k.toLowerCase().includes('limit') ||
+            k.toLowerCase().includes('disk') ||
+            k.toLowerCase().includes('size')
+          );
+          syncLogger.warn(`  Found quota-like keys:`, quotaLikeKeys);
+          for (const key of quotaLikeKeys) {
+            const val = allData[key];
+            syncLogger.warn(`    ${key} = ${val} (${typeof val})`);
+            // Try to parse it
+            if (val && val !== 'unlimited' && val !== 'UNLIMITED' && val !== '0' && val !== 0) {
+              const parsed = convertToMB(val, key);
+              if (parsed > 0) {
+                syncLogger.warn(`    ✓ Parsed ${key} as ${parsed} MB - using this!`);
+                diskLimit = parsed;
+                quotaFieldName = key;
+                break;
+              }
+            }
+          }
+        }
+        
+        // If diskUsed is still 0 but we have quota_used, try harder
+        if (diskUsed === 0 && quotaUsed && quotaUsed !== 0) {
+          syncLogger.warn(`  ⚠️  diskUsed is 0 but quotaUsed exists: ${quotaUsed}`);
+          diskUsed = convertToMB(quotaUsed, quotaUsedFieldName);
+          syncLogger.warn(`  Retried parsing diskUsed: ${diskUsed} MB`);
         }
         
         const accountData = {
@@ -719,10 +1187,10 @@ router.post('/accounts/sync', async (req, res) => {
           username: username,
           package_name: userInfo.package || userInfo.PACKAGE || userInfo.package_name || 'default',
           status: (userInfo.suspended === 'yes' || userInfo.SUSPENDED === 'yes' || userInfo.suspended === true) ? 'suspended' : 'active',
-          disk_used: parseFloat(usage.quota_used || usage.QUOTA_USED || usage.quota_used_mb || 0) / 1024 / 1024 || 0, // Convert bytes to MB if needed
-          disk_limit: parseFloat(usage.quota || usage.QUOTA || usage.quota_mb || 0) / 1024 / 1024 || 0,
-          bandwidth_used: parseFloat(usage.bandwidth_used || usage.BANDWIDTH_USED || usage.bandwidth_used_mb || 0) / 1024 / 1024 || 0,
-          bandwidth_limit: parseFloat(usage.bandwidth || usage.BANDWIDTH || usage.bandwidth_mb || 0) / 1024 / 1024 || 0,
+          disk_used: diskUsed,
+          disk_limit: diskLimit,
+          bandwidth_used: bandwidthUsed,
+          bandwidth_limit: bandwidthLimit,
           ip_address: userInfo.ip || userInfo.IP || userInfo.ip_address || null,
           cpanel_url: domain ? `https://${domain}:2222` : null, // DirectAdmin port
           whm_account_id: null,
