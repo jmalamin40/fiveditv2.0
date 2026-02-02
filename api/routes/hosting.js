@@ -350,28 +350,83 @@ router.post('/accounts/sync', async (req, res) => {
       return res.status(400).json({ error: 'No hosting configuration found. Please configure DirectAdmin first.' });
     }
     
-    // Get accounts from DirectAdmin (reseller view)
-    const daAccounts = await makeDirectAdminRequest(config, 'CMD_API_SHOW_RESELLER_IPS', {});
-    
-    // Get list of users
+    // Get list of users from DirectAdmin
     const usersResult = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USERS', {});
+    
+    console.log('DirectAdmin users result:', JSON.stringify(usersResult, null, 2));
     
     let synced = 0;
     let created = 0;
     let updated = 0;
     
-    // Parse users list (can be array or object)
-    const users = Array.isArray(usersResult) ? usersResult : (usersResult.users || Object.keys(usersResult).filter(k => !k.startsWith('error')));
+    // Parse users list - DirectAdmin returns in format: list[0]=user1, list[1]=user2, etc.
+    let users = [];
+    
+    if (Array.isArray(usersResult)) {
+      users = usersResult;
+    } else if (usersResult.users && Array.isArray(usersResult.users)) {
+      users = usersResult.users;
+    } else if (typeof usersResult === 'object') {
+      // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
+      const listKeys = Object.keys(usersResult).filter(k => k.startsWith('list[') || k.startsWith('LIST['));
+      if (listKeys.length > 0) {
+        // Extract usernames from list[0], list[1], etc.
+        users = listKeys
+          .sort((a, b) => {
+            const numA = parseInt(a.match(/\[(\d+)\]/)?.[1] || '0');
+            const numB = parseInt(b.match(/\[(\d+)\]/)?.[1] || '0');
+            return numA - numB;
+          })
+          .map(key => usersResult[key])
+          .filter(Boolean);
+      } else {
+        // Try to extract usernames from other keys (excluding error, etc.)
+        users = Object.keys(usersResult)
+          .filter(k => !k.startsWith('error') && !k.startsWith('ERROR') && k !== 'list' && k !== 'LIST')
+          .map(key => {
+            const value = usersResult[key];
+            // If value looks like a username (not a number, not yes/no), include it
+            if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value)) {
+              return value;
+            }
+            return null;
+          })
+          .filter(Boolean);
+      }
+    }
+    
+    console.log(`Found ${users.length} users to sync:`, users);
+    
+    if (users.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No users found to sync',
+        created: 0,
+        updated: 0,
+        synced: 0,
+      });
+    }
     
     for (const username of users) {
       try {
+        if (!username || typeof username !== 'string') {
+          console.log(`Skipping invalid username:`, username);
+          continue;
+        }
+        
         // Get user details
         const userInfo = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_CONFIG', { user: username });
         
-        if (userInfo.error) continue;
+        if (userInfo.error || userInfo.ERROR) {
+          console.log(`Error getting user info for ${username}:`, userInfo.error || userInfo.ERROR);
+          continue;
+        }
         
         const domain = userInfo.domain || userInfo.DOMAIN || null;
-        if (!domain) continue;
+        if (!domain) {
+          console.log(`No domain found for user ${username}, skipping`);
+          continue;
+        }
         
         const [existing] = await pool.execute(
           'SELECT id FROM hosting_accounts WHERE username = ? OR domain = ?',
@@ -427,17 +482,20 @@ router.post('/accounts/sync', async (req, res) => {
         synced++;
       } catch (err) {
         console.error(`Error syncing account ${username}:`, err.message);
+        console.error('Error details:', err);
       }
     }
     
     res.json({
       success: true,
-      message: `Synced ${synced} accounts`,
+      message: `Synced ${synced} accounts (${created} created, ${updated} updated)`,
       created,
       updated,
+      synced,
     });
   } catch (error) {
     console.error('Error syncing accounts:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ error: `Failed to sync accounts: ${error.message}` });
   }
 });
