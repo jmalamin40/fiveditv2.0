@@ -57,110 +57,119 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
     const password = decryptPassword(config.whm_password_encrypted);
     const auth = Buffer.from(`${config.whm_username}:${password}`).toString('base64');
     
-    const useSSL = config.whm_ssl !== false;
-    const protocol = useSSL ? 'https' : 'http';
+    // Try SSL first if configured, fallback to HTTP if SSL fails
+    const trySSL = config.whm_ssl !== false;
     const port = config.whm_port || 2222;
     const hostname = config.whm_host;
     
-    let url, options;
-    
-    if (method === 'GET') {
-      const queryParams = new URLSearchParams({
-        ...params,
-      });
-      url = `/${command}?${queryParams}`;
+    const makeRequest = (useSSL) => {
+      let url, options;
       
-      options = {
-        hostname: hostname,
-        port: port,
-        path: url,
-        method: 'GET',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Accept': 'application/json',
-        },
-        rejectUnauthorized: false,
-      };
-    } else {
-      url = `/${command}`;
-      const formData = new URLSearchParams(params);
+      if (method === 'GET') {
+        const queryParams = new URLSearchParams({
+          ...params,
+        });
+        url = `/${command}?${queryParams}`;
+        
+        options = {
+          hostname: hostname,
+          port: port,
+          path: url,
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Accept': 'application/json',
+          },
+          rejectUnauthorized: false,
+        };
+      } else {
+        url = `/${command}`;
+        const formData = new URLSearchParams(params);
+        
+        options = {
+          hostname: hostname,
+          port: port,
+          path: url,
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(formData.toString()),
+            'Accept': 'application/json',
+          },
+          rejectUnauthorized: false,
+        };
+      }
       
-      options = {
-        hostname: hostname,
-        port: port,
-        path: url,
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(formData.toString()),
-          'Accept': 'application/json',
-        },
-        rejectUnauthorized: false,
-      };
-    }
-    
-    // Use http or https module based on protocol
-    const httpModule = useSSL ? https : http;
-    const request = httpModule.request(options, (res) => {
-      let data = '';
-      
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        try {
-          // DirectAdmin can return JSON or key=value format
-          if (data.trim().startsWith('{')) {
-            const json = JSON.parse(data);
-            if (json.error) {
-              reject(new Error(json.error || 'DirectAdmin API error'));
-            } else {
-              resolve(json);
-            }
-          } else {
-            // Parse key=value format
-            const result = {};
-            const lines = data.split('\n');
-            for (const line of lines) {
-              const match = line.match(/^([^=]+)=(.*)$/);
-              if (match) {
-                const key = match[1].trim();
-                let value = match[2].trim();
-                // Try to parse as number or boolean
-                if (value === 'yes') value = true;
-                else if (value === 'no') value = false;
-                else if (!isNaN(value) && value !== '') value = parseFloat(value);
-                result[key] = value;
+      // Use http or https module based on protocol
+      const httpModule = useSSL ? https : http;
+      const request = httpModule.request(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            // DirectAdmin can return JSON or key=value format
+            if (data.trim().startsWith('{')) {
+              const json = JSON.parse(data);
+              if (json.error) {
+                reject(new Error(json.error || 'DirectAdmin API error'));
+              } else {
+                resolve(json);
               }
+            } else {
+              // Parse key=value format
+              const result = {};
+              const lines = data.split('\n');
+              for (const line of lines) {
+                const match = line.match(/^([^=]+)=(.*)$/);
+                if (match) {
+                  const key = match[1].trim();
+                  let value = match[2].trim();
+                  // Try to parse as number or boolean
+                  if (value === 'yes') value = true;
+                  else if (value === 'no') value = false;
+                  else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                  result[key] = value;
+                }
+              }
+              resolve(result);
             }
-            resolve(result);
+          } catch (error) {
+            // If parsing fails, return raw data
+            if (data.includes('error=')) {
+              const errorMatch = data.match(/error=([^\n]+)/);
+              reject(new Error(errorMatch ? errorMatch[1] : 'DirectAdmin API error'));
+            } else {
+              resolve(data);
+            }
           }
-        } catch (error) {
-          // If parsing fails, return raw data
-          if (data.includes('error=')) {
-            const errorMatch = data.match(/error=([^\n]+)/);
-            reject(new Error(errorMatch ? errorMatch[1] : 'DirectAdmin API error'));
-          } else {
-            resolve(data);
-          }
+        });
+      });
+      
+      request.on('error', (error) => {
+        // If SSL error and we tried SSL, retry with HTTP
+        if (useSSL && (error.code === 'ECONNRESET' || error.message.includes('wrong version number') || error.message.includes('SSL'))) {
+          console.log(`SSL connection failed, retrying with HTTP for ${hostname}:${port}`);
+          makeRequest(false);
+        } else {
+          reject(new Error(`DirectAdmin request failed: ${error.message}`));
         }
       });
-    });
+      
+      if (method === 'POST') {
+        const formData = new URLSearchParams(params);
+        request.write(formData.toString());
+      }
+      
+      request.end();
+    };
     
-    if (method === 'POST') {
-      const formData = new URLSearchParams(params);
-      request.write(formData.toString());
-    }
-    
-    request.on('error', (error) => {
-      reject(new Error(`DirectAdmin request failed: ${error.message}`));
-    });
-    
-    if (method === 'POST') {
-      // request.end() is called after write in POST method
-    }
+    // Start with SSL if configured, otherwise use HTTP
+    makeRequest(trySSL);
   });
 }
 
