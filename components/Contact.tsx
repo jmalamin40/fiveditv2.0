@@ -22,12 +22,17 @@ export default function Contact() {
   useEffect(() => {
     const service = searchParams.get('service');
     const plan = searchParams.get('plan');
+    const period = searchParams.get('period');
     const script = searchParams.get('script');
     
     if (service || plan || script) {
       let message = '';
       if (service) message += `Service: ${service}\n`;
-      if (plan) message += `Plan: ${plan}\n`;
+      if (plan) {
+        message += `Hosting Plan: ${plan.charAt(0).toUpperCase() + plan.slice(1)}`;
+        if (period) message += ` (${period === 'monthly' ? 'Monthly' : 'Yearly'} billing)`;
+        message += '\n';
+      }
       if (script) message += `Script: ${script}\n`;
       message += '\n';
       

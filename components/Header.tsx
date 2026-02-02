@@ -13,6 +13,7 @@ export default function Header() {
   const navItems = [
     { label: 'About', href: isHomePage ? '#about' : '/#about' },
     { label: 'Services', href: '/services' },
+    { label: 'Hosting', href: '/hosting' },
     { label: 'Technologies', href: isHomePage ? '#technologies' : '/#technologies' },
     { label: 'Why Us', href: isHomePage ? '#why-us' : '/#why-us' },
     { label: 'Industries', href: isHomePage ? '#industries' : '/#industries' },

@@ -149,3 +149,4 @@ Possible improvements:
 - Chat history export
 - Email notifications for new messages
 
+
