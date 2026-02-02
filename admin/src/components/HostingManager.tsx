@@ -40,7 +40,7 @@ interface Stats {
   total: number;
   active: number;
   suspended: number;
-  terminated: number;
+  terminated_count: number;
   pending: number;
   total_disk_used: number;
   total_disk_limit: number;
@@ -387,7 +387,7 @@ export default function HostingManager({ token }: Props) {
               <div className="stat-label">Suspended</div>
             </div>
             <div className="stat-card stat-danger">
-              <div className="stat-value">{stats.terminated}</div>
+              <div className="stat-value">{stats.terminated_count || stats.terminated || 0}</div>
               <div className="stat-label">Terminated</div>
             </div>
             <div className="stat-card">
