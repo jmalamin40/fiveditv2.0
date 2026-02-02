@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 
@@ -56,7 +57,10 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
     const password = decryptPassword(config.whm_password_encrypted);
     const auth = Buffer.from(`${config.whm_username}:${password}`).toString('base64');
     
-    const daUrl = `${config.whm_ssl ? 'https' : 'http'}://${config.whm_host}:${config.whm_port || 2222}`;
+    const useSSL = config.whm_ssl !== false;
+    const protocol = useSSL ? 'https' : 'http';
+    const port = config.whm_port || 2222;
+    const hostname = config.whm_host;
     
     let url, options;
     
@@ -64,9 +68,12 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       const queryParams = new URLSearchParams({
         ...params,
       });
-      url = `${daUrl}/${command}?${queryParams}`;
+      url = `/${command}?${queryParams}`;
       
       options = {
+        hostname: hostname,
+        port: port,
+        path: url,
         method: 'GET',
         headers: {
           'Authorization': `Basic ${auth}`,
@@ -75,21 +82,27 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
         rejectUnauthorized: false,
       };
     } else {
-      url = `${daUrl}/${command}`;
+      url = `/${command}`;
       const formData = new URLSearchParams(params);
       
       options = {
+        hostname: hostname,
+        port: port,
+        path: url,
         method: 'POST',
         headers: {
           'Authorization': `Basic ${auth}`,
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(formData.toString()),
           'Accept': 'application/json',
         },
         rejectUnauthorized: false,
       };
     }
     
-    const request = https.request(url, options, (res) => {
+    // Use http or https module based on protocol
+    const httpModule = useSSL ? https : http;
+    const request = httpModule.request(options, (res) => {
       let data = '';
       
       res.on('data', (chunk) => {
@@ -145,7 +158,9 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       reject(new Error(`DirectAdmin request failed: ${error.message}`));
     });
     
-    request.end();
+    if (method === 'POST') {
+      // request.end() is called after write in POST method
+    }
   });
 }
 
@@ -554,7 +569,7 @@ router.get('/accounts/stats', async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
         SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) as suspended,
-        SUM(CASE WHEN status = 'terminated' THEN 1 ELSE 0 END) as terminated,
+        SUM(CASE WHEN status = 'terminated' THEN 1 ELSE 0 END) as terminated_count,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
         SUM(disk_used) as total_disk_used,
         SUM(disk_limit) as total_disk_limit,
