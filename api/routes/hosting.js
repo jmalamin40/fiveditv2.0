@@ -106,12 +106,22 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       const request = httpModule.request(options, (res) => {
         let data = '';
         
+        // Check if response is valid HTTP
+        if (res.statusCode === undefined) {
+          return reject(new Error('Invalid HTTP response from server. Check host and port.'));
+        }
+        
         res.on('data', (chunk) => {
           data += chunk;
         });
         
         res.on('end', () => {
           try {
+            // Check for HTTP error status
+            if (res.statusCode >= 400) {
+              return reject(new Error(`DirectAdmin API returned status ${res.statusCode}: ${data.substring(0, 200)}`));
+            }
+            
             // DirectAdmin can return JSON or key=value format
             if (data.trim().startsWith('{')) {
               const json = JSON.parse(data);
@@ -144,7 +154,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
               const errorMatch = data.match(/error=([^\n]+)/);
               reject(new Error(errorMatch ? errorMatch[1] : 'DirectAdmin API error'));
             } else {
-              resolve(data);
+              reject(new Error(`Failed to parse DirectAdmin response: ${error.message}. Response: ${data.substring(0, 200)}`));
             }
           }
         });
@@ -152,12 +162,18 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       
       request.on('error', (error) => {
         // If SSL error and we tried SSL, retry with HTTP
-        if (useSSL && (error.code === 'ECONNRESET' || error.message.includes('wrong version number') || error.message.includes('SSL'))) {
-          console.log(`SSL connection failed, retrying with HTTP for ${hostname}:${port}`);
+        if (useSSL && (error.code === 'ECONNRESET' || error.message.includes('wrong version number') || error.message.includes('SSL') || error.message.includes('Parse Error'))) {
+          console.log(`SSL connection failed (${error.message}), retrying with HTTP for ${hostname}:${port}`);
           makeRequest(false);
         } else {
-          reject(new Error(`DirectAdmin request failed: ${error.message}`));
+          reject(new Error(`DirectAdmin request failed: ${error.message}. Check if DirectAdmin is running on ${hostname}:${port} and the credentials are correct.`));
         }
+      });
+      
+      // Set timeout to prevent hanging
+      request.setTimeout(10000, () => {
+        request.destroy();
+        reject(new Error(`Request timeout after 10 seconds. Check if DirectAdmin is accessible at ${hostname}:${port}`));
       });
       
       if (method === 'POST') {
@@ -241,8 +257,26 @@ router.post('/config/test', async (req, res) => {
       return res.status(400).json({ error: 'No hosting configuration found' });
     }
     
-    // Test connection by getting server info
-    const result = await makeDirectAdminRequest(config, 'CMD_API_SHOW_RESELLER_CONFIG', {});
+    // Test connection - try a simple command first
+    // DirectAdmin API commands vary, try different commands based on user type
+    let result;
+    try {
+      // Try to get reseller config first (for reseller accounts)
+      result = await makeDirectAdminRequest(config, 'CMD_API_SHOW_RESELLER_CONFIG', {});
+    } catch (err) {
+      // If that fails, try a simpler command - verify password
+      try {
+        const password = decryptPassword(config.whm_password_encrypted);
+        result = await makeDirectAdminRequest(config, 'CMD_API_VERIFY_PASSWORD', {
+          user: config.whm_username,
+          passwd: password
+        }, 'POST');
+      } catch (err2) {
+        // Last resort - try to list users (should work for reseller/admin)
+        result = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USERS', {});
+      }
+    }
+    
     res.json({ success: true, message: 'Connection successful', serverInfo: result });
   } catch (error) {
     console.error('DirectAdmin connection test failed:', error);
