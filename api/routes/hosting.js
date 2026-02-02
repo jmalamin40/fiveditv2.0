@@ -151,18 +151,101 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
               const result = {};
               const lines = data.split('\n');
               console.log(`[DirectAdmin] Parsing key=value format, ${lines.length} lines`);
+              
+              // Also check if data contains URL-encoded format (list[]=user1&list[]=user2)
+              // Or mixed format (user1&list[]=user2&list[]=user3)
+              if (data.includes('list[]=') || data.includes('list%5B%5D=') || data.includes('&list')) {
+                console.log(`[DirectAdmin] Detected URL-encoded list format, parsing...`);
+                try {
+                  // The data might be in format: user1&list[]=user2&list[]=user3
+                  // Or: list[]=user1&list[]=user2
+                  // Try to parse as URL-encoded query string
+                  
+                  // Handle mixed format: user1&list[]=user2&list[]=user3
+                  // Or pure format: list[]=user1&list[]=user2
+                  
+                  // Split by & to process each part
+                  const parts = data.trim().split('&');
+                  const users = [];
+                  
+                  for (const part of parts) {
+                    const trimmed = part.trim();
+                    if (!trimmed) continue;
+                    
+                    // Check if it's in list[]=username format
+                    if (trimmed.startsWith('list[]=') || trimmed.startsWith('list%5B%5D=') || trimmed.toLowerCase().startsWith('list%5b%5d%3d')) {
+                      let username = trimmed;
+                      // Remove list[]= prefix (handle both encoded and non-encoded)
+                      username = username.replace(/^list\[\]=/i, '')
+                                         .replace(/^list%5B%5D%3D/i, '')
+                                         .replace(/^list%5b%5d%3d/i, '');
+                      // URL decode
+                      try {
+                        username = decodeURIComponent(username);
+                      } catch (e) {
+                        // If decode fails, try basic replacements
+                        username = username.replace(/%20/g, ' ').replace(/%26/g, '&');
+                      }
+                      // Clean up any remaining encoding artifacts
+                      username = username.split('&')[0].split('=')[0].trim();
+                      if (username && !username.includes('%') && username.length > 0) {
+                        users.push(username);
+                        console.log(`[DirectAdmin] Extracted username from list[]: ${username}`);
+                      }
+                    } else if (!trimmed.includes('=') && !trimmed.includes('%') && trimmed.length > 0) {
+                      // It's a plain username (first one in mixed format like: user1&list[]=user2)
+                      // Make sure it's not part of a key=value pair
+                      if (!trimmed.match(/^[a-zA-Z0-9_\-\.]+$/)) {
+                        // Skip if it contains invalid characters for a username
+                        continue;
+                      }
+                      users.push(trimmed);
+                      console.log(`[DirectAdmin] Extracted plain username: ${trimmed}`);
+                    }
+                  }
+                  
+                  if (users.length > 0) {
+                    console.log(`[DirectAdmin] Found ${users.length} users in URL-encoded format:`, users);
+                    result.list = users;
+                    // Also add them as list[0], list[1], etc. for compatibility
+                    users.forEach((user, index) => {
+                      result[`list[${index}]`] = user;
+                    });
+                  }
+                } catch (urlErr) {
+                  console.warn(`[DirectAdmin] Failed to parse URL-encoded format:`, urlErr.message);
+                  console.warn(`[DirectAdmin] Error stack:`, urlErr.stack);
+                }
+              }
+              
+              // Parse standard key=value lines
               for (const line of lines) {
                 const match = line.match(/^([^=]+)=(.*)$/);
                 if (match) {
                   const key = match[1].trim();
                   let value = match[2].trim();
+                  
+                  // Skip if already processed from URL-encoded format
+                  if (key.startsWith('list[') && result.list) {
+                    continue;
+                  }
+                  
+                  // URL decode the value if needed
+                  try {
+                    value = decodeURIComponent(value);
+                  } catch (e) {
+                    // If decoding fails, use original value
+                  }
+                  
                   // Try to parse as number or boolean
                   if (value === 'yes') value = true;
                   else if (value === 'no') value = false;
                   else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                  
                   result[key] = value;
                 }
               }
+              
               console.log(`[DirectAdmin] Parsed ${Object.keys(result).length} key-value pairs`);
               console.log(`[DirectAdmin] Parsed result:`, JSON.stringify(result, null, 2));
               resolve(result);
@@ -413,30 +496,52 @@ router.post('/accounts/sync', async (req, res) => {
     } else if (typeof usersResult === 'object' && usersResult !== null) {
       console.log('[SYNC] Response is an object, parsing...');
       
-      // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
-      const listKeys = Object.keys(usersResult).filter(k => {
-        const lowerKey = k.toLowerCase();
-        return lowerKey.startsWith('list[') || lowerKey.startsWith('user[') || lowerKey.startsWith('username[');
-      });
-      
-      console.log(`[SYNC] Found ${listKeys.length} list keys:`, listKeys);
-      
-      if (listKeys.length > 0) {
-        // Extract usernames from list[0], list[1], etc.
-        users = listKeys
-          .sort((a, b) => {
-            const numA = parseInt(a.match(/\[(\d+)\]/)?.[1] || '0');
-            const numB = parseInt(b.match(/\[(\d+)\]/)?.[1] || '0');
-            return numA - numB;
-          })
-          .map(key => {
-            const value = usersResult[key];
-            console.log(`[SYNC]   ${key} = ${value}`);
-            return value;
-          })
-          .filter(Boolean);
-        console.log(`[SYNC] Extracted ${users.length} users from list keys`);
+      // First, check if there's a 'list' array (from URL-encoded parsing)
+      if (Array.isArray(usersResult.list)) {
+        console.log('[SYNC] Found list array property with', usersResult.list.length, 'users');
+        users = usersResult.list.filter(Boolean);
+        console.log(`[SYNC] Extracted ${users.length} users from list array`);
       } else {
+        // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
+        const listKeys = Object.keys(usersResult).filter(k => {
+          const lowerKey = k.toLowerCase();
+          return lowerKey.startsWith('list[') || lowerKey.startsWith('user[') || lowerKey.startsWith('username[');
+        });
+        
+        console.log(`[SYNC] Found ${listKeys.length} list keys:`, listKeys);
+        
+        if (listKeys.length > 0) {
+          // Extract usernames from list[0], list[1], etc.
+          users = listKeys
+            .sort((a, b) => {
+              const numA = parseInt(a.match(/\[(\d+)\]/)?.[1] || '0');
+              const numB = parseInt(b.match(/\[(\d+)\]/)?.[1] || '0');
+              return numA - numB;
+            })
+            .map(key => {
+              const value = usersResult[key];
+              console.log(`[SYNC]   ${key} = ${value}`);
+              // Clean up value - remove URL encoding artifacts
+              if (typeof value === 'string') {
+                // Remove any URL-encoded parts that might be stuck
+                const cleaned = value.split('&')[0].split('=')[0];
+                return cleaned || value;
+              }
+              return value;
+            })
+            .filter(Boolean)
+            .filter(u => {
+              // Filter out invalid usernames (URL-encoded strings, etc.)
+              if (typeof u !== 'string') return false;
+              // Username should not contain &, =, or % (URL encoding artifacts)
+              if (u.includes('&') || u.includes('=') || u.includes('%')) {
+                console.warn(`[SYNC]   ⚠️  Skipping invalid username (contains URL encoding): ${u}`);
+                return false;
+              }
+              return true;
+            });
+          console.log(`[SYNC] Extracted ${users.length} users from list keys`);
+        } else {
         console.log('[SYNC] No list keys found, trying alternative parsing...');
         console.log('[SYNC] All response keys:', Object.keys(usersResult));
         
@@ -455,7 +560,7 @@ router.post('/accounts/sync', async (req, res) => {
             console.log(`[SYNC]   Checking key "${key}": value="${value}" (type: ${typeof value})`);
             
             // If value looks like a username (not a number, not yes/no, not empty)
-            if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=')) {
+            if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=') && !value.includes('&') && !value.includes('%')) {
               console.log(`[SYNC]     ✓ Valid username: ${value}`);
               return value;
             }
@@ -464,6 +569,7 @@ router.post('/accounts/sync', async (req, res) => {
           .filter(Boolean);
         
         console.log(`[SYNC] Extracted ${users.length} users from candidate keys`);
+      }
       }
     } else {
       console.error('[SYNC] Unexpected response type:', typeof usersResult);
