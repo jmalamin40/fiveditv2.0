@@ -149,12 +149,49 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
             } else {
               // Parse key=value format
               const result = {};
-              const lines = data.split('\n');
-              console.log(`[DirectAdmin] Parsing key=value format, ${lines.length} lines`);
               
-              // Also check if data contains URL-encoded format (list[]=user1&list[]=user2)
-              // Or mixed format (user1&list[]=user2&list[]=user3)
-              if (data.includes('list[]=') || data.includes('list%5B%5D=') || data.includes('&list')) {
+              // Check if data is in single-line URL-encoded format (key=value&key=value&...)
+              // This is common in DirectAdmin responses
+              const isSingleLineUrlEncoded = data.includes('&') && data.includes('=') && !data.includes('\n') && data.split('&').length > 3;
+              
+              if (isSingleLineUrlEncoded) {
+                console.log(`[DirectAdmin] Detected single-line URL-encoded format`);
+                try {
+                  // Parse as URL-encoded query string
+                  const urlParams = new URLSearchParams(data);
+                  for (const [key, value] of urlParams.entries()) {
+                    // Try to parse as number or boolean
+                    let parsedValue = value;
+                    if (value === 'yes') parsedValue = true;
+                    else if (value === 'no') parsedValue = false;
+                    else if (!isNaN(value) && value !== '') parsedValue = parseFloat(value);
+                    result[key] = parsedValue;
+                  }
+                  console.log(`[DirectAdmin] Parsed ${Object.keys(result).length} key-value pairs from URL-encoded format`);
+                } catch (urlErr) {
+                  console.warn(`[DirectAdmin] Failed to parse as URLSearchParams, trying manual parsing:`, urlErr.message);
+                  // Fallback: manual parsing
+                  const parts = data.split('&');
+                  for (const part of parts) {
+                    const [key, ...valueParts] = part.split('=');
+                    if (key && valueParts.length > 0) {
+                      let value = decodeURIComponent(valueParts.join('='));
+                      // Try to parse as number or boolean
+                      if (value === 'yes') value = true;
+                      else if (value === 'no') value = false;
+                      else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                      result[key] = value;
+                    }
+                  }
+                }
+              } else {
+                // Parse multi-line key=value format
+                const lines = data.split('\n');
+                console.log(`[DirectAdmin] Parsing key=value format, ${lines.length} lines`);
+                
+                // Also check if data contains URL-encoded format (list[]=user1&list[]=user2)
+                // Or mixed format (user1&list[]=user2&list[]=user3)
+                if (data.includes('list[]=') || data.includes('list%5B%5D=') || data.includes('&list')) {
                 console.log(`[DirectAdmin] Detected URL-encoded list format, parsing...`);
                 try {
                   // The data might be in format: user1&list[]=user2&list[]=user3
@@ -216,33 +253,34 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                   console.warn(`[DirectAdmin] Failed to parse URL-encoded format:`, urlErr.message);
                   console.warn(`[DirectAdmin] Error stack:`, urlErr.stack);
                 }
-              }
-              
-              // Parse standard key=value lines
-              for (const line of lines) {
-                const match = line.match(/^([^=]+)=(.*)$/);
-                if (match) {
-                  const key = match[1].trim();
-                  let value = match[2].trim();
-                  
-                  // Skip if already processed from URL-encoded format
-                  if (key.startsWith('list[') && result.list) {
-                    continue;
+                }
+                
+                // Parse standard key=value lines
+                for (const line of lines) {
+                  const match = line.match(/^([^=]+)=(.*)$/);
+                  if (match) {
+                    const key = match[1].trim();
+                    let value = match[2].trim();
+                    
+                    // Skip if already processed from URL-encoded format
+                    if (key.startsWith('list[') && result.list) {
+                      continue;
+                    }
+                    
+                    // URL decode the value if needed
+                    try {
+                      value = decodeURIComponent(value);
+                    } catch (e) {
+                      // If decoding fails, use original value
+                    }
+                    
+                    // Try to parse as number or boolean
+                    if (value === 'yes') value = true;
+                    else if (value === 'no') value = false;
+                    else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                    
+                    result[key] = value;
                   }
-                  
-                  // URL decode the value if needed
-                  try {
-                    value = decodeURIComponent(value);
-                  } catch (e) {
-                    // If decoding fails, use original value
-                  }
-                  
-                  // Try to parse as number or boolean
-                  if (value === 'yes') value = true;
-                  else if (value === 'no') value = false;
-                  else if (!isNaN(value) && value !== '') value = parseFloat(value);
-                  
-                  result[key] = value;
                 }
               }
               
@@ -495,13 +533,21 @@ router.post('/accounts/sync', async (req, res) => {
       users = usersResult.users;
     } else if (typeof usersResult === 'object' && usersResult !== null) {
       console.log('[SYNC] Response is an object, parsing...');
-        console.log(JSON.stringify(usersResult, null, 2), '===list===');
-      // First, check if there's a 'list' array (from URL-encoded parsing)
-      if (Array.isArray(usersResult.list)) {
-        console.log('[SYNC] Found list array property with', usersResult.list.length, 'users');
-        users = usersResult.list.filter(Boolean);
-        console.log(`[SYNC] Extracted ${users.length} users from list array`);
+      console.log('[SYNC] Full response:', JSON.stringify(usersResult, null, 2));
+      
+      // Check if response contains username field(s) - DirectAdmin might return user data directly
+      // Format could be: { username: 'user1', domain: '...', ... } or multiple users
+      if (usersResult.username && typeof usersResult.username === 'string') {
+        // Single user object with username field
+        console.log('[SYNC] Found single user object with username:', usersResult.username);
+        users = [usersResult.username];
       } else {
+        // First, check if there's a 'list' array (from URL-encoded parsing)
+        if (Array.isArray(usersResult.list)) {
+          console.log('[SYNC] Found list array property with', usersResult.list.length, 'users');
+          users = usersResult.list.filter(Boolean);
+          console.log(`[SYNC] Extracted ${users.length} users from list array`);
+        } else {
         // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
         const listKeys = Object.keys(usersResult).filter(k => {
           const lowerKey = k.toLowerCase();
@@ -546,7 +592,7 @@ router.post('/accounts/sync', async (req, res) => {
         console.log('[SYNC] All response keys:', Object.keys(usersResult));
         
         // Try to extract usernames from other keys (excluding error, etc.)
-        const excludedKeys = ['error', 'ERROR', 'list', 'LIST', 'success', 'SUCCESS', 'text', 'TEXT'];
+        const excludedKeys = ['error', 'ERROR', 'list', 'LIST', 'success', 'SUCCESS', 'text', 'TEXT', 'account', 'domain', 'package', 'ip', 'email', 'quota', 'bandwidth'];
         const candidateKeys = Object.keys(usersResult).filter(k => {
           const upperKey = k.toUpperCase();
           return !excludedKeys.some(ex => upperKey.includes(ex));
@@ -554,21 +600,40 @@ router.post('/accounts/sync', async (req, res) => {
         
         console.log(`[SYNC] Candidate keys (${candidateKeys.length}):`, candidateKeys);
         
-        users = candidateKeys
+        // Check if 'username' key exists (common in DirectAdmin responses)
+        if (usersResult.username) {
+          const usernameValue = usersResult.username;
+          if (typeof usernameValue === 'string' && usernameValue.length > 0) {
+            users.push(usernameValue);
+            console.log(`[SYNC] Found username field: ${usernameValue}`);
+          } else if (Array.isArray(usernameValue)) {
+            users.push(...usernameValue.filter(u => typeof u === 'string' && u.length > 0));
+            console.log(`[SYNC] Found username array with ${users.length} users`);
+          }
+        }
+        
+        // Also check other candidate keys
+        const additionalUsers = candidateKeys
           .map(key => {
             const value = usersResult[key];
             console.log(`[SYNC]   Checking key "${key}": value="${value}" (type: ${typeof value})`);
             
-            // If value looks like a username (not a number, not yes/no, not empty)
+            // If value looks like a username (not a number, not yes/no, not empty, not a common config key)
             if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=') && !value.includes('&') && !value.includes('%')) {
-              console.log(`[SYNC]     ✓ Valid username: ${value}`);
-              return value;
+              // Additional validation: username should be alphanumeric with possible underscores/dots
+              if (value.match(/^[a-zA-Z0-9_\-\.]+$/) && value.length >= 3 && value.length <= 32) {
+                console.log(`[SYNC]     ✓ Valid username: ${value}`);
+                return value;
+              }
             }
             return null;
           })
           .filter(Boolean);
         
-        console.log(`[SYNC] Extracted ${users.length} users from candidate keys`);
+        // Merge and deduplicate
+        users = [...new Set([...users, ...additionalUsers])];
+        console.log(`[SYNC] Extracted ${users.length} unique users from candidate keys`);
+        }
       }
       }
     } else {
