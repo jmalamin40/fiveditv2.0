@@ -6,6 +6,8 @@ import ChatManager from './ChatManager';
 import HostingManager from './HostingManager';
 import ProfileManager from './ProfileManager';
 import { fetchAdminProfile } from '../api';
+import { useToast } from '../hooks/useToast';
+import { ToastContainer } from './ToastContainer';
 
 interface DashboardProps {
   token: string;
@@ -30,6 +32,7 @@ const tabs = [
 export default function Dashboard({ token, user, onLogout }: DashboardProps) {
   const [activeTab, setActiveTab] = useState('categories');
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     loadProfile();
@@ -96,10 +99,11 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
         {activeTab === 'categories' && <CategoriesManager token={token} />}
         {activeTab === 'services' && <ServicesManager token={token} />}
         {activeTab === 'scripts' && <ScriptsManager token={token} />}
-        {activeTab === 'hosting' && <HostingManager token={token} />}
+        {activeTab === 'hosting' && <HostingManager token={token} toast={toast} />}
         {activeTab === 'chat' && <ChatManager token={token} />}
         {activeTab === 'profile' && <ProfileManager token={token} />}
       </main>
+      <ToastContainer toasts={toast.toasts} onClose={toast.removeToast} />
       <style>{`
         .avatar-image {
           width: 100%;

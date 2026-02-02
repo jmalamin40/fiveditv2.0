@@ -1,8 +1,10 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { Server, RefreshCw, Plus, Search, Filter, MoreVertical, Play, Pause, Trash2, Edit, Settings, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
 
 interface Props {
   token: string;
+  toast: ReturnType<typeof useToast>;
 }
 
 interface HostingConfig {
@@ -50,7 +52,7 @@ interface Stats {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.fivedit.com/api' || 'http://localhost:3001/api';
 
-export default function HostingManager({ token }: Props) {
+export default function HostingManager({ token, toast }: Props) {
   const [config, setConfig] = useState<HostingConfig | null>(null);
   const [accounts, setAccounts] = useState<HostingAccount[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -143,14 +145,14 @@ export default function HostingManager({ token }: Props) {
       
       const data = await response.json();
       if (response.ok) {
-        alert('Configuration saved successfully!');
+        toast.success('Configuration saved successfully!');
         setShowConfigModal(false);
         loadData();
       } else {
-        alert(`Error: ${data.error}`);
+        toast.error(`Error: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to save configuration');
+      toast.error('Failed to save configuration');
     }
   };
 
@@ -165,12 +167,12 @@ export default function HostingManager({ token }: Props) {
       
       const data = await response.json();
       if (response.ok) {
-        alert(`Connection successful! Found ${data.accountCount} accounts.`);
+        toast.success(`Connection successful! Found ${data.accountCount} accounts.`);
       } else {
-        alert(`Connection failed: ${data.error}`);
+        toast.error(`Connection failed: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to test connection');
+      toast.error('Failed to test connection');
     }
   };
 
@@ -186,13 +188,13 @@ export default function HostingManager({ token }: Props) {
       
       const data = await response.json();
       if (response.ok) {
-        alert(`Sync completed! Created: ${data.created}, Updated: ${data.updated}`);
+        toast.success(`Sync completed! Created: ${data.created}, Updated: ${data.updated}`);
         loadData();
       } else {
-        alert(`Sync failed: ${data.error}`);
+        toast.error(`Sync failed: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to sync accounts');
+      toast.error('Failed to sync accounts');
     } finally {
       setSyncing(false);
     }
@@ -215,7 +217,7 @@ export default function HostingManager({ token }: Props) {
       
       const data = await response.json();
       if (response.ok) {
-        alert('Account created successfully!');
+        toast.success('Account created successfully!');
         setShowCreateModal(false);
         setCreateForm({
           domain: '',
@@ -230,10 +232,10 @@ export default function HostingManager({ token }: Props) {
         });
         loadData();
       } else {
-        alert(`Error: ${data.error}`);
+        toast.error(`Error: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to create account');
+      toast.error('Failed to create account');
     }
   };
 
@@ -246,13 +248,13 @@ export default function HostingManager({ token }: Props) {
       });
       const data = await response.json();
       if (response.ok) {
-        alert('Account suspended successfully');
+        toast.success('Account suspended successfully');
         loadData();
       } else {
-        alert(`Error: ${data.error}`);
+        toast.error(`Error: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to suspend account');
+      toast.error('Failed to suspend account');
     }
   };
 
@@ -264,13 +266,13 @@ export default function HostingManager({ token }: Props) {
       });
       const data = await response.json();
       if (response.ok) {
-        alert('Account unsuspended successfully');
+        toast.success('Account unsuspended successfully');
         loadData();
       } else {
-        alert(`Error: ${data.error}`);
+        toast.error(`Error: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to unsuspend account');
+      toast.error('Failed to unsuspend account');
     }
   };
 
@@ -283,13 +285,13 @@ export default function HostingManager({ token }: Props) {
       });
       const data = await response.json();
       if (response.ok) {
-        alert('Account terminated successfully');
+        toast.success('Account terminated successfully');
         loadData();
       } else {
-        alert(`Error: ${data.error}`);
+        toast.error(`Error: ${data.error}`);
       }
     } catch (error) {
-      alert('Failed to terminate account');
+      toast.error('Failed to terminate account');
     }
   };
 
