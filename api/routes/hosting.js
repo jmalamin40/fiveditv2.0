@@ -62,6 +62,13 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
     const port = config.whm_port || 2222;
     const hostname = config.whm_host;
     
+    console.log(`[DirectAdmin] Making ${method} request to ${hostname}:${port}`);
+    console.log(`[DirectAdmin] Command: ${command}`);
+    console.log(`[DirectAdmin] Using ${trySSL ? 'HTTPS' : 'HTTP'}`);
+    if (Object.keys(params).length > 0) {
+      console.log(`[DirectAdmin] Params:`, JSON.stringify(params, null, 2));
+    }
+    
     const makeRequest = (useSSL) => {
       let url, options;
       
@@ -106,6 +113,9 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       const request = httpModule.request(options, (res) => {
         let data = '';
         
+        console.log(`[DirectAdmin] Response status: ${res.statusCode}`);
+        console.log(`[DirectAdmin] Response headers:`, JSON.stringify(res.headers, null, 2));
+        
         // Check if response is valid HTTP
         if (res.statusCode === undefined) {
           return reject(new Error('Invalid HTTP response from server. Check host and port.'));
@@ -117,15 +127,21 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
         
         res.on('end', () => {
           try {
+            console.log(`[DirectAdmin] Raw response length: ${data.length} bytes`);
+            console.log(`[DirectAdmin] Raw response (first 500 chars):`, data.substring(0, 500));
+            
             // Check for HTTP error status
             if (res.statusCode >= 400) {
+              console.error(`[DirectAdmin] HTTP Error ${res.statusCode}:`, data.substring(0, 500));
               return reject(new Error(`DirectAdmin API returned status ${res.statusCode}: ${data.substring(0, 200)}`));
             }
             
             // DirectAdmin can return JSON or key=value format
             if (data.trim().startsWith('{')) {
               const json = JSON.parse(data);
+              console.log(`[DirectAdmin] Parsed JSON response:`, JSON.stringify(json, null, 2));
               if (json.error) {
+                console.error(`[DirectAdmin] JSON error:`, json.error);
                 reject(new Error(json.error || 'DirectAdmin API error'));
               } else {
                 resolve(json);
@@ -134,6 +150,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
               // Parse key=value format
               const result = {};
               const lines = data.split('\n');
+              console.log(`[DirectAdmin] Parsing key=value format, ${lines.length} lines`);
               for (const line of lines) {
                 const match = line.match(/^([^=]+)=(.*)$/);
                 if (match) {
@@ -146,9 +163,13 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                   result[key] = value;
                 }
               }
+              console.log(`[DirectAdmin] Parsed ${Object.keys(result).length} key-value pairs`);
+              console.log(`[DirectAdmin] Parsed result:`, JSON.stringify(result, null, 2));
               resolve(result);
             }
           } catch (error) {
+            console.error(`[DirectAdmin] Parse error:`, error.message);
+            console.error(`[DirectAdmin] Raw data:`, data.substring(0, 1000));
             // If parsing fails, return raw data
             if (data.includes('error=')) {
               const errorMatch = data.match(/error=([^\n]+)/);
@@ -161,17 +182,21 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       });
       
       request.on('error', (error) => {
+        console.error(`[DirectAdmin] Request error:`, error.message);
+        console.error(`[DirectAdmin] Error code:`, error.code);
         // If SSL error and we tried SSL, retry with HTTP
         if (useSSL && (error.code === 'ECONNRESET' || error.message.includes('wrong version number') || error.message.includes('SSL') || error.message.includes('Parse Error'))) {
-          console.log(`SSL connection failed (${error.message}), retrying with HTTP for ${hostname}:${port}`);
+          console.log(`[DirectAdmin] SSL connection failed (${error.message}), retrying with HTTP for ${hostname}:${port}`);
           makeRequest(false);
         } else {
+          console.error(`[DirectAdmin] Request failed permanently:`, error);
           reject(new Error(`DirectAdmin request failed: ${error.message}. Check if DirectAdmin is running on ${hostname}:${port} and the credentials are correct.`));
         }
       });
       
       // Set timeout to prevent hanging
       request.setTimeout(10000, () => {
+        console.error(`[DirectAdmin] Request timeout after 10 seconds`);
         request.destroy();
         reject(new Error(`Request timeout after 10 seconds. Check if DirectAdmin is accessible at ${hostname}:${port}`));
       });
@@ -344,16 +369,31 @@ router.get('/accounts', async (req, res) => {
 
 // Sync accounts from DirectAdmin
 router.post('/accounts/sync', async (req, res) => {
+  console.log('========================================');
+  console.log('[SYNC] Starting DirectAdmin account sync');
+  console.log('========================================');
+  
   try {
     const config = await getDirectAdminConfig();
     if (!config) {
+      console.error('[SYNC] No hosting configuration found');
       return res.status(400).json({ error: 'No hosting configuration found. Please configure DirectAdmin first.' });
     }
     
+    console.log('[SYNC] Configuration loaded:');
+    console.log(`  - Host: ${config.whm_host}`);
+    console.log(`  - Port: ${config.whm_port || 2222}`);
+    console.log(`  - SSL: ${config.whm_ssl !== false}`);
+    console.log(`  - Username: ${config.whm_username}`);
+    console.log(`  - Reseller: ${config.reseller_username || 'N/A'}`);
+    
     // Get list of users from DirectAdmin
+    console.log('[SYNC] Fetching users list from DirectAdmin...');
     const usersResult = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USERS', {});
     
-    console.log('DirectAdmin users result:', JSON.stringify(usersResult, null, 2));
+    console.log('[SYNC] Raw DirectAdmin response type:', typeof usersResult);
+    console.log('[SYNC] Raw DirectAdmin response:', JSON.stringify(usersResult, null, 2));
+    console.log('[SYNC] Response keys:', Object.keys(usersResult || {}));
     
     let synced = 0;
     let created = 0;
@@ -362,13 +402,25 @@ router.post('/accounts/sync', async (req, res) => {
     // Parse users list - DirectAdmin returns in format: list[0]=user1, list[1]=user2, etc.
     let users = [];
     
+    console.log('[SYNC] Parsing users list...');
+    
     if (Array.isArray(usersResult)) {
+      console.log('[SYNC] Response is an array');
       users = usersResult;
     } else if (usersResult.users && Array.isArray(usersResult.users)) {
+      console.log('[SYNC] Response has users array property');
       users = usersResult.users;
-    } else if (typeof usersResult === 'object') {
+    } else if (typeof usersResult === 'object' && usersResult !== null) {
+      console.log('[SYNC] Response is an object, parsing...');
+      
       // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
-      const listKeys = Object.keys(usersResult).filter(k => k.startsWith('list[') || k.startsWith('LIST['));
+      const listKeys = Object.keys(usersResult).filter(k => {
+        const lowerKey = k.toLowerCase();
+        return lowerKey.startsWith('list[') || lowerKey.startsWith('user[') || lowerKey.startsWith('username[');
+      });
+      
+      console.log(`[SYNC] Found ${listKeys.length} list keys:`, listKeys);
+      
       if (listKeys.length > 0) {
         // Extract usernames from list[0], list[1], etc.
         users = listKeys
@@ -377,81 +429,138 @@ router.post('/accounts/sync', async (req, res) => {
             const numB = parseInt(b.match(/\[(\d+)\]/)?.[1] || '0');
             return numA - numB;
           })
-          .map(key => usersResult[key])
-          .filter(Boolean);
-      } else {
-        // Try to extract usernames from other keys (excluding error, etc.)
-        users = Object.keys(usersResult)
-          .filter(k => !k.startsWith('error') && !k.startsWith('ERROR') && k !== 'list' && k !== 'LIST')
           .map(key => {
             const value = usersResult[key];
-            // If value looks like a username (not a number, not yes/no), include it
-            if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value)) {
+            console.log(`[SYNC]   ${key} = ${value}`);
+            return value;
+          })
+          .filter(Boolean);
+        console.log(`[SYNC] Extracted ${users.length} users from list keys`);
+      } else {
+        console.log('[SYNC] No list keys found, trying alternative parsing...');
+        console.log('[SYNC] All response keys:', Object.keys(usersResult));
+        
+        // Try to extract usernames from other keys (excluding error, etc.)
+        const excludedKeys = ['error', 'ERROR', 'list', 'LIST', 'success', 'SUCCESS', 'text', 'TEXT'];
+        const candidateKeys = Object.keys(usersResult).filter(k => {
+          const upperKey = k.toUpperCase();
+          return !excludedKeys.some(ex => upperKey.includes(ex));
+        });
+        
+        console.log(`[SYNC] Candidate keys (${candidateKeys.length}):`, candidateKeys);
+        
+        users = candidateKeys
+          .map(key => {
+            const value = usersResult[key];
+            console.log(`[SYNC]   Checking key "${key}": value="${value}" (type: ${typeof value})`);
+            
+            // If value looks like a username (not a number, not yes/no, not empty)
+            if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=')) {
+              console.log(`[SYNC]     ✓ Valid username: ${value}`);
               return value;
             }
             return null;
           })
           .filter(Boolean);
+        
+        console.log(`[SYNC] Extracted ${users.length} users from candidate keys`);
       }
+    } else {
+      console.error('[SYNC] Unexpected response type:', typeof usersResult);
     }
     
-    console.log(`Found ${users.length} users to sync:`, users);
+    console.log(`[SYNC] Total users found: ${users.length}`);
+    console.log(`[SYNC] Users list:`, users);
     
     if (users.length === 0) {
+      console.warn('[SYNC] No users found to sync!');
+      console.warn('[SYNC] This might indicate:');
+      console.warn('  1. No accounts exist in DirectAdmin');
+      console.warn('  2. The API response format is different than expected');
+      console.warn('  3. The user does not have permission to list users');
+      console.warn('  4. The API command returned an error');
+      
       return res.json({
         success: true,
         message: 'No users found to sync',
         created: 0,
         updated: 0,
         synced: 0,
+        debug: {
+          responseType: typeof usersResult,
+          responseKeys: usersResult ? Object.keys(usersResult) : [],
+          rawResponse: usersResult
+        }
       });
     }
     
-    for (const username of users) {
+    console.log('[SYNC] Processing users...');
+    
+    for (let i = 0; i < users.length; i++) {
+      const username = users[i];
+      console.log(`[SYNC] [${i + 1}/${users.length}] Processing user: ${username}`);
+      
       try {
         if (!username || typeof username !== 'string') {
-          console.log(`Skipping invalid username:`, username);
+          console.warn(`[SYNC]   ⚠️  Skipping invalid username:`, username);
           continue;
         }
         
         // Get user details
+        console.log(`[SYNC]   Fetching user config for: ${username}`);
         const userInfo = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_CONFIG', { user: username });
+        console.log(`[SYNC]   User config received:`, JSON.stringify(userInfo, null, 2));
         
         if (userInfo.error || userInfo.ERROR) {
-          console.log(`Error getting user info for ${username}:`, userInfo.error || userInfo.ERROR);
+          console.error(`[SYNC]   ❌ Error getting user info for ${username}:`, userInfo.error || userInfo.ERROR);
           continue;
         }
         
-        const domain = userInfo.domain || userInfo.DOMAIN || null;
+        const domain = userInfo.domain || userInfo.DOMAIN || userInfo.name || null;
+        console.log(`[SYNC]   Domain for ${username}: ${domain}`);
+        
         if (!domain) {
-          console.log(`No domain found for user ${username}, skipping`);
+          console.warn(`[SYNC]   ⚠️  No domain found for user ${username}, skipping`);
+          console.warn(`[SYNC]   Available keys:`, Object.keys(userInfo));
           continue;
         }
         
+        // Check if account already exists
         const [existing] = await pool.execute(
           'SELECT id FROM hosting_accounts WHERE username = ? OR domain = ?',
           [username, domain]
         );
+        console.log(`[SYNC]   Existing account check: ${existing.length > 0 ? 'Found' : 'New'}`);
         
         // Get usage stats
-        const usage = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_USAGE', { user: username }).catch(() => ({}));
+        console.log(`[SYNC]   Fetching usage stats for: ${username}`);
+        let usage = {};
+        try {
+          usage = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_USAGE', { user: username });
+          console.log(`[SYNC]   Usage stats:`, JSON.stringify(usage, null, 2));
+        } catch (usageErr) {
+          console.warn(`[SYNC]   ⚠️  Could not fetch usage stats:`, usageErr.message);
+        }
         
         const accountData = {
           domain: domain,
           username: username,
-          package_name: userInfo.package || userInfo.PACKAGE || 'default',
-          status: userInfo.suspended === 'yes' || userInfo.SUSPENDED === 'yes' ? 'suspended' : 'active',
-          disk_used: parseFloat(usage.quota_used || usage.QUOTA_USED || 0) / 1024 / 1024 || 0, // Convert bytes to MB
-          disk_limit: parseFloat(usage.quota || usage.QUOTA || 0) / 1024 / 1024 || 0,
-          bandwidth_used: parseFloat(usage.bandwidth_used || usage.BANDWIDTH_USED || 0) / 1024 / 1024 || 0,
-          bandwidth_limit: parseFloat(usage.bandwidth || usage.BANDWIDTH || 0) / 1024 / 1024 || 0,
-          ip_address: userInfo.ip || userInfo.IP || null,
+          package_name: userInfo.package || userInfo.PACKAGE || userInfo.package_name || 'default',
+          status: (userInfo.suspended === 'yes' || userInfo.SUSPENDED === 'yes' || userInfo.suspended === true) ? 'suspended' : 'active',
+          disk_used: parseFloat(usage.quota_used || usage.QUOTA_USED || usage.quota_used_mb || 0) / 1024 / 1024 || 0, // Convert bytes to MB if needed
+          disk_limit: parseFloat(usage.quota || usage.QUOTA || usage.quota_mb || 0) / 1024 / 1024 || 0,
+          bandwidth_used: parseFloat(usage.bandwidth_used || usage.BANDWIDTH_USED || usage.bandwidth_used_mb || 0) / 1024 / 1024 || 0,
+          bandwidth_limit: parseFloat(usage.bandwidth || usage.BANDWIDTH || usage.bandwidth_mb || 0) / 1024 / 1024 || 0,
+          ip_address: userInfo.ip || userInfo.IP || userInfo.ip_address || null,
           cpanel_url: domain ? `https://${domain}:2222` : null, // DirectAdmin port
           whm_account_id: null,
-          suspended_at: (userInfo.suspended === 'yes' || userInfo.SUSPENDED === 'yes') ? new Date() : null,
+          suspended_at: (userInfo.suspended === 'yes' || userInfo.SUSPENDED === 'yes' || userInfo.suspended === true) ? new Date() : null,
         };
         
+        console.log(`[SYNC]   Account data prepared:`, JSON.stringify(accountData, null, 2));
+        
         if (existing.length > 0) {
+          console.log(`[SYNC]   Updating existing account (ID: ${existing[0].id})`);
           await pool.execute(
             `UPDATE hosting_accounts SET 
               domain = ?, package_name = ?, status = ?, 
@@ -466,7 +575,9 @@ router.post('/accounts/sync', async (req, res) => {
             ]
           );
           updated++;
+          console.log(`[SYNC]   ✅ Updated account: ${username}`);
         } else {
+          console.log(`[SYNC]   Creating new account`);
           await pool.execute(
             `INSERT INTO hosting_accounts 
              (domain, username, package_name, status, disk_used, disk_limit, bandwidth_used, bandwidth_limit, ip_address, cpanel_url, suspended_at)
@@ -478,13 +589,19 @@ router.post('/accounts/sync', async (req, res) => {
             ]
           );
           created++;
+          console.log(`[SYNC]   ✅ Created account: ${username}`);
         }
         synced++;
       } catch (err) {
-        console.error(`Error syncing account ${username}:`, err.message);
-        console.error('Error details:', err);
+        console.error(`[SYNC]   ❌ Error syncing account ${username}:`, err.message);
+        console.error(`[SYNC]   Error stack:`, err.stack);
       }
     }
+    
+    console.log('========================================');
+    console.log(`[SYNC] Sync completed!`);
+    console.log(`[SYNC] Total: ${synced}, Created: ${created}, Updated: ${updated}`);
+    console.log('========================================');
     
     res.json({
       success: true,
@@ -494,8 +611,10 @@ router.post('/accounts/sync', async (req, res) => {
       synced,
     });
   } catch (error) {
-    console.error('Error syncing accounts:', error);
-    console.error('Error stack:', error.stack);
+    console.error('========================================');
+    console.error('[SYNC] ❌ Fatal error syncing accounts:', error.message);
+    console.error('[SYNC] Error stack:', error.stack);
+    console.error('========================================');
     res.status(500).json({ error: `Failed to sync accounts: ${error.message}` });
   }
 });
