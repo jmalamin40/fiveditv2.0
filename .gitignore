@@ -41,3 +41,4 @@ next-env.d.ts
 /admin/node_modules
 /uploads
 /uploads/profiles
+/api/logs/

@@ -5,6 +5,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const { syncLogger, directAdminLogger } = require('../utils/logger');
 
 router.use(authenticate, requireAdmin);
 
@@ -62,11 +63,11 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
     const port = config.whm_port || 2222;
     const hostname = config.whm_host;
     
-    console.log(`[DirectAdmin] Making ${method} request to ${hostname}:${port}`);
-    console.log(`[DirectAdmin] Command: ${command}`);
-    console.log(`[DirectAdmin] Using ${trySSL ? 'HTTPS' : 'HTTP'}`);
+    directAdminLogger.log(`Making ${method} request to ${hostname}:${port}`);
+    directAdminLogger.log(`Command: ${command}`);
+    directAdminLogger.log(`Using ${trySSL ? 'HTTPS' : 'HTTP'}`);
     if (Object.keys(params).length > 0) {
-      console.log(`[DirectAdmin] Params:`, JSON.stringify(params, null, 2));
+      directAdminLogger.debug(`Params:`, params);
     }
     
     const makeRequest = (useSSL) => {
@@ -113,8 +114,8 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       const request = httpModule.request(options, (res) => {
         let data = '';
         
-        console.log(`[DirectAdmin] Response status: ${res.statusCode}`);
-        console.log(`[DirectAdmin] Response headers:`, JSON.stringify(res.headers, null, 2));
+        directAdminLogger.log(`Response status: ${res.statusCode}`);
+        directAdminLogger.debug(`Response headers:`, res.headers);
         
         // Check if response is valid HTTP
         if (res.statusCode === undefined) {
@@ -127,21 +128,21 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
         
         res.on('end', () => {
           try {
-            console.log(`[DirectAdmin] Raw response length: ${data.length} bytes`);
-            console.log(`[DirectAdmin] Raw response (first 500 chars):`, data.substring(0, 500));
+            directAdminLogger.debug(`Raw response length: ${data.length} bytes`);
+            directAdminLogger.debug(`Raw response (first 500 chars):`, data.substring(0, 500));
             
             // Check for HTTP error status
             if (res.statusCode >= 400) {
-              console.error(`[DirectAdmin] HTTP Error ${res.statusCode}:`, data.substring(0, 500));
+              directAdminLogger.error(`HTTP Error ${res.statusCode}:`, data.substring(0, 500));
               return reject(new Error(`DirectAdmin API returned status ${res.statusCode}: ${data.substring(0, 200)}`));
             }
             
             // DirectAdmin can return JSON or key=value format
             if (data.trim().startsWith('{')) {
               const json = JSON.parse(data);
-              console.log(`[DirectAdmin] Parsed JSON response:`, JSON.stringify(json, null, 2));
+              directAdminLogger.debug(`Parsed JSON response:`, json);
               if (json.error) {
-                console.error(`[DirectAdmin] JSON error:`, json.error);
+                directAdminLogger.error(`JSON error:`, json.error);
                 reject(new Error(json.error || 'DirectAdmin API error'));
               } else {
                 resolve(json);
@@ -155,7 +156,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
               const isSingleLineUrlEncoded = data.includes('&') && data.includes('=') && !data.includes('\n') && data.split('&').length > 3;
               
               if (isSingleLineUrlEncoded) {
-                console.log(`[DirectAdmin] Detected single-line URL-encoded format`);
+                directAdminLogger.log(`Detected single-line URL-encoded format`);
                 try {
                   // Parse as URL-encoded query string
                   const urlParams = new URLSearchParams(data);
@@ -167,9 +168,9 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                     else if (!isNaN(value) && value !== '') parsedValue = parseFloat(value);
                     result[key] = parsedValue;
                   }
-                  console.log(`[DirectAdmin] Parsed ${Object.keys(result).length} key-value pairs from URL-encoded format`);
+                  directAdminLogger.log(`Parsed ${Object.keys(result).length} key-value pairs from URL-encoded format`);
                 } catch (urlErr) {
-                  console.warn(`[DirectAdmin] Failed to parse as URLSearchParams, trying manual parsing:`, urlErr.message);
+                  directAdminLogger.warn(`Failed to parse as URLSearchParams, trying manual parsing:`, urlErr.message);
                   // Fallback: manual parsing
                   const parts = data.split('&');
                   for (const part of parts) {
@@ -187,12 +188,12 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
               } else {
                 // Parse multi-line key=value format
                 const lines = data.split('\n');
-                console.log(`[DirectAdmin] Parsing key=value format, ${lines.length} lines`);
+                directAdminLogger.log(`Parsing key=value format, ${lines.length} lines`);
                 
                 // Also check if data contains URL-encoded format (list[]=user1&list[]=user2)
                 // Or mixed format (user1&list[]=user2&list[]=user3)
                 if (data.includes('list[]=') || data.includes('list%5B%5D=') || data.includes('&list')) {
-                console.log(`[DirectAdmin] Detected URL-encoded list format, parsing...`);
+                directAdminLogger.log(`Detected URL-encoded list format, parsing...`);
                 try {
                   // The data might be in format: user1&list[]=user2&list[]=user3
                   // Or: list[]=user1&list[]=user2
@@ -227,7 +228,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                       username = username.split('&')[0].split('=')[0].trim();
                       if (username && !username.includes('%') && username.length > 0) {
                         users.push(username);
-                        console.log(`[DirectAdmin] Extracted username from list[]: ${username}`);
+                        directAdminLogger.debug(`Extracted username from list[]: ${username}`);
                       }
                     } else if (!trimmed.includes('=') && !trimmed.includes('%') && trimmed.length > 0) {
                       // It's a plain username (first one in mixed format like: user1&list[]=user2)
@@ -237,12 +238,12 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                         continue;
                       }
                       users.push(trimmed);
-                      console.log(`[DirectAdmin] Extracted plain username: ${trimmed}`);
+                      directAdminLogger.debug(`Extracted plain username: ${trimmed}`);
                     }
                   }
                   
                   if (users.length > 0) {
-                    console.log(`[DirectAdmin] Found ${users.length} users in URL-encoded format:`, users);
+                    directAdminLogger.log(`Found ${users.length} users in URL-encoded format:`, users);
                     result.list = users;
                     // Also add them as list[0], list[1], etc. for compatibility
                     users.forEach((user, index) => {
@@ -250,8 +251,8 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                     });
                   }
                 } catch (urlErr) {
-                  console.warn(`[DirectAdmin] Failed to parse URL-encoded format:`, urlErr.message);
-                  console.warn(`[DirectAdmin] Error stack:`, urlErr.stack);
+                  directAdminLogger.warn(`Failed to parse URL-encoded format:`, urlErr.message);
+                  directAdminLogger.error(`Error stack:`, urlErr.stack);
                 }
                 }
                 
@@ -284,13 +285,13 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                 }
               }
               
-              console.log(`[DirectAdmin] Parsed ${Object.keys(result).length} key-value pairs`);
-              console.log(`[DirectAdmin] Parsed result:`, JSON.stringify(result, null, 2));
+              directAdminLogger.log(`Parsed ${Object.keys(result).length} key-value pairs`);
+              directAdminLogger.debug(`Parsed result:`, result);
               resolve(result);
             }
           } catch (error) {
-            console.error(`[DirectAdmin] Parse error:`, error.message);
-            console.error(`[DirectAdmin] Raw data:`, data.substring(0, 1000));
+            directAdminLogger.error(`Parse error:`, error.message);
+            directAdminLogger.error(`Raw data:`, data.substring(0, 1000));
             // If parsing fails, return raw data
             if (data.includes('error=')) {
               const errorMatch = data.match(/error=([^\n]+)/);
@@ -303,21 +304,21 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       });
       
       request.on('error', (error) => {
-        console.error(`[DirectAdmin] Request error:`, error.message);
-        console.error(`[DirectAdmin] Error code:`, error.code);
+        directAdminLogger.error(`Request error:`, error.message);
+        directAdminLogger.error(`Error code:`, error.code);
         // If SSL error and we tried SSL, retry with HTTP
         if (useSSL && (error.code === 'ECONNRESET' || error.message.includes('wrong version number') || error.message.includes('SSL') || error.message.includes('Parse Error'))) {
-          console.log(`[DirectAdmin] SSL connection failed (${error.message}), retrying with HTTP for ${hostname}:${port}`);
+          directAdminLogger.warn(`SSL connection failed (${error.message}), retrying with HTTP for ${hostname}:${port}`);
           makeRequest(false);
         } else {
-          console.error(`[DirectAdmin] Request failed permanently:`, error);
+          directAdminLogger.error(`Request failed permanently:`, error);
           reject(new Error(`DirectAdmin request failed: ${error.message}. Check if DirectAdmin is running on ${hostname}:${port} and the credentials are correct.`));
         }
       });
       
       // Set timeout to prevent hanging
       request.setTimeout(10000, () => {
-        console.error(`[DirectAdmin] Request timeout after 10 seconds`);
+        directAdminLogger.error(`Request timeout after 10 seconds`);
         request.destroy();
         reject(new Error(`Request timeout after 10 seconds. Check if DirectAdmin is accessible at ${hostname}:${port}`));
       });
@@ -348,7 +349,7 @@ router.get('/config', async (req, res) => {
     
     res.json({ config: configs[0] });
   } catch (error) {
-    console.error('Error fetching hosting config:', error);
+    defaultLogger.error('Error fetching hosting config:', error);
     res.status(500).json({ error: 'Failed to fetch hosting configuration' });
   }
 });
@@ -390,7 +391,7 @@ router.post('/config', async (req, res) => {
       res.json({ success: true, message: 'Hosting configuration saved' });
     }
   } catch (error) {
-    console.error('Error saving hosting config:', error);
+    defaultLogger.error('Error saving hosting config:', error);
     res.status(500).json({ error: 'Failed to save hosting configuration' });
   }
 });
@@ -425,7 +426,7 @@ router.post('/config/test', async (req, res) => {
     
     res.json({ success: true, message: 'Connection successful', serverInfo: result });
   } catch (error) {
-    console.error('DirectAdmin connection test failed:', error);
+    directAdminLogger.error('DirectAdmin connection test failed:', error);
     res.status(500).json({ error: `Connection failed: ${error.message}` });
   }
 });
@@ -483,38 +484,38 @@ router.get('/accounts', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching hosting accounts:', error);
+    defaultLogger.error('Error fetching hosting accounts:', error);
     res.status(500).json({ error: 'Failed to fetch hosting accounts' });
   }
 });
 
 // Sync accounts from DirectAdmin
 router.post('/accounts/sync', async (req, res) => {
-  console.log('========================================');
-  console.log('[SYNC] Starting DirectAdmin account sync');
-  console.log('========================================');
+  syncLogger.log('========================================');
+  syncLogger.log('Starting DirectAdmin account sync');
+  syncLogger.log('========================================');
   
   try {
     const config = await getDirectAdminConfig();
     if (!config) {
-      console.error('[SYNC] No hosting configuration found');
+      syncLogger.error('No hosting configuration found');
       return res.status(400).json({ error: 'No hosting configuration found. Please configure DirectAdmin first.' });
     }
     
-    console.log('[SYNC] Configuration loaded:');
-    console.log(`  - Host: ${config.whm_host}`);
-    console.log(`  - Port: ${config.whm_port || 2222}`);
-    console.log(`  - SSL: ${config.whm_ssl !== false}`);
-    console.log(`  - Username: ${config.whm_username}`);
-    console.log(`  - Reseller: ${config.reseller_username || 'N/A'}`);
+    syncLogger.log('Configuration loaded:');
+    syncLogger.log(`  - Host: ${config.whm_host}`);
+    syncLogger.log(`  - Port: ${config.whm_port || 2222}`);
+    syncLogger.log(`  - SSL: ${config.whm_ssl !== false}`);
+    syncLogger.log(`  - Username: ${config.whm_username}`);
+    syncLogger.log(`  - Reseller: ${config.reseller_username || 'N/A'}`);
     
     // Get list of users from DirectAdmin
-    console.log('[SYNC] Fetching users list from DirectAdmin...');
+    syncLogger.log('Fetching users list from DirectAdmin...');
     const usersResult = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USERS', {});
     
-    console.log('[SYNC] Raw DirectAdmin response type:', typeof usersResult);
-    console.log('[SYNC] Raw DirectAdmin response:', JSON.stringify(usersResult, null, 2));
-    console.log('[SYNC] Response keys:', Object.keys(usersResult || {}));
+    syncLogger.log(`Raw DirectAdmin response type: ${typeof usersResult}`);
+    syncLogger.debug('Raw DirectAdmin response:', usersResult);
+    syncLogger.debug('Response keys:', Object.keys(usersResult || {}));
     
     let synced = 0;
     let created = 0;
@@ -523,30 +524,30 @@ router.post('/accounts/sync', async (req, res) => {
     // Parse users list - DirectAdmin returns in format: list[0]=user1, list[1]=user2, etc.
     let users = [];
     
-    console.log('[SYNC] Parsing users list...');
+    syncLogger.log('Parsing users list...');
     
     if (Array.isArray(usersResult)) {
-      console.log('[SYNC] Response is an array');
+      syncLogger.log('Response is an array');
       users = usersResult;
     } else if (usersResult.users && Array.isArray(usersResult.users)) {
-      console.log('[SYNC] Response has users array property');
+      syncLogger.log('Response has users array property');
       users = usersResult.users;
     } else if (typeof usersResult === 'object' && usersResult !== null) {
-      console.log('[SYNC] Response is an object, parsing...');
-      console.log('[SYNC] Full response:', JSON.stringify(usersResult, null, 2));
+      syncLogger.log('Response is an object, parsing...');
+      syncLogger.debug('Full response:', usersResult);
       
       // Check if response contains username field(s) - DirectAdmin might return user data directly
       // Format could be: { username: 'user1', domain: '...', ... } or multiple users
       if (usersResult.username && typeof usersResult.username === 'string') {
         // Single user object with username field
-        console.log('[SYNC] Found single user object with username:', usersResult.username);
+        syncLogger.log(`Found single user object with username: ${usersResult.username}`);
         users = [usersResult.username];
       } else {
         // First, check if there's a 'list' array (from URL-encoded parsing)
         if (Array.isArray(usersResult.list)) {
-          console.log('[SYNC] Found list array property with', usersResult.list.length, 'users');
+          syncLogger.log(`Found list array property with ${usersResult.list.length} users`);
           users = usersResult.list.filter(Boolean);
-          console.log(`[SYNC] Extracted ${users.length} users from list array`);
+          syncLogger.log(`Extracted ${users.length} users from list array`);
         } else {
         // Parse DirectAdmin's list format: list[0]=username1, list[1]=username2, etc.
         const listKeys = Object.keys(usersResult).filter(k => {
@@ -554,7 +555,7 @@ router.post('/accounts/sync', async (req, res) => {
           return lowerKey.startsWith('list[') || lowerKey.startsWith('user[') || lowerKey.startsWith('username[');
         });
         
-        console.log(`[SYNC] Found ${listKeys.length} list keys:`, listKeys);
+        syncLogger.log(`Found ${listKeys.length} list keys:`, listKeys);
         
         if (listKeys.length > 0) {
           // Extract usernames from list[0], list[1], etc.
@@ -566,7 +567,7 @@ router.post('/accounts/sync', async (req, res) => {
             })
             .map(key => {
               const value = usersResult[key];
-              console.log(`[SYNC]   ${key} = ${value}`);
+              syncLogger.debug(`  ${key} = ${value}`);
               // Clean up value - remove URL encoding artifacts
               if (typeof value === 'string') {
                 // Remove any URL-encoded parts that might be stuck
@@ -581,15 +582,15 @@ router.post('/accounts/sync', async (req, res) => {
               if (typeof u !== 'string') return false;
               // Username should not contain &, =, or % (URL encoding artifacts)
               if (u.includes('&') || u.includes('=') || u.includes('%')) {
-                console.warn(`[SYNC]   ⚠️  Skipping invalid username (contains URL encoding): ${u}`);
+                syncLogger.warn(`  ⚠️  Skipping invalid username (contains URL encoding): ${u}`);
                 return false;
               }
               return true;
             });
-          console.log(`[SYNC] Extracted ${users.length} users from list keys`);
+          syncLogger.log(`Extracted ${users.length} users from list keys`);
         } else {
-        console.log('[SYNC] No list keys found, trying alternative parsing...');
-        console.log('[SYNC] All response keys:', Object.keys(usersResult));
+        syncLogger.log('No list keys found, trying alternative parsing...');
+        syncLogger.debug('All response keys:', Object.keys(usersResult));
         
         // Try to extract usernames from other keys (excluding error, etc.)
         const excludedKeys = ['error', 'ERROR', 'list', 'LIST', 'success', 'SUCCESS', 'text', 'TEXT', 'account', 'domain', 'package', 'ip', 'email', 'quota', 'bandwidth'];
@@ -598,17 +599,17 @@ router.post('/accounts/sync', async (req, res) => {
           return !excludedKeys.some(ex => upperKey.includes(ex));
         });
         
-        console.log(`[SYNC] Candidate keys (${candidateKeys.length}):`, candidateKeys);
+        syncLogger.debug(`Candidate keys (${candidateKeys.length}):`, candidateKeys);
         
         // Check if 'username' key exists (common in DirectAdmin responses)
         if (usersResult.username) {
           const usernameValue = usersResult.username;
           if (typeof usernameValue === 'string' && usernameValue.length > 0) {
             users.push(usernameValue);
-            console.log(`[SYNC] Found username field: ${usernameValue}`);
+            syncLogger.log(`Found username field: ${usernameValue}`);
           } else if (Array.isArray(usernameValue)) {
             users.push(...usernameValue.filter(u => typeof u === 'string' && u.length > 0));
-            console.log(`[SYNC] Found username array with ${users.length} users`);
+            syncLogger.log(`Found username array with ${users.length} users`);
           }
         }
         
@@ -616,13 +617,13 @@ router.post('/accounts/sync', async (req, res) => {
         const additionalUsers = candidateKeys
           .map(key => {
             const value = usersResult[key];
-            console.log(`[SYNC]   Checking key "${key}": value="${value}" (type: ${typeof value})`);
+            syncLogger.debug(`  Checking key "${key}": value="${value}" (type: ${typeof value})`);
             
             // If value looks like a username (not a number, not yes/no, not empty, not a common config key)
             if (typeof value === 'string' && value.length > 0 && value !== 'yes' && value !== 'no' && isNaN(value) && !value.includes('=') && !value.includes('&') && !value.includes('%')) {
               // Additional validation: username should be alphanumeric with possible underscores/dots
               if (value.match(/^[a-zA-Z0-9_\-\.]+$/) && value.length >= 3 && value.length <= 32) {
-                console.log(`[SYNC]     ✓ Valid username: ${value}`);
+                syncLogger.debug(`    ✓ Valid username: ${value}`);
                 return value;
               }
             }
@@ -632,24 +633,24 @@ router.post('/accounts/sync', async (req, res) => {
         
         // Merge and deduplicate
         users = [...new Set([...users, ...additionalUsers])];
-        console.log(`[SYNC] Extracted ${users.length} unique users from candidate keys`);
+        syncLogger.log(`Extracted ${users.length} unique users from candidate keys`);
         }
       }
       }
     } else {
-      console.error('[SYNC] Unexpected response type:', typeof usersResult);
+      syncLogger.error(`Unexpected response type: ${typeof usersResult}`);
     }
     
-    console.log(`[SYNC] Total users found: ${users.length}`);
-    console.log(`[SYNC] Users list:`, users);
+    syncLogger.log(`Total users found: ${users.length}`);
+    syncLogger.log(`Users list:`, users);
     
     if (users.length === 0) {
-      console.warn('[SYNC] No users found to sync!');
-      console.warn('[SYNC] This might indicate:');
-      console.warn('  1. No accounts exist in DirectAdmin');
-      console.warn('  2. The API response format is different than expected');
-      console.warn('  3. The user does not have permission to list users');
-      console.warn('  4. The API command returned an error');
+      syncLogger.warn('No users found to sync!');
+      syncLogger.warn('This might indicate:');
+      syncLogger.warn('  1. No accounts exist in DirectAdmin');
+      syncLogger.warn('  2. The API response format is different than expected');
+      syncLogger.warn('  3. The user does not have permission to list users');
+      syncLogger.warn('  4. The API command returned an error');
       
       return res.json({
         success: true,
@@ -665,34 +666,34 @@ router.post('/accounts/sync', async (req, res) => {
       });
     }
     
-    console.log('[SYNC] Processing users...');
+    syncLogger.log('Processing users...');
     
     for (let i = 0; i < users.length; i++) {
       const username = users[i];
-      console.log(`[SYNC] [${i + 1}/${users.length}] Processing user: ${username}`);
+      syncLogger.log(`[${i + 1}/${users.length}] Processing user: ${username}`);
       
       try {
         if (!username || typeof username !== 'string') {
-          console.warn(`[SYNC]   ⚠️  Skipping invalid username:`, username);
+          syncLogger.warn(`  ⚠️  Skipping invalid username:`, username);
           continue;
         }
         
         // Get user details
-        console.log(`[SYNC]   Fetching user config for: ${username}`);
+        syncLogger.log(`  Fetching user config for: ${username}`);
         const userInfo = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_CONFIG', { user: username });
-        console.log(`[SYNC]   User config received:`, JSON.stringify(userInfo, null, 2));
+        syncLogger.debug(`  User config received:`, userInfo);
         
         if (userInfo.error || userInfo.ERROR) {
-          console.error(`[SYNC]   ❌ Error getting user info for ${username}:`, userInfo.error || userInfo.ERROR);
+          syncLogger.error(`  ❌ Error getting user info for ${username}:`, userInfo.error || userInfo.ERROR);
           continue;
         }
         
         const domain = userInfo.domain || userInfo.DOMAIN || userInfo.name || null;
-        console.log(`[SYNC]   Domain for ${username}: ${domain}`);
+        syncLogger.log(`  Domain for ${username}: ${domain}`);
         
         if (!domain) {
-          console.warn(`[SYNC]   ⚠️  No domain found for user ${username}, skipping`);
-          console.warn(`[SYNC]   Available keys:`, Object.keys(userInfo));
+          syncLogger.warn(`  ⚠️  No domain found for user ${username}, skipping`);
+          syncLogger.warn(`  Available keys:`, Object.keys(userInfo));
           continue;
         }
         
@@ -701,16 +702,16 @@ router.post('/accounts/sync', async (req, res) => {
           'SELECT id FROM hosting_accounts WHERE username = ? OR domain = ?',
           [username, domain]
         );
-        console.log(`[SYNC]   Existing account check: ${existing.length > 0 ? 'Found' : 'New'}`);
+        syncLogger.log(`  Existing account check: ${existing.length > 0 ? 'Found' : 'New'}`);
         
         // Get usage stats
-        console.log(`[SYNC]   Fetching usage stats for: ${username}`);
+        syncLogger.log(`  Fetching usage stats for: ${username}`);
         let usage = {};
         try {
           usage = await makeDirectAdminRequest(config, 'CMD_API_SHOW_USER_USAGE', { user: username });
-          console.log(`[SYNC]   Usage stats:`, JSON.stringify(usage, null, 2));
+          syncLogger.debug(`  Usage stats:`, usage);
         } catch (usageErr) {
-          console.warn(`[SYNC]   ⚠️  Could not fetch usage stats:`, usageErr.message);
+          syncLogger.warn(`  ⚠️  Could not fetch usage stats:`, usageErr.message);
         }
         
         const accountData = {
@@ -728,10 +729,10 @@ router.post('/accounts/sync', async (req, res) => {
           suspended_at: (userInfo.suspended === 'yes' || userInfo.SUSPENDED === 'yes' || userInfo.suspended === true) ? new Date() : null,
         };
         
-        console.log(`[SYNC]   Account data prepared:`, JSON.stringify(accountData, null, 2));
+        syncLogger.debug(`  Account data prepared:`, accountData);
         
         if (existing.length > 0) {
-          console.log(`[SYNC]   Updating existing account (ID: ${existing[0].id})`);
+          syncLogger.log(`  Updating existing account (ID: ${existing[0].id})`);
           await pool.execute(
             `UPDATE hosting_accounts SET 
               domain = ?, package_name = ?, status = ?, 
@@ -746,9 +747,9 @@ router.post('/accounts/sync', async (req, res) => {
             ]
           );
           updated++;
-          console.log(`[SYNC]   ✅ Updated account: ${username}`);
+          syncLogger.log(`  ✅ Updated account: ${username}`);
         } else {
-          console.log(`[SYNC]   Creating new account`);
+          syncLogger.log(`  Creating new account`);
           await pool.execute(
             `INSERT INTO hosting_accounts 
              (domain, username, package_name, status, disk_used, disk_limit, bandwidth_used, bandwidth_limit, ip_address, cpanel_url, suspended_at)
@@ -760,19 +761,19 @@ router.post('/accounts/sync', async (req, res) => {
             ]
           );
           created++;
-          console.log(`[SYNC]   ✅ Created account: ${username}`);
+          syncLogger.log(`  ✅ Created account: ${username}`);
         }
         synced++;
       } catch (err) {
-        console.error(`[SYNC]   ❌ Error syncing account ${username}:`, err.message);
-        console.error(`[SYNC]   Error stack:`, err.stack);
+        syncLogger.error(`  ❌ Error syncing account ${username}:`, err.message);
+        syncLogger.error(`  Error stack:`, err.stack);
       }
     }
     
-    console.log('========================================');
-    console.log(`[SYNC] Sync completed!`);
-    console.log(`[SYNC] Total: ${synced}, Created: ${created}, Updated: ${updated}`);
-    console.log('========================================');
+    syncLogger.log('========================================');
+    syncLogger.log(`Sync completed!`);
+    syncLogger.log(`Total: ${synced}, Created: ${created}, Updated: ${updated}`);
+    syncLogger.log('========================================');
     
     res.json({
       success: true,
@@ -782,10 +783,10 @@ router.post('/accounts/sync', async (req, res) => {
       synced,
     });
   } catch (error) {
-    console.error('========================================');
-    console.error('[SYNC] ❌ Fatal error syncing accounts:', error.message);
-    console.error('[SYNC] Error stack:', error.stack);
-    console.error('========================================');
+    syncLogger.error('========================================');
+    syncLogger.error('❌ Fatal error syncing accounts:', error.message);
+    syncLogger.error('Error stack:', error.stack);
+    syncLogger.error('========================================');
     res.status(500).json({ error: `Failed to sync accounts: ${error.message}` });
   }
 });
@@ -834,7 +835,7 @@ router.post('/accounts', async (req, res) => {
     
     res.json({ success: true, message: 'Hosting account created successfully', account: result });
   } catch (error) {
-    console.error('Error creating hosting account:', error);
+    defaultLogger.error('Error creating hosting account:', error);
     res.status(500).json({ error: `Failed to create account: ${error.message}` });
   }
 });
@@ -865,7 +866,7 @@ router.post('/accounts/:id/suspend', async (req, res) => {
     
     res.json({ success: true, message: 'Account suspended successfully' });
   } catch (error) {
-    console.error('Error suspending account:', error);
+    defaultLogger.error('Error suspending account:', error);
     res.status(500).json({ error: `Failed to suspend account: ${error.message}` });
   }
 });
@@ -896,7 +897,7 @@ router.post('/accounts/:id/unsuspend', async (req, res) => {
     
     res.json({ success: true, message: 'Account unsuspended successfully' });
   } catch (error) {
-    console.error('Error unsuspending account:', error);
+    defaultLogger.error('Error unsuspending account:', error);
     res.status(500).json({ error: `Failed to unsuspend account: ${error.message}` });
   }
 });
@@ -928,7 +929,7 @@ router.post('/accounts/:id/terminate', async (req, res) => {
     
     res.json({ success: true, message: 'Account terminated successfully' });
   } catch (error) {
-    console.error('Error terminating account:', error);
+    defaultLogger.error('Error terminating account:', error);
     res.status(500).json({ error: `Failed to terminate account: ${error.message}` });
   }
 });
@@ -947,7 +948,7 @@ router.put('/accounts/:id', async (req, res) => {
     
     res.json({ success: true, message: 'Account updated successfully' });
   } catch (error) {
-    console.error('Error updating account:', error);
+    defaultLogger.error('Error updating account:', error);
     res.status(500).json({ error: 'Failed to update account' });
   }
 });
@@ -971,7 +972,7 @@ router.get('/accounts/stats', async (req, res) => {
     
     res.json({ stats: stats[0] });
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    defaultLogger.error('Error fetching stats:', error);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
