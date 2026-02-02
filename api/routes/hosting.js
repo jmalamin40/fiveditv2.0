@@ -495,7 +495,7 @@ router.post('/accounts/sync', async (req, res) => {
       users = usersResult.users;
     } else if (typeof usersResult === 'object' && usersResult !== null) {
       console.log('[SYNC] Response is an object, parsing...');
-      
+        console.log(JSON.stringify(usersResult, null, 2), '===list===');
       // First, check if there's a 'list' array (from URL-encoded parsing)
       if (Array.isArray(usersResult.list)) {
         console.log('[SYNC] Found list array property with', usersResult.list.length, 'users');
