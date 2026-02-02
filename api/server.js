@@ -33,6 +33,7 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/admin/categories', require('./routes/adminCategories'));
 app.use('/api/admin/services', require('./routes/adminServices'));
 app.use('/api/admin/codecanyon', require('./routes/adminScripts'));
+app.use('/api/admin/hosting', require('./routes/hosting'));
 app.use('/api/admin', require('./routes/adminProfile'));
 
 // Setup Socket.IO handlers

@@ -235,3 +235,4 @@ JWT_SECRET=your-secret-key
 - Old polling code has been removed from components
 - Database schema remains unchanged
 
+

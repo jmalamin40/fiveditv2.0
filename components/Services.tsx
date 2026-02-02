@@ -87,14 +87,24 @@ export default function Services() {
           )}
         </div>
 
-        <div className="mt-16 text-center">
-          <Link
-            href="/services"
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-8 py-4 rounded-lg hover:shadow-xl transition-all hover:scale-105 font-semibold text-lg"
-          >
-            View All Services
-            <ArrowRight size={20} />
-          </Link>
+        <div className="mt-16 text-center space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/services"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-8 py-4 rounded-lg hover:shadow-xl transition-all hover:scale-105 font-semibold text-lg"
+            >
+              View All Services
+              <ArrowRight size={20} />
+            </Link>
+            <Link
+              href="/hosting"
+              className="inline-flex items-center gap-2 bg-white border-2 border-blue-600 text-blue-600 px-8 py-4 rounded-lg hover:shadow-xl transition-all hover:scale-105 font-semibold text-lg hover:bg-blue-50"
+            >
+              <Server size={20} />
+              Web Hosting Plans
+              <ArrowRight size={20} />
+            </Link>
+          </div>
         </div>
       </div>
     </section>

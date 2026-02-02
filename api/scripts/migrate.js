@@ -223,6 +223,54 @@ async function migrate() {
     `);
     console.log('✅ User online status table created');
 
+    // Create hosting_accounts table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS hosting_accounts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        domain VARCHAR(255) NOT NULL UNIQUE,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        package_name VARCHAR(100) NOT NULL,
+        status ENUM('active', 'suspended', 'terminated', 'pending') DEFAULT 'pending',
+        customer_name VARCHAR(255),
+        customer_email VARCHAR(255),
+        customer_phone VARCHAR(50),
+        disk_used DECIMAL(10, 2) DEFAULT 0,
+        disk_limit DECIMAL(10, 2) DEFAULT 0,
+        bandwidth_used DECIMAL(10, 2) DEFAULT 0,
+        bandwidth_limit DECIMAL(10, 2) DEFAULT 0,
+        ip_address VARCHAR(45),
+        cpanel_url VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NULL,
+        suspended_at TIMESTAMP NULL,
+        notes TEXT,
+        whm_account_id INT,
+        INDEX idx_status (status),
+        INDEX idx_domain (domain),
+        INDEX idx_username (username),
+        INDEX idx_customer_email (customer_email)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Hosting accounts table created');
+
+    // Create hosting_config table (stores WHM credentials and settings)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS hosting_config (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        whm_host VARCHAR(255) NOT NULL,
+        whm_username VARCHAR(100) NOT NULL,
+        whm_password_encrypted TEXT NOT NULL,
+        whm_port INT DEFAULT 2087,
+        whm_ssl BOOLEAN DEFAULT TRUE,
+        reseller_username VARCHAR(100),
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_config (id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Hosting config table created');
+
     console.log('\n🎉 Database migration completed successfully!');
     
   } catch (error) {

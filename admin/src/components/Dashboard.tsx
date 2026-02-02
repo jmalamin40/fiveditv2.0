@@ -3,6 +3,7 @@ import CategoriesManager from './CategoriesManager';
 import ServicesManager from './ServicesManager';
 import ScriptsManager from './ScriptsManager';
 import ChatManager from './ChatManager';
+import HostingManager from './HostingManager';
 import ProfileManager from './ProfileManager';
 import { fetchAdminProfile } from '../api';
 
@@ -21,6 +22,7 @@ const tabs = [
   { id: 'categories', label: 'Categories', icon: '📁' },
   { id: 'services', label: 'Services', icon: '⚙️' },
   { id: 'scripts', label: 'CodeCanyon Scripts', icon: '💻' },
+  { id: 'hosting', label: 'Hosting', icon: '🖥️' },
   { id: 'chat', label: 'Support Chat', icon: '💬' },
   { id: 'profile', label: 'Profile', icon: '👤' },
 ];
@@ -94,6 +96,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
         {activeTab === 'categories' && <CategoriesManager token={token} />}
         {activeTab === 'services' && <ServicesManager token={token} />}
         {activeTab === 'scripts' && <ScriptsManager token={token} />}
+        {activeTab === 'hosting' && <HostingManager token={token} />}
         {activeTab === 'chat' && <ChatManager token={token} />}
         {activeTab === 'profile' && <ProfileManager token={token} />}
       </main>
