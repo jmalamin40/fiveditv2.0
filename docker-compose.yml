@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:10.6.16
+    container_name: fivedit-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-fivedit_db}
+      MYSQL_USER: ${DB_USER:-fivedit_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-fivedit_password}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max-connections=200
+      --max-user-connections=50
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fivedit-network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: fivedit-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USER:-fivedit_user}
+      PMA_PASSWORD: ${DB_PASSWORD:-fivedit_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      UPLOAD_LIMIT: 300M
+    ports:
+      - "${PMA_PORT:-8080}:80"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - fivedit-network
+
+volumes:
+  mariadb_data:
+    driver: local
+
+networks:
+  fivedit-network:
+    driver: bridge
+

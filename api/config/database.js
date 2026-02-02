@@ -12,8 +12,8 @@ const dbConfig = {
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  acquireTimeout: 10000, // 10 second timeout for getting connection from pool
-  timeout: 60000, // 60 second timeout for queries
+  // Note: acquireTimeout and timeout are not valid options for mysql2
+  // Query timeouts should be handled at the query level if needed
 };
 
 // Create connection pool
