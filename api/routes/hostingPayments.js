@@ -403,6 +403,7 @@ router.get('/orders/status/:transaction_id', async (req, res) => {
 // Payment webhook handler
 router.post('/webhook', async (req, res) => {
   try {
+    syncLogger.info('Webhook received:', req.body);
     const { transaction_id, status, order_id } = req.body;
 
     if (!transaction_id || !status) {
