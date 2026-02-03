@@ -242,7 +242,7 @@ router.post('/orders', async (req, res) => {
 
       const transactionId = paymentResponse.data.transaction_id;
       const paymentUrl = paymentResponse.data.payment_url;
-
+      syncLogger.info('Payment response:', paymentResponse.data);
       // Update order with transaction ID and payment URL
       await pool.execute(
         'UPDATE hosting_orders SET transaction_id = ?, payment_url = ?, payment_gateway_response = ? WHERE id = ?',
@@ -253,7 +253,7 @@ router.post('/orders', async (req, res) => {
           orderResult.insertId,
         ]
       );
-
+      syncLogger.info('Order updated:', orderResult.insertId);
       // Send order confirmation email
       try {
         await sendOrderConfirmationEmail({
@@ -269,7 +269,7 @@ router.post('/orders', async (req, res) => {
         defaultLogger.error('Failed to send order confirmation email:', emailError);
         // Don't fail the order creation if email fails
       }
-
+      syncLogger.info('Order confirmation email sent:', customer_email);
       res.json({
         success: true,
         order_id: orderId,
@@ -280,7 +280,7 @@ router.post('/orders', async (req, res) => {
       });
     } catch (paymentError) {
       defaultLogger.error('Payment gateway error:', paymentError.response?.data || paymentError.message);
-      
+      syncLogger.error('Payment gateway error:', paymentError.response?.data || paymentError.message);
       // Check if it's a URL validation error
       const errorData = paymentError.response?.data;
       if (errorData && (errorData.message?.includes('URL') || errorData.message?.includes('url'))) {
