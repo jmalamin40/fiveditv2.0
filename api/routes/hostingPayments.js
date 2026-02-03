@@ -53,6 +53,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
     const makeRequest = (useSSL) => {
       const httpModule = useSSL ? require('https') : require('http');
       let url, options;
+      let formData; // Declare formData in function scope
       
       if (method === 'GET') {
         const queryParams = new URLSearchParams({
@@ -73,7 +74,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
         };
       } else {
         url = `/${command}`;
-        const formData = new URLSearchParams(params);
+        formData = new URLSearchParams(params);
         
         options = {
           hostname: hostname,
