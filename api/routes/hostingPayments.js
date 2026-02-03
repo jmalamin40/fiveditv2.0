@@ -43,13 +43,23 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
     const hostname = config.whm_host;
     const trySSL = config.whm_ssl !== false;
     
+    defaultLogger.log(`Making ${method} request to ${hostname}:${port}`);
+    defaultLogger.log(`Command: ${command}`);
+    defaultLogger.log(`Using ${trySSL ? 'HTTPS' : 'HTTP'}`);
+    if (Object.keys(params).length > 0) {
+      defaultLogger.debug(`Params:`, params);
+    }
+    
     const makeRequest = (useSSL) => {
       const httpModule = useSSL ? require('https') : require('http');
       let url, options;
       
       if (method === 'GET') {
-        const queryParams = new URLSearchParams(params);
+        const queryParams = new URLSearchParams({
+          ...params,
+        });
         url = `/${command}?${queryParams}`;
+        
         options = {
           hostname: hostname,
           port: port,
@@ -64,6 +74,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       } else {
         url = `/${command}`;
         const formData = new URLSearchParams(params);
+        
         options = {
           hostname: hostname,
           port: port,
@@ -73,6 +84,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
             'Authorization': `Basic ${auth}`,
             'Content-Type': 'application/x-www-form-urlencoded',
             'Content-Length': Buffer.byteLength(formData.toString()),
+            'Accept': 'application/json',
           },
           rejectUnauthorized: false,
         };
@@ -80,40 +92,153 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
       
       const req = httpModule.request(options, (res) => {
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
+        
+        defaultLogger.log(`Response status: ${res.statusCode}`);
+        defaultLogger.debug(`Response headers:`, res.headers);
+        
+        // Check if response is valid HTTP
+        if (res.statusCode === undefined) {
+          return reject(new Error('Invalid HTTP response from server. Check host and port.'));
+        }
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
         res.on('end', () => {
           try {
-            if (res.statusCode === 200) {
-              // Try to parse as JSON first
-              try {
-                const json = JSON.parse(data);
+            defaultLogger.debug(`Raw response length: ${data.length} bytes`);
+            defaultLogger.debug(`Raw response (first 500 chars):`, data.substring(0, 500));
+            
+            // Check for HTTP error status
+            if (res.statusCode >= 400) {
+              defaultLogger.error(`HTTP Error ${res.statusCode}:`, data.substring(0, 500));
+              return reject(new Error(`DirectAdmin API returned status ${res.statusCode}: ${data.substring(0, 200)}`));
+            }
+            
+            // DirectAdmin can return JSON or key=value format
+            if (data.trim().startsWith('{')) {
+              const json = JSON.parse(data);
+              defaultLogger.debug(`Parsed JSON response:`, json);
+              if (json.error) {
+                defaultLogger.error(`JSON error:`, json.error);
+                reject(new Error(json.error || 'DirectAdmin API error'));
+              } else {
                 resolve(json);
-              } catch {
-                // If not JSON, parse as key=value or URL-encoded
-                const parsed = {};
-                if (data.includes('=')) {
-                  const pairs = data.split('\n').filter(line => line.includes('='));
-                  pairs.forEach(pair => {
-                    const [key, ...valueParts] = pair.split('=');
-                    if (key && valueParts.length > 0) {
-                      parsed[key.trim()] = decodeURIComponent(valueParts.join('=').trim());
-                    }
-                  });
-                }
-                resolve(parsed);
               }
             } else {
-              reject(new Error(`DirectAdmin API error: ${res.statusCode} - ${data}`));
+              // Parse key=value format
+              const result = {};
+              
+              // Check if data is in single-line URL-encoded format (key=value&key=value&...)
+              // This is common in DirectAdmin responses
+              const isSingleLineUrlEncoded = data.includes('&') && data.includes('=') && !data.includes('\n') && data.split('&').length > 3;
+              
+              if (isSingleLineUrlEncoded) {
+                defaultLogger.log(`Detected single-line URL-encoded format`);
+                try {
+                  // Parse as URL-encoded query string
+                  const urlParams = new URLSearchParams(data);
+                  
+                  // First, check if there are list[] entries (for CMD_API_SHOW_USERS)
+                  const listValues = urlParams.getAll('list[]');
+                  if (listValues.length > 0) {
+                    defaultLogger.log(`Found ${listValues.length} users in list[] format`);
+                    result.list = listValues;
+                    // Also add them as list[0], list[1], etc. for compatibility
+                    listValues.forEach((user, index) => {
+                      result[`list[${index}]`] = user;
+                    });
+                  }
+                  
+                  // Parse all other key-value pairs
+                  for (const [key, value] of urlParams.entries()) {
+                    // Skip if already processed as list[]
+                    if (key === 'list[]') continue;
+                    
+                    // Try to parse as number or boolean
+                    let parsedValue = value;
+                    if (value === 'yes') parsedValue = true;
+                    else if (value === 'no') parsedValue = false;
+                    else if (!isNaN(value) && value !== '') parsedValue = parseFloat(value);
+                    result[key] = parsedValue;
+                  }
+                  defaultLogger.log(`Parsed ${Object.keys(result).length} key-value pairs from URL-encoded format`);
+                } catch (urlErr) {
+                  defaultLogger.warn(`Failed to parse as URLSearchParams, trying manual parsing:`, urlErr.message);
+                  // Fallback: manual parsing
+                  const parts = data.split('&');
+                  const listUsers = [];
+                  
+                  for (const part of parts) {
+                    const [key, ...valueParts] = part.split('=');
+                    if (key && valueParts.length > 0) {
+                      let value = decodeURIComponent(valueParts.join('='));
+                      
+                      // Check if it's a list[] entry
+                      if (key === 'list[]' || key.toLowerCase() === 'list%5b%5d') {
+                        listUsers.push(value);
+                        continue;
+                      }
+                      
+                      // Try to parse as number or boolean
+                      if (value === 'yes') value = true;
+                      else if (value === 'no') value = false;
+                      else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                      result[key] = value;
+                    }
+                  }
+                  
+                  if (listUsers.length > 0) {
+                    defaultLogger.log(`Found ${listUsers.length} users in manual parsing`);
+                    result.list = listUsers;
+                    listUsers.forEach((user, index) => {
+                      result[`list[${index}]`] = user;
+                    });
+                  }
+                }
+              } else {
+                // Parse newline-separated key=value format
+                const pairs = data.split('\n').filter(line => line.includes('='));
+                pairs.forEach(pair => {
+                  const [key, ...valueParts] = pair.split('=');
+                  if (key && valueParts.length > 0) {
+                    let value = decodeURIComponent(valueParts.join('=').trim());
+                    
+                    // Try to parse as number or boolean
+                    if (value === 'yes') value = true;
+                    else if (value === 'no') value = false;
+                    else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                    
+                    result[key.trim()] = value;
+                  }
+                });
+              }
+              
+              // Check for error in parsed result
+              if (result.error) {
+                defaultLogger.error(`Error in response:`, result.error);
+                reject(new Error(result.error || 'DirectAdmin API error'));
+              } else if (result.text === 'error' || result.text && result.text.toLowerCase().includes('error')) {
+                defaultLogger.error(`Error text in response:`, result.text);
+                reject(new Error(result.text || 'DirectAdmin API error'));
+              } else {
+                defaultLogger.log(`Parsed ${Object.keys(result).length} key-value pairs`);
+                resolve(result);
+              }
             }
           } catch (error) {
+            defaultLogger.error(`Error parsing DirectAdmin response:`, error);
             reject(error);
           }
         });
       });
       
       req.on('error', (error) => {
+        defaultLogger.error(`Request error:`, error);
         if (useSSL && trySSL) {
           // Retry with HTTP if SSL fails
+          defaultLogger.log(`Retrying with HTTP...`);
           makeRequest(false);
         } else {
           reject(error);
@@ -594,13 +719,13 @@ router.post('/webhook', async (req, res) => {
           throw daError;
         }
         
-        // Check for error in response
-        if (daResult.error || daResult.text === 'error' || daResult.error === '1' || daResult.error === 1) {
+        // Check for error in response (same as working version in hosting.js)
+        if (daResult.error) {
           defaultLogger.error('❌ DirectAdmin account creation failed - error in response');
           defaultLogger.error('   Response:', JSON.stringify(daResult, null, 2));
           await pool.execute(
             'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
-            [JSON.stringify({ ...req.body, da_error: daResult }), order.id]
+            [JSON.stringify({ ...req.body, da_error: daResult.error || daResult }), order.id]
           );
           return res.json({ success: true, message: 'Webhook processed, but account creation failed' });
         }

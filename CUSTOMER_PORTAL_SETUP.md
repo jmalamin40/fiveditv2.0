@@ -198,3 +198,4 @@ Sent after account creation, includes:
 - DirectAdmin account creation happens automatically after payment
 - All customer routes require authentication
 
+
