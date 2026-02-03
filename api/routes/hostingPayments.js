@@ -2,10 +2,140 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const axios = require('axios');
+const crypto = require('crypto');
+const { defaultLogger, syncLogger } = require('../utils/logger');
+const { sendHostingCredentialsEmail, sendOrderConfirmationEmail } = require('../utils/email');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'http://localhost:3000';
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
+
+// Helper function to get DirectAdmin config and make requests
+async function getDirectAdminConfig() {
+  const [configs] = await pool.execute(
+    'SELECT * FROM hosting_config WHERE is_active = TRUE LIMIT 1'
+  );
+  return configs.length > 0 ? configs[0] : null;
+}
+
+// Helper function to decrypt password
+function decryptPassword(encryptedPassword) {
+  const algorithm = 'aes-256-cbc';
+  const envKey = process.env.ENCRYPTION_KEY;
+  const key = envKey && envKey.length >= 32 
+    ? Buffer.from(envKey.substring(0, 32), 'utf8')
+    : Buffer.from('default-encryption-key-32-chars!!', 'utf8');
+  const iv = Buffer.from(encryptedPassword.substring(0, 32), 'hex');
+  const encrypted = encryptedPassword.substring(32);
+  
+  const decipher = crypto.createDecipheriv(algorithm, key, iv);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// Helper function to make DirectAdmin request
+function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
+  return new Promise((resolve, reject) => {
+    const password = decryptPassword(config.whm_password_encrypted);
+    const auth = Buffer.from(`${config.whm_username}:${password}`).toString('base64');
+    const port = config.whm_port || 2222;
+    const hostname = config.whm_host;
+    const trySSL = config.whm_ssl !== false;
+    
+    const makeRequest = (useSSL) => {
+      const httpModule = useSSL ? require('https') : require('http');
+      let url, options;
+      
+      if (method === 'GET') {
+        const queryParams = new URLSearchParams(params);
+        url = `/${command}?${queryParams}`;
+        options = {
+          hostname: hostname,
+          port: port,
+          path: url,
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Accept': 'application/json',
+          },
+          rejectUnauthorized: false,
+        };
+      } else {
+        url = `/${command}`;
+        const formData = new URLSearchParams(params);
+        options = {
+          hostname: hostname,
+          port: port,
+          path: url,
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(formData.toString()),
+          },
+          rejectUnauthorized: false,
+        };
+      }
+      
+      const req = httpModule.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 200) {
+              // Try to parse as JSON first
+              try {
+                const json = JSON.parse(data);
+                resolve(json);
+              } catch {
+                // If not JSON, parse as key=value or URL-encoded
+                const parsed = {};
+                if (data.includes('=')) {
+                  const pairs = data.split('\n').filter(line => line.includes('='));
+                  pairs.forEach(pair => {
+                    const [key, ...valueParts] = pair.split('=');
+                    if (key && valueParts.length > 0) {
+                      parsed[key.trim()] = decodeURIComponent(valueParts.join('=').trim());
+                    }
+                  });
+                }
+                resolve(parsed);
+              }
+            } else {
+              reject(new Error(`DirectAdmin API error: ${res.statusCode} - ${data}`));
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        if (useSSL && trySSL) {
+          // Retry with HTTP if SSL fails
+          makeRequest(false);
+        } else {
+          reject(error);
+        }
+      });
+      
+      if (method === 'POST') {
+        req.write(formData.toString());
+      }
+      req.end();
+    };
+    
+    makeRequest(trySSL);
+  });
+}
+
+// Generate secure random password
+function generatePassword(length = 16) {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  const values = crypto.getRandomValues(new Uint32Array(length));
+  return Array.from(values, x => charset[x % charset.length]).join('');
+}
 
 // Create payment order for hosting
 router.post('/orders', async (req, res) => {
@@ -63,21 +193,43 @@ router.post('/orders', async (req, res) => {
         `${FRONTEND_URL}/hosting/payment/cancel`,
       ]
     );
+    syncLogger.info('Hosting order created:', orderResult);
+    
+    // Validate and construct URLs
+    const validateUrl = (url) => {
+      try {
+        const urlObj = new URL(url);
+        // Check if URL is localhost (payment gateway may not accept this)
+        if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+          defaultLogger.warn(`⚠️  Using localhost URL: ${url}`);
+          defaultLogger.warn('   Payment gateway may reject localhost URLs. Consider using ngrok or a public domain.');
+        }
+        return urlObj.toString();
+      } catch (error) {
+        defaultLogger.error('Invalid URL format:', url, error);
+        throw new Error(`Invalid URL format: ${url}`);
+      }
+    };
+
+    // Construct URLs with proper encoding
+    const returnUrl = validateUrl(`${FRONTEND_URL}/hosting/payment/success?order_id=${encodeURIComponent(orderId)}`);
+    const cancelUrl = validateUrl(`${FRONTEND_URL}/hosting/payment/cancel?order_id=${encodeURIComponent(orderId)}`);
+    const webhookUrl = validateUrl(`${process.env.API_BASE_URL || 'http://localhost:3001'}/api/hosting/payments/webhook`);
 
     // Create payment order with payment gateway
     const paymentGatewayData = {
       order_id: orderResult.insertId, // Use database ID as order_id for payment gateway
-      amount: amount.toFixed(2),
+      amount: Number(amount)?.toFixed(2) || 0,
       currency: packageData.currency,
       customer_name,
       customer_email,
       customer_phone: customer_phone || '',
-      return_url: `${FRONTEND_URL}/hosting/payment/success?order_id=${orderId}`,
-      cancel_url: `${FRONTEND_URL}/hosting/payment/cancel?order_id=${orderId}`,
+      return_url: returnUrl,
+      cancel_url: cancelUrl,
       api_key: PAYMENT_API_KEY,
-      webhook_url: `${process.env.API_BASE_URL || 'http://localhost:3001'}/api/hosting/payments/webhook`,
+      webhook_url: webhookUrl,
     };
-
+    syncLogger.info('Payment gateway data:', paymentGatewayData);
     try {
       const paymentResponse = await axios.post(
         `${PAYMENT_GATEWAY_URL}/orders`,
@@ -102,6 +254,22 @@ router.post('/orders', async (req, res) => {
         ]
       );
 
+      // Send order confirmation email
+      try {
+        await sendOrderConfirmationEmail({
+          to: customer_email,
+          customerName: customer_name,
+          orderId: orderId,
+          packageName: packageData.display_name,
+          amount: amount,
+          currency: packageData.currency,
+          billingPeriod: billing_period,
+        });
+      } catch (emailError) {
+        defaultLogger.error('Failed to send order confirmation email:', emailError);
+        // Don't fail the order creation if email fails
+      }
+
       res.json({
         success: true,
         order_id: orderId,
@@ -111,7 +279,15 @@ router.post('/orders', async (req, res) => {
         currency: packageData.currency,
       });
     } catch (paymentError) {
-      console.error('Payment gateway error:', paymentError.response?.data || paymentError.message);
+      defaultLogger.error('Payment gateway error:', paymentError.response?.data || paymentError.message);
+      
+      // Check if it's a URL validation error
+      const errorData = paymentError.response?.data;
+      if (errorData && (errorData.message?.includes('URL') || errorData.message?.includes('url'))) {
+        defaultLogger.error('URL validation error. Payment gateway may not accept localhost URLs.');
+        defaultLogger.error('Current FRONTEND_URL:', FRONTEND_URL);
+        defaultLogger.error('For development, consider using ngrok or a public URL.');
+      }
       
       // Update order status to failed
       await pool.execute(
@@ -125,6 +301,9 @@ router.post('/orders', async (req, res) => {
       return res.status(500).json({
         error: 'Failed to create payment order',
         details: paymentError.response?.data || paymentError.message,
+        hint: errorData?.message?.includes('URL') 
+          ? 'Payment gateway may not accept localhost URLs. Use a public URL or ngrok for development.'
+          : undefined,
       });
     }
   } catch (error) {
@@ -253,25 +432,136 @@ router.post('/webhook', async (req, res) => {
       [status, status, JSON.stringify(req.body), order.id]
     );
 
-    // If payment is successful, create hosting account
+    // If payment is successful, create hosting account automatically
     if (status === 'paid' && order.status !== 'paid') {
       try {
-        // Import hosting routes to create account
-        const hostingRoutes = require('./hosting');
+        defaultLogger.log(`💰 Payment successful for order ${order.order_id}. Creating hosting account...`);
         
-        // Create hosting account via DirectAdmin
-        // This will be handled by the hosting account creation endpoint
-        // For now, we'll just log it
-        console.log('Payment successful, should create hosting account for order:', order.order_id);
+        // Get DirectAdmin config
+        const config = await getDirectAdminConfig();
+        if (!config) {
+          defaultLogger.error('❌ No DirectAdmin configuration found. Cannot create account.');
+          await pool.execute(
+            'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
+            [JSON.stringify({ ...req.body, error: 'No DirectAdmin config found' }), order.id]
+          );
+          return res.json({ success: true, message: 'Webhook processed, but account creation failed (no config)' });
+        }
         
-        // You can trigger account creation here or use a queue system
-        // For now, we'll set a flag that can be processed later
-        await pool.execute(
-          'UPDATE hosting_orders SET status = "completed" WHERE id = ?',
-          [order.id]
+        // Get package details to determine package name
+        const [packages] = await pool.execute(
+          'SELECT * FROM hosting_packages WHERE id = ?',
+          [order.package_id]
         );
+        
+        if (packages.length === 0) {
+          defaultLogger.error(`❌ Package ${order.package_id} not found for order ${order.order_id}`);
+          await pool.execute(
+            'UPDATE hosting_orders SET status = "paid" WHERE id = ?',
+            [order.id]
+          );
+          return res.json({ success: true, message: 'Webhook processed, but package not found' });
+        }
+        
+        const packageData = packages[0];
+        const packageName = packageData.name; // Use package name (slug) for DirectAdmin
+        
+        // Generate username if not provided (use domain without extension or customer email prefix)
+        let username = order.username;
+        if (!username) {
+          if (order.domain) {
+            username = order.domain.split('.')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+          } else {
+            username = order.customer_email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+          }
+          // Ensure username is unique by appending random string if needed
+          username = username.substring(0, 8) + Math.random().toString(36).substring(2, 6);
+        }
+        
+        // Generate secure password if not provided
+        const password = generatePassword(16);
+        
+        // Use domain from order or generate one
+        let domain = order.domain;
+        if (!domain) {
+          // Generate a temporary domain or use a subdomain
+          domain = `${username}.${config.whm_host || 'example.com'}`;
+        }
+        
+        // Create account via DirectAdmin API
+        const params = {
+          action: 'create',
+          add: 'Submit',
+          username: username,
+          email: order.customer_email,
+          passwd: password,
+          passwd2: password,
+          domain: domain,
+          package: packageName,
+          ip: 'shared',
+          notify: 'yes',
+        };
+        
+        defaultLogger.log(`Creating DirectAdmin account: username=${username}, domain=${domain}, package=${packageName}`);
+        const daResult = await makeDirectAdminRequest(config, 'CMD_API_ACCOUNT_USER', params, 'POST');
+        
+        if (daResult.error || daResult.text === 'error') {
+          defaultLogger.error('❌ DirectAdmin account creation failed:', daResult);
+          await pool.execute(
+            'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
+            [JSON.stringify({ ...req.body, da_error: daResult }), order.id]
+          );
+          return res.json({ success: true, message: 'Webhook processed, but account creation failed' });
+        }
+        
+        defaultLogger.log('✅ DirectAdmin account created successfully');
+        
+        // Save account to database
+        const [accountResult] = await pool.execute(
+          `INSERT INTO hosting_accounts 
+           (domain, username, package_name, status, customer_name, customer_email, customer_phone)
+           VALUES (?, ?, ?, 'active', ?, ?, ?)`,
+          [domain, username, packageName, order.customer_name, order.customer_email, order.customer_phone]
+        );
+        
+        const hostingAccountId = accountResult.insertId;
+        
+        // Update order with hosting account ID and mark as completed
+        await pool.execute(
+          'UPDATE hosting_orders SET status = "completed", hosting_account_id = ? WHERE id = ?',
+          [hostingAccountId, order.id]
+        );
+        
+        // Get DirectAdmin URL (construct from config)
+        const protocol = config.whm_ssl !== false ? 'https' : 'http';
+        const directAdminUrl = `${protocol}://${config.whm_host}:${config.whm_port || 2222}`;
+        
+        // Send credentials email to customer
+        try {
+          await sendHostingCredentialsEmail({
+            to: order.customer_email,
+            customerName: order.customer_name,
+            domain: domain,
+            username: username,
+            password: password,
+            packageName: order.package_name,
+            directAdminUrl: directAdminUrl,
+            cpanelUrl: null, // DirectAdmin doesn't use cPanel
+          });
+          defaultLogger.log(`✅ Credentials email sent to ${order.customer_email}`);
+        } catch (emailError) {
+          defaultLogger.error('❌ Failed to send credentials email:', emailError);
+          // Don't fail the webhook if email fails
+        }
+        
+        defaultLogger.log(`✅ Order ${order.order_id} completed successfully. Account ID: ${hostingAccountId}`);
       } catch (accountError) {
-        console.error('Error creating hosting account after payment:', accountError);
+        defaultLogger.error('❌ Error creating hosting account after payment:', accountError);
+        // Update order status to paid (even if account creation failed)
+        await pool.execute(
+          'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
+          [JSON.stringify({ ...req.body, account_creation_error: accountError.message }), order.id]
+        );
         // Don't fail the webhook, just log the error
       }
     }

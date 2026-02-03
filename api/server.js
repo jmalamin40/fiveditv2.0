@@ -26,6 +26,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/customer/auth', require('./routes/customerAuth'));
+app.use('/api/customer', require('./routes/customer'));
 app.use('/api/services', require('./routes/services'));
 app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/codecanyon', require('./routes/codecanyon'));

@@ -236,3 +236,154 @@ export async function getHostingOrderStatus(orderId: string): Promise<any> {
   return response.json();
 }
 
+// Customer Authentication
+export interface CustomerUser {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  role: 'customer';
+}
+
+export interface CustomerLoginResponse {
+  token: string;
+  user: CustomerUser;
+}
+
+export async function customerRegister(data: {
+  email: string;
+  password: string;
+  name: string;
+  phone?: string;
+}): Promise<CustomerLoginResponse> {
+  const response = await fetch(`${API_BASE_URL}/customer/auth/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to register');
+  }
+  return response.json();
+}
+
+export async function customerLogin(email: string, password: string): Promise<CustomerLoginResponse> {
+  const response = await fetch(`${API_BASE_URL}/customer/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to login');
+  }
+  return response.json();
+}
+
+// Customer Portal
+export interface CustomerOrder {
+  order_id: string;
+  transaction_id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  billing_period: string;
+  package_name: string;
+  domain?: string;
+  username?: string;
+  created_at: string;
+  paid_at?: string;
+  hosting_account_id?: number;
+  package_display_name?: string;
+  account_status?: string;
+  disk_used?: number;
+  disk_limit?: number;
+  bandwidth_used?: number;
+  bandwidth_limit?: number;
+}
+
+export interface CustomerAccount {
+  id: number;
+  domain: string;
+  username: string;
+  package_name: string;
+  status: string;
+  disk_used: number;
+  disk_limit: number;
+  bandwidth_used: number;
+  bandwidth_limit: number;
+  ip_address?: string;
+  created_at: string;
+  expires_at?: string;
+  order_id?: string;
+  billing_period?: string;
+}
+
+export async function getCustomerOrders(token: string): Promise<{ orders: CustomerOrder[] }> {
+  const response = await fetch(`${API_BASE_URL}/customer/orders`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch orders');
+  }
+  return response.json();
+}
+
+export async function getCustomerAccounts(token: string): Promise<{ accounts: CustomerAccount[] }> {
+  const response = await fetch(`${API_BASE_URL}/customer/accounts`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch accounts');
+  }
+  return response.json();
+}
+
+export async function getCustomerOrder(token: string, orderId: string): Promise<{ order: CustomerOrder }> {
+  const response = await fetch(`${API_BASE_URL}/customer/orders/${orderId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch order');
+  }
+  return response.json();
+}
+
+export async function getCustomerProfile(token: string): Promise<{ user: CustomerUser }> {
+  const response = await fetch(`${API_BASE_URL}/customer/profile`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch profile');
+  }
+  return response.json();
+}
+
+export async function updateCustomerProfile(token: string, data: { name: string; phone?: string }): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/customer/profile`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update profile');
+  }
+  return response.json();
+}
+

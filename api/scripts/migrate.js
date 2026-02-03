@@ -348,6 +348,22 @@ async function migrate() {
     `);
     console.log('✅ Hosting orders table created');
 
+    // Create customer_users table (for customer portal authentication)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS customer_users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        last_login TIMESTAMP NULL,
+        INDEX idx_email (email)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Customer users table created');
+
     console.log('\n🎉 Database migration completed successfully!');
     
   } catch (error) {
