@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import CategoriesManager from './CategoriesManager';
 import ServicesManager from './ServicesManager';
 import ScriptsManager from './ScriptsManager';
@@ -30,7 +31,6 @@ const tabs = [
 ];
 
 export default function Dashboard({ token, user, onLogout }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState('categories');
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const toast = useToast();
 
@@ -76,14 +76,15 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
 
         <nav className="nav">
           {tabs.map((tab) => (
-            <button
+            <NavLink
               key={tab.id}
-              className={activeTab === tab.id ? 'nav-item active' : 'nav-item'}
-              onClick={() => setActiveTab(tab.id)}
+              to={`/admin/${tab.id}`}
+              className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
+              end={tab.id !== 'hosting'}
             >
               <span className="nav-icon">{tab.icon}</span>
               <span className="nav-label">{tab.label}</span>
-            </button>
+            </NavLink>
           ))}
         </nav>
 
@@ -96,12 +97,16 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
       </aside>
 
       <main className="content">
-        {activeTab === 'categories' && <CategoriesManager token={token} />}
-        {activeTab === 'services' && <ServicesManager token={token} />}
-        {activeTab === 'scripts' && <ScriptsManager token={token} />}
-        {activeTab === 'hosting' && <HostingManager token={token} toast={toast} />}
-        {activeTab === 'chat' && <ChatManager token={token} />}
-        {activeTab === 'profile' && <ProfileManager token={token} />}
+        <Routes>
+          <Route path="categories" element={<CategoriesManager token={token} />} />
+          <Route path="services" element={<ServicesManager token={token} />} />
+          <Route path="scripts" element={<ScriptsManager token={token} />} />
+          <Route path="hosting/*" element={<HostingManager token={token} toast={toast} />} />
+          <Route path="chat" element={<ChatManager token={token} />} />
+          <Route path="profile" element={<ProfileManager token={token} />} />
+          <Route path="" element={<Navigate to="categories" replace />} />
+          <Route path="*" element={<Navigate to="categories" replace />} />
+        </Routes>
       </main>
       <ToastContainer toasts={toast.toasts} onClose={toast.removeToast} />
       <style>{`

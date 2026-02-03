@@ -45,6 +45,39 @@ export interface Review {
   helpfulCount: number;
 }
 
+export interface HostingPackage {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  price_monthly: number;
+  price_yearly: number;
+  currency: string;
+  disk_space_gb: number;
+  bandwidth_gb: number | null;
+  domains: number | null;
+  email_accounts: number | null;
+  databases: number | null;
+  ssl_included: boolean;
+  backups: string | null;
+  support_type: string | null;
+  cpanel: boolean;
+  wordpress: boolean;
+  php_version: string | null;
+  nodejs: boolean;
+  python: boolean;
+  popular: boolean;
+  is_active: boolean;
+}
+
+export interface HostingOrder {
+  order_id: string;
+  transaction_id: string;
+  payment_url: string;
+  amount: number;
+  currency: string;
+}
+
 export interface CodeCanyonScript {
   id: string;
   name: string;
@@ -129,5 +162,77 @@ export async function fetchScriptsByCategory(category: string): Promise<CodeCany
   }
   const data = await response.json();
   return data.scripts;
+}
+
+export async function fetchHostingPackages(): Promise<HostingPackage[]> {
+  const url = `${API_BASE_URL}/hosting/packages`;
+  console.log('[API] Fetching hosting packages from:', url);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    console.log('[API] Response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      console.error('[API] Error response:', errorData);
+      throw new Error(errorData.error || `Failed to fetch hosting packages: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('[API] Packages received:', data.packages?.length || 0);
+    return data.packages || [];
+  } catch (error) {
+    console.error('[API] Fetch error:', error);
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(`Network error: Unable to connect to API at ${url}. Please check if the API server is running.`);
+    }
+    throw error;
+  }
+}
+
+export async function fetchHostingPackage(id: number): Promise<HostingPackage> {
+  const response = await fetch(`${API_BASE_URL}/hosting/packages/${id}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch hosting package');
+  }
+  const data = await response.json();
+  return data.package;
+}
+
+export async function createHostingOrder(data: {
+  package_id: number;
+  billing_period: 'monthly' | 'yearly';
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string;
+  domain?: string;
+  username?: string;
+}): Promise<HostingOrder> {
+  const response = await fetch(`${API_BASE_URL}/hosting/payments/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create hosting order');
+  }
+  return response.json();
+}
+
+export async function getHostingOrderStatus(orderId: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/hosting/payments/orders/${orderId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch order status');
+  }
+  return response.json();
 }
 

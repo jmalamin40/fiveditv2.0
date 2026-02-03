@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Server, RefreshCw, Plus, Search, Filter, MoreVertical, Play, Pause, Trash2, Edit, Settings, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Server, RefreshCw, Plus, Search, Filter, MoreVertical, Play, Pause, Trash2, Edit, Settings, CheckCircle, XCircle, AlertCircle, Package } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
+import HostingPackagesManager from './HostingPackagesManager';
 
 interface Props {
   token: string;
@@ -64,6 +65,7 @@ export default function HostingManager({ token, toast }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+  const [activeTab, setActiveTab] = useState<'accounts' | 'packages'>('accounts');
   
   const [configForm, setConfigForm] = useState({
     whm_host: '',
@@ -333,80 +335,105 @@ export default function HostingManager({ token, toast }: Props) {
             <p>Manage your AsuraHosting reseller accounts</p>
           </div>
           <div className="flex gap-2">
-            {!config && (
-              <button className="btn-primary" onClick={() => setShowConfigModal(true)}>
-                <Settings size={16} />
-                Configure DirectAdmin
-              </button>
-            )}
-            {config && (
-              <>
-                <button className="btn-secondary" onClick={() => setShowConfigModal(true)}>
-                  <Settings size={16} />
-                  Settings
-                </button>
-                <button className="btn-secondary" onClick={handleTestConnection}>
-                  Test Connection
-                </button>
-                <button className="btn-primary" onClick={handleSyncAccounts} disabled={syncing}>
-                  <RefreshCw size={16} className={syncing ? 'spinning' : ''} />
-                  {syncing ? 'Syncing...' : 'Sync from DirectAdmin'}
-                </button>
-                <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-                  <Plus size={16} />
-                  Create Account
-                </button>
-              </>
-            )}
+            <button
+              className={`btn-sm ${activeTab === 'accounts' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveTab('accounts')}
+            >
+              <Server size={16} />
+              Accounts
+            </button>
+            <button
+              className={`btn-sm ${activeTab === 'packages' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setActiveTab('packages')}
+            >
+              <Package size={16} />
+              Packages
+            </button>
           </div>
         </div>
 
-        {!config && (
-          <div className="alert alert-warning">
-            <AlertCircle size={20} />
-            <div>
-              <strong>DirectAdmin Configuration Required</strong>
-              <p>Please configure your DirectAdmin credentials to start managing hosting accounts.</p>
+        {activeTab === 'packages' ? (
+          <HostingPackagesManager token={token} toast={toast} />
+        ) : (
+          <>
+            <div className="section-header">
+              <div></div>
+              <div className="flex gap-2">
+                {!config && (
+                  <button className="btn-primary" onClick={() => setShowConfigModal(true)}>
+                    <Settings size={16} />
+                    Configure DirectAdmin
+                  </button>
+                )}
+                {config && (
+                  <>
+                    <button className="btn-secondary" onClick={() => setShowConfigModal(true)}>
+                      <Settings size={16} />
+                      Settings
+                    </button>
+                    <button className="btn-secondary" onClick={handleTestConnection}>
+                      Test Connection
+                    </button>
+                    <button className="btn-primary" onClick={handleSyncAccounts} disabled={syncing}>
+                      <RefreshCw size={16} className={syncing ? 'spinning' : ''} />
+                      {syncing ? 'Syncing...' : 'Sync from DirectAdmin'}
+                    </button>
+                    <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+                      <Plus size={16} />
+                      Create Account
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-            <button className="btn-primary" onClick={() => setShowConfigModal(true)}>
-              Configure Now
-            </button>
-          </div>
-        )}
 
-        {stats && (
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-value">{stats.total}</div>
-              <div className="stat-label">Total Accounts</div>
-            </div>
-            <div className="stat-card stat-success">
-              <div className="stat-value">{stats.active}</div>
-              <div className="stat-label">Active</div>
-            </div>
-            <div className="stat-card stat-warning">
-              <div className="stat-value">{stats.suspended}</div>
-              <div className="stat-label">Suspended</div>
-            </div>
-            <div className="stat-card stat-danger">
-              <div className="stat-value">{stats.terminated_count || 0}</div>
-              <div className="stat-label">Terminated</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{formatBytes((stats.total_disk_used || 0) * 1024 * 1024)}</div>
-              <div className="stat-label">Disk Used</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{formatBytes((stats.total_bandwidth_used || 0) * 1024 * 1024)}</div>
-              <div className="stat-label">Bandwidth Used</div>
-            </div>
-          </div>
+            {!config && (
+              <div className="alert alert-warning">
+                <AlertCircle size={20} />
+                <div>
+                  <strong>DirectAdmin Configuration Required</strong>
+                  <p>Please configure your DirectAdmin credentials to start managing hosting accounts.</p>
+                </div>
+                <button className="btn-primary" onClick={() => setShowConfigModal(true)}>
+                  Configure Now
+                </button>
+              </div>
+            )}
+
+            {stats && (
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="stat-value">{stats.total}</div>
+                  <div className="stat-label">Total Accounts</div>
+                </div>
+                <div className="stat-card stat-success">
+                  <div className="stat-value">{stats.active}</div>
+                  <div className="stat-label">Active</div>
+                </div>
+                <div className="stat-card stat-warning">
+                  <div className="stat-value">{stats.suspended}</div>
+                  <div className="stat-label">Suspended</div>
+                </div>
+                <div className="stat-card stat-danger">
+                  <div className="stat-value">{stats.terminated_count || 0}</div>
+                  <div className="stat-label">Terminated</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{formatBytes((stats.total_disk_used || 0) * 1024 * 1024)}</div>
+                  <div className="stat-label">Disk Used</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-value">{formatBytes((stats.total_bandwidth_used || 0) * 1024 * 1024)}</div>
+                  <div className="stat-label">Bandwidth Used</div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {config && (
-        <>
-          <div className="card-panel">
+      {config && activeTab === 'accounts' && (
+        <div className="card-panel">
             <div className="flex items-center justify-between mb-4">
               <h3>Hosting Accounts</h3>
               <div className="flex gap-2">
@@ -557,7 +584,6 @@ export default function HostingManager({ token, toast }: Props) {
               </>
             )}
           </div>
-        </>
       )}
 
       {/* Config Modal */}

@@ -34,6 +34,10 @@ app.use('/api/admin/categories', require('./routes/adminCategories'));
 app.use('/api/admin/services', require('./routes/adminServices'));
 app.use('/api/admin/codecanyon', require('./routes/adminScripts'));
 app.use('/api/admin/hosting', require('./routes/hosting'));
+const hostingPackages = require('./routes/hostingPackages');
+app.use('/api/hosting/payments', require('./routes/hostingPayments'));
+app.use('/api/hosting', hostingPackages.public);
+app.use('/api/admin/hosting', hostingPackages.admin);
 app.use('/api/admin', require('./routes/adminProfile'));
 
 // Setup Socket.IO handlers

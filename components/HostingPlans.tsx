@@ -1,15 +1,19 @@
 'use client'
 
-import { useState } from 'react';
-import { Check, Server, Shield, Zap, Globe, Mail, Database, Cloud, Lock, ArrowRight, Star } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Check, Server, Shield, Zap, Globe, Mail, Database, Cloud, Lock, ArrowRight, Star, Loader2 } from 'lucide-react';
+import { fetchHostingPackages, type HostingPackage } from '@/lib/api';
 
-interface HostingPlan {
-  id: string;
+interface DisplayPlan {
+  id: number;
   name: string;
+  display_name: string;
   price: number;
   period: 'monthly' | 'yearly';
   popular?: boolean;
+  currency: string;
   features: {
     storage: string;
     bandwidth: string;
@@ -27,103 +31,83 @@ interface HostingPlan {
   };
 }
 
-const monthlyPlans: HostingPlan[] = [
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: 4.99,
-    period: 'monthly',
-    features: {
-      storage: '10 GB',
-      bandwidth: '100 GB',
-      domains: '1',
-      emailAccounts: '5',
-      databases: '5',
-      ssl: true,
-      backups: 'Weekly',
-      support: 'Email',
-      cpanel: true,
-      wordpress: true,
-      phpVersion: '8.1',
-      nodejs: false,
-      python: false,
-    },
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    price: 9.99,
-    period: 'monthly',
-    popular: true,
-    features: {
-      storage: '50 GB',
-      bandwidth: '500 GB',
-      domains: '5',
-      emailAccounts: '25',
-      databases: '25',
-      ssl: true,
-      backups: 'Daily',
-      support: 'Priority Email',
-      cpanel: true,
-      wordpress: true,
-      phpVersion: '8.1',
-      nodejs: true,
-      python: false,
-    },
-  },
-  {
-    id: 'professional',
-    name: 'Professional',
-    price: 19.99,
-    period: 'monthly',
-    features: {
-      storage: '100 GB',
-      bandwidth: 'Unlimited',
-      domains: 'Unlimited',
-      emailAccounts: 'Unlimited',
-      databases: 'Unlimited',
-      ssl: true,
-      backups: 'Daily + On-Demand',
-      support: '24/7 Priority',
-      cpanel: true,
-      wordpress: true,
-      phpVersion: '8.1',
-      nodejs: true,
-      python: true,
-    },
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 39.99,
-    period: 'monthly',
-    features: {
-      storage: '200 GB',
-      bandwidth: 'Unlimited',
-      domains: 'Unlimited',
-      emailAccounts: 'Unlimited',
-      databases: 'Unlimited',
-      ssl: true,
-      backups: 'Real-time + On-Demand',
-      support: '24/7 Dedicated',
-      cpanel: true,
-      wordpress: true,
-      phpVersion: '8.1',
-      nodejs: true,
-      python: true,
-    },
-  },
-];
-
-const yearlyPlans: HostingPlan[] = monthlyPlans.map(plan => ({
-  ...plan,
-  price: plan.price * 10, // 2 months free (10 months price for 12 months)
-  period: 'yearly',
-}));
-
 export default function HostingPlans() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
-  const plans = billingPeriod === 'monthly' ? monthlyPlans : yearlyPlans;
+  const [packages, setPackages] = useState<DisplayPlan[]>([]);
+  const [rawPackages, setRawPackages] = useState<HostingPackage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    loadPackages();
+  }, []);
+
+  const convertToDisplayPlans = (apiPackages: HostingPackage[], period: 'monthly' | 'yearly'): DisplayPlan[] => {
+    return apiPackages.map((pkg: HostingPackage) => {
+      // Convert price to number (handle both string and number formats)
+      const monthlyPrice = typeof pkg.price_monthly === 'string' ? parseFloat(pkg.price_monthly) : Number(pkg.price_monthly);
+      const yearlyPrice = typeof pkg.price_yearly === 'string' ? parseFloat(pkg.price_yearly) : Number(pkg.price_yearly);
+      
+      return {
+        id: pkg.id,
+        name: pkg.name,
+        display_name: pkg.display_name,
+        price: period === 'monthly' ? monthlyPrice : yearlyPrice,
+        period: period,
+        popular: pkg.popular,
+        currency: pkg.currency,
+      features: {
+        storage: `${pkg.disk_space_gb} GB`,
+        bandwidth: pkg.bandwidth_gb ? `${pkg.bandwidth_gb} GB` : 'Unlimited',
+        domains: pkg.domains ? pkg.domains.toString() : 'Unlimited',
+        emailAccounts: pkg.email_accounts ? pkg.email_accounts.toString() : 'Unlimited',
+        databases: pkg.databases ? pkg.databases.toString() : 'Unlimited',
+        ssl: pkg.ssl_included,
+        backups: pkg.backups || 'Weekly',
+        support: pkg.support_type || 'Email',
+        cpanel: pkg.cpanel,
+        wordpress: pkg.wordpress,
+        phpVersion: pkg.php_version || '8.1',
+        nodejs: pkg.nodejs,
+        python: pkg.python,
+      },
+    };
+    });
+  };
+
+  const loadPackages = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const apiPackages = await fetchHostingPackages();
+      
+      // Store raw packages
+      setRawPackages(apiPackages);
+      
+      // Convert API packages to display format
+      const displayPlans = convertToDisplayPlans(apiPackages, billingPeriod);
+      setPackages(displayPlans);
+    } catch (err) {
+      console.error('Error loading hosting packages:', err);
+      setError('Failed to load hosting packages. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update prices when billing period changes
+  useEffect(() => {
+    if (rawPackages.length > 0) {
+      const displayPlans = convertToDisplayPlans(rawPackages, billingPeriod);
+      setPackages(displayPlans);
+    }
+  }, [billingPeriod, rawPackages]);
+
+  const handleGetStarted = (plan: DisplayPlan) => {
+    // Navigate to checkout page with plan ID
+    router.push(`/hosting/checkout?package=${plan.id}&period=${billingPeriod}`);
+  };
 
   return (
     <section className="py-20 px-4 bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
@@ -170,9 +154,25 @@ export default function HostingPlans() {
           </div>
         </div>
 
+        {/* Loading State */}
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <span className="ml-3 text-gray-600">Loading hosting plans...</span>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-8 text-center">
+            {error}
+          </div>
+        )}
+
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-          {plans.map((plan) => (
+        {!loading && !error && packages.length > 0 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+            {packages.map((plan) => (
             <div
               key={plan.id}
               className={`relative bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 ${
@@ -192,20 +192,22 @@ export default function HostingPlans() {
               
               <div className="p-8">
                 <div className="mb-6">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.display_name}</h3>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-bold text-gray-900">${plan.price}</span>
+                    <span className="text-4xl font-bold text-gray-900">
+                      {plan.currency} {typeof plan.price === 'number' ? plan.price.toFixed(2) : parseFloat(plan.price || '0').toFixed(2)}
+                    </span>
                     <span className="text-gray-600">/{plan.period === 'monthly' ? 'mo' : 'yr'}</span>
                   </div>
                   {plan.period === 'yearly' && (
                     <p className="text-sm text-gray-500 mt-1">
-                      ${(plan.price / 12).toFixed(2)}/month billed annually
+                      {plan.currency} {(typeof plan.price === 'number' ? plan.price : parseFloat(plan.price || '0')) / 12} /month billed annually
                     </p>
                   )}
                 </div>
 
-                <Link
-                  href={`/contact?plan=${plan.id}&period=${plan.period}`}
+                <button
+                  onClick={() => handleGetStarted(plan)}
                   className={`block w-full text-center py-3 px-6 rounded-lg font-semibold transition-all mb-6 ${
                     plan.popular
                       ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:shadow-lg hover:scale-105'
@@ -214,7 +216,7 @@ export default function HostingPlans() {
                 >
                   Get Started
                   <ArrowRight className="inline ml-2 w-4 h-4" />
-                </Link>
+                </button>
 
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
@@ -277,7 +279,16 @@ export default function HostingPlans() {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && packages.length === 0 && (
+          <div className="text-center py-20">
+            <p className="text-gray-600 text-lg">No hosting packages available at the moment.</p>
+            <p className="text-gray-500 mt-2">Please check back later.</p>
+          </div>
+        )}
 
         {/* Features Section */}
         <div className="bg-white rounded-2xl shadow-lg p-8 md:p-12 mb-16">
@@ -333,4 +344,6 @@ export default function HostingPlans() {
     </section>
   );
 }
+
+
 

@@ -5,6 +5,14 @@ async function migrate() {
   let connection;
   
   try {
+    console.log('Migrating database...',{
+      host: process.env.DB_HOST || 'localhost',
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      port: process.env.DB_PORT || 3306,
+      connectTimeout: 10000, // 10 second timeout
+      multipleStatements: false, // Prevent multiple statements
+    });
     // Connect to MySQL (without database first)
     // Use connectionLimit: 1 to avoid creating multiple connections
     connection = await mysql.createConnection({
@@ -270,6 +278,75 @@ async function migrate() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ Hosting config table created');
+
+    // Create hosting_packages table (for managing hosting plans/pricing)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS hosting_packages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        display_name VARCHAR(255) NOT NULL,
+        description TEXT,
+        price_monthly DECIMAL(10, 2) NOT NULL,
+        price_yearly DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        disk_space_gb INT NOT NULL,
+        bandwidth_gb INT,
+        domains INT,
+        email_accounts INT,
+        \`databases\` INT,
+        ssl_included BOOLEAN DEFAULT TRUE,
+        backups VARCHAR(50),
+        support_type VARCHAR(50),
+        cpanel BOOLEAN DEFAULT TRUE,
+        wordpress BOOLEAN DEFAULT FALSE,
+        php_version VARCHAR(10),
+        nodejs BOOLEAN DEFAULT FALSE,
+        python BOOLEAN DEFAULT FALSE,
+        popular BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_is_active (is_active),
+        INDEX idx_popular (popular)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Hosting packages table created');
+
+    // Create hosting_orders table (for payment orders)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS hosting_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id VARCHAR(50) NOT NULL UNIQUE,
+        transaction_id VARCHAR(100),
+        package_id INT NOT NULL,
+        package_name VARCHAR(255) NOT NULL,
+        billing_period ENUM('monthly', 'yearly') NOT NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(50),
+        domain VARCHAR(255),
+        username VARCHAR(100),
+        status ENUM('pending', 'paid', 'failed', 'cancelled', 'completed') DEFAULT 'pending',
+        payment_url VARCHAR(500),
+        return_url VARCHAR(500),
+        cancel_url VARCHAR(500),
+        webhook_url VARCHAR(500),
+        payment_gateway_response TEXT,
+        hosting_account_id INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        paid_at TIMESTAMP NULL,
+        FOREIGN KEY (package_id) REFERENCES hosting_packages(id) ON DELETE RESTRICT,
+        FOREIGN KEY (hosting_account_id) REFERENCES hosting_accounts(id) ON DELETE SET NULL,
+        INDEX idx_status (status),
+        INDEX idx_transaction_id (transaction_id),
+        INDEX idx_customer_email (customer_email),
+        INDEX idx_order_id (order_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Hosting orders table created');
 
     console.log('\n🎉 Database migration completed successfully!');
     

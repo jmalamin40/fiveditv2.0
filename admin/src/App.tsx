@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginForm from './components/LoginForm';
 import Dashboard from './components/Dashboard';
 import { LoginResponse } from './api';
@@ -30,11 +31,40 @@ export default function App() {
     localStorage.removeItem('fivedit_admin_user');
   };
 
-  if (!token || !user) {
-    return <LoginForm onSuccess={handleLoginSuccess} />;
-  }
-
-  return <Dashboard token={token} user={user} onLogout={handleLogout} />;
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          token && user ? (
+            <Navigate to="/admin/categories" replace />
+          ) : (
+            <LoginForm onSuccess={handleLoginSuccess} />
+          )
+        }
+      />
+      <Route
+        path="/admin/*"
+        element={
+          token && user ? (
+            <Dashboard token={token} user={user} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/"
+        element={
+          token && user ? (
+            <Navigate to="/admin/categories" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+    </Routes>
+  );
 }
 
 
