@@ -400,41 +400,105 @@ router.get('/orders/status/:transaction_id', async (req, res) => {
   }
 });
 
+// Test webhook endpoint (for debugging)
+router.get('/webhook/test', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Webhook endpoint is accessible',
+    path: '/api/hosting/payments/webhook',
+    method: 'POST'
+  });
+});
+
 // Payment webhook handler
 router.post('/webhook', async (req, res) => {
   try {
-    syncLogger.info('Webhook received:', req.body);
-    const { transaction_id, status, order_id } = req.body;
+    defaultLogger.log('🔔 Webhook received:', JSON.stringify(req.body, null, 2));
+    const { transaction_id, status, order_id, tnx_id } = req.body;
 
-    if (!transaction_id || !status) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    if (!status) {
+      defaultLogger.error('❌ Webhook missing status field');
+      return res.status(400).json({ error: 'Missing required field: status' });
     }
 
-    // Find order by transaction_id or order_id
-    const [orders] = await pool.execute(
-      'SELECT * FROM hosting_orders WHERE transaction_id = ? OR order_id = ?',
-      [transaction_id, order_id]
-    );
+    // Find order by transaction_id, order_id (string), order_id (database ID), or tnx_id
+    // The payment gateway may send order_id as the database ID (number) or as the order_id string
+    let orders = [];
+    
+    if (transaction_id) {
+      [orders] = await pool.execute(
+        'SELECT * FROM hosting_orders WHERE transaction_id = ? OR order_id = ? OR id = ?',
+        [transaction_id, transaction_id, transaction_id]
+      );
+    }
+    
+    // If not found and we have order_id, try searching by it (could be database ID or order_id string)
+    if (orders.length === 0 && order_id) {
+      [orders] = await pool.execute(
+        'SELECT * FROM hosting_orders WHERE id = ? OR order_id = ? OR transaction_id = ?',
+        [order_id, order_id, order_id]
+      );
+    }
+    
+    // If still not found and we have tnx_id, try that
+    if (orders.length === 0 && tnx_id) {
+      [orders] = await pool.execute(
+        'SELECT * FROM hosting_orders WHERE transaction_id = ? OR order_id = ?',
+        [tnx_id, tnx_id]
+      );
+    }
 
     if (orders.length === 0) {
-      console.error('Webhook: Order not found', { transaction_id, order_id });
-      return res.status(404).json({ error: 'Order not found' });
+      defaultLogger.error('❌ Webhook: Order not found');
+      defaultLogger.error('   Searched with:', { 
+        transaction_id, 
+        order_id, 
+        tnx_id
+      });
+      defaultLogger.error('   Full request body:', JSON.stringify(req.body, null, 2));
+      
+      // Log recent orders in database for debugging
+      try {
+        const [allOrders] = await pool.execute(
+          'SELECT id, order_id, transaction_id, status FROM hosting_orders ORDER BY id DESC LIMIT 10'
+        );
+        defaultLogger.error('   Recent orders in database:', JSON.stringify(allOrders, null, 2));
+      } catch (dbError) {
+        defaultLogger.error('   Could not fetch orders for debugging:', dbError.message);
+      }
+      
+      // Return 200 to prevent payment gateway from retrying
+      // But log the error for investigation
+      return res.status(200).json({ 
+        success: false, 
+        error: 'Order not found', 
+        received: req.body,
+        message: 'Webhook received but order not found in database'
+      });
     }
 
     const order = orders[0];
+    defaultLogger.log(`✅ Found order: ${order.order_id} (ID: ${order.id}), current status: ${order.status}, new status: ${status}`);
 
-    // Update order status
+    // Update order status and transaction_id if provided
     await pool.execute(
       `UPDATE hosting_orders 
        SET status = ?, 
-           paid_at = CASE WHEN ? = 'paid' AND paid_at IS NULL THEN CURRENT_TIMESTAMP ELSE paid_at END,
-           payment_gateway_response = ?
+           paid_at = CASE WHEN ? IN ('paid', 'completed') AND paid_at IS NULL THEN CURRENT_TIMESTAMP ELSE paid_at END,
+           payment_gateway_response = ?,
+           transaction_id = COALESCE(?, transaction_id)
        WHERE id = ?`,
-      [status, status, JSON.stringify(req.body), order.id]
+      [status, status, JSON.stringify(req.body), transaction_id || tnx_id, order.id]
     );
+    
+    defaultLogger.log(`✅ Order ${order.order_id} status updated to: ${status}`);
 
-    // If payment is successful, create hosting account automatically
-    if (status === 'paid' && order.status !== 'paid') {
+    // If payment is successful (status is 'paid' or 'completed'), create hosting account automatically
+    // Check both the new status and old status to avoid duplicate account creation
+    const isPaymentSuccessful = (status === 'paid' || status === 'completed');
+    const wasNotPaid = (order.status !== 'paid' && order.status !== 'completed');
+    
+    if (isPaymentSuccessful && wasNotPaid) {
       try {
         defaultLogger.log(`💰 Payment successful for order ${order.order_id}. Creating hosting account...`);
         
@@ -567,10 +631,12 @@ router.post('/webhook', async (req, res) => {
       }
     }
 
+    defaultLogger.log(`✅ Webhook processed successfully for order ${order.order_id}`);
     res.json({ success: true, message: 'Webhook processed successfully' });
   } catch (error) {
-    console.error('Error processing webhook:', error);
-    res.status(500).json({ error: 'Failed to process webhook' });
+    defaultLogger.error('❌ Error processing webhook:', error);
+    defaultLogger.error('Webhook request body:', JSON.stringify(req.body, null, 2));
+    res.status(500).json({ error: 'Failed to process webhook', message: error.message });
   }
 });
 
