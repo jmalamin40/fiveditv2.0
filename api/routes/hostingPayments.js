@@ -568,10 +568,36 @@ router.post('/webhook', async (req, res) => {
         };
         
         defaultLogger.log(`Creating DirectAdmin account: username=${username}, domain=${domain}, package=${packageName}`);
-        const daResult = await makeDirectAdminRequest(config, 'CMD_API_ACCOUNT_USER', params, 'POST');
+        defaultLogger.log('DirectAdmin request params:', JSON.stringify(params, null, 2));
         
-        if (daResult.error || daResult.text === 'error') {
-          defaultLogger.error('❌ DirectAdmin account creation failed:', daResult);
+        let daResult;
+        try {
+          daResult = await makeDirectAdminRequest(config, 'CMD_API_ACCOUNT_USER', params, 'POST');
+          defaultLogger.log('DirectAdmin response received:', JSON.stringify(daResult, null, 2));
+        } catch (daError) {
+          defaultLogger.error('❌ DirectAdmin API request threw an error:');
+          defaultLogger.error('   Error type:', typeof daError);
+          defaultLogger.error('   Error message:', daError?.message || 'No message');
+          defaultLogger.error('   Error stack:', daError?.stack || 'No stack');
+          defaultLogger.error('   Error string:', String(daError));
+          defaultLogger.error('   Full error:', JSON.stringify(daError, Object.getOwnPropertyNames(daError)));
+          
+          await pool.execute(
+            'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
+            [JSON.stringify({ 
+              ...req.body, 
+              da_error: daError?.message || String(daError),
+              da_error_type: typeof daError
+            }), order.id]
+          );
+          // Re-throw to be caught by outer catch block
+          throw daError;
+        }
+        
+        // Check for error in response
+        if (daResult.error || daResult.text === 'error' || daResult.error === '1' || daResult.error === 1) {
+          defaultLogger.error('❌ DirectAdmin account creation failed - error in response');
+          defaultLogger.error('   Response:', JSON.stringify(daResult, null, 2));
           await pool.execute(
             'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
             [JSON.stringify({ ...req.body, da_error: daResult }), order.id]
@@ -621,11 +647,27 @@ router.post('/webhook', async (req, res) => {
         
         defaultLogger.log(`✅ Order ${order.order_id} completed successfully. Account ID: ${hostingAccountId}`);
       } catch (accountError) {
-        defaultLogger.error('❌ Error creating hosting account after payment:', accountError);
+        defaultLogger.error('❌ Error creating hosting account after payment:');
+        defaultLogger.error('   Error message:', accountError?.message || 'No error message');
+        defaultLogger.error('   Error stack:', accountError?.stack || 'No stack trace');
+        defaultLogger.error('   Error details:', JSON.stringify(accountError, Object.getOwnPropertyNames(accountError)));
+        defaultLogger.error('   Order ID:', order.id);
+        defaultLogger.error('   Order details:', {
+          order_id: order.order_id,
+          domain: order.domain,
+          username: order.username,
+          customer_email: order.customer_email,
+          package_id: order.package_id
+        });
+        
         // Update order status to paid (even if account creation failed)
         await pool.execute(
           'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
-          [JSON.stringify({ ...req.body, account_creation_error: accountError.message }), order.id]
+          [JSON.stringify({ 
+            ...req.body, 
+            account_creation_error: accountError?.message || String(accountError),
+            error_stack: accountError?.stack
+          }), order.id]
         );
         // Don't fail the webhook, just log the error
       }
