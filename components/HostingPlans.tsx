@@ -41,6 +41,7 @@ export default function HostingPlans() {
 
   useEffect(() => {
     loadPackages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const convertToDisplayPlans = (apiPackages: HostingPackage[], period: 'monthly' | 'yearly'): DisplayPlan[] => {

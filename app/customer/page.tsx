@@ -26,7 +26,8 @@ export default function CustomerDashboard() {
     setToken(storedToken);
     setUser(JSON.parse(storedUser));
     loadData(storedToken);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
   const loadData = async (authToken: string) => {
     try {

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { fetchHostingPackage, createHostingOrder } from '@/lib/api';
 import { HostingPackage } from '@/lib/api';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const packageId = searchParams.get('package');
@@ -28,6 +28,7 @@ export default function CheckoutPage() {
     if (packageId) {
       loadPackage();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packageId]);
 
   const loadPackage = async () => {
@@ -88,7 +89,7 @@ export default function CheckoutPage() {
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Package Not Found</h2>
-          <p className="text-gray-600 mb-4">The hosting package you're looking for doesn't exist.</p>
+          <p className="text-gray-600 mb-4">The hosting package you&apos;re looking for doesn&apos;t exist.</p>
           <button
             onClick={() => router.push('/hosting')}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -204,7 +205,7 @@ export default function CheckoutPage() {
                       placeholder="example.com"
                     />
                     <p className="text-sm text-gray-500 mt-1">
-                      Leave empty if you don't have a domain yet. We'll assign a temporary domain.
+                      Leave empty if you don&apos;t have a domain yet. We&apos;ll assign a temporary domain.
                     </p>
                   </div>
 
@@ -250,3 +251,14 @@ export default function CheckoutPage() {
   );
 }
 
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    }>
+      <CheckoutContent />
+    </Suspense>
+  );
+}

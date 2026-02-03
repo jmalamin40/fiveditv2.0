@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getHostingOrderStatus } from '@/lib/api';
 import { CheckCircle, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderId = searchParams.get('order_id');
@@ -19,6 +19,7 @@ export default function PaymentSuccessPage() {
     if (orderId || transactionId) {
       loadOrderStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, transactionId]);
 
   const loadOrderStatus = async () => {
@@ -99,7 +100,7 @@ export default function PaymentSuccessPage() {
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-              <h3 className="font-semibold text-blue-900 mb-2">What's Next?</h3>
+              <h3 className="font-semibold text-blue-900 mb-2">What&apos;s Next?</h3>
               <ul className="text-left text-blue-800 space-y-2">
                 <li>• You will receive an email with your hosting account credentials shortly</li>
                 <li>• Your account will be automatically activated after setup</li>
@@ -157,3 +158,14 @@ export default function PaymentSuccessPage() {
   );
 }
 
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    }>
+      <PaymentSuccessContent />
+    </Suspense>
+  );
+}
