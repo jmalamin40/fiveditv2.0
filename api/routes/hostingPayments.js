@@ -546,31 +546,58 @@ router.post('/webhook', async (req, res) => {
       return res.status(400).json({ error: 'Missing required field: status' });
     }
 
-    // Find order by transaction_id, order_id (string), order_id (database ID), or tnx_id
+    // Find order by order_id (database ID) first, then transaction_id, order_id (string), or tnx_id
+    // Priority: database ID > transaction_id > order_id string > tnx_id
     // The payment gateway may send order_id as the database ID (number) or as the order_id string
     let orders = [];
     
-    if (transaction_id) {
+    // First, prioritize order_id if provided (most specific - database ID)
+    if (order_id) {
       [orders] = await pool.execute(
-        'SELECT * FROM hosting_orders WHERE transaction_id = ? OR order_id = ? OR id = ?',
-        [transaction_id, transaction_id, transaction_id]
+        'SELECT * FROM hosting_orders WHERE id = ?',
+        [order_id]
       );
+      defaultLogger.log(`Searching by order_id (database ID): ${order_id}, found ${orders.length} order(s)`);
     }
     
-    // If not found and we have order_id, try searching by it (could be database ID or order_id string)
+    // If not found by database ID, try order_id as string
     if (orders.length === 0 && order_id) {
       [orders] = await pool.execute(
-        'SELECT * FROM hosting_orders WHERE id = ? OR order_id = ? OR transaction_id = ?',
-        [order_id, order_id, order_id]
+        'SELECT * FROM hosting_orders WHERE order_id = ?',
+        [String(order_id)]
       );
+      defaultLogger.log(`Searching by order_id (string): ${order_id}, found ${orders.length} order(s)`);
     }
     
-    // If still not found and we have tnx_id, try that
+    // If still not found, try transaction_id
+    if (orders.length === 0 && transaction_id) {
+      [orders] = await pool.execute(
+        'SELECT * FROM hosting_orders WHERE transaction_id = ?',
+        [transaction_id]
+      );
+      defaultLogger.log(`Searching by transaction_id: ${transaction_id}, found ${orders.length} order(s)`);
+      
+      // If multiple orders found with same transaction_id, prefer the one matching order_id if provided
+      if (orders.length > 1 && order_id) {
+        const matchingOrder = orders.find(o => o.id === Number(order_id) || o.order_id === String(order_id));
+        if (matchingOrder) {
+          orders = [matchingOrder];
+          defaultLogger.log(`Multiple orders found with same transaction_id, using order matching order_id: ${order_id}`);
+        } else {
+          // If no exact match, use the most recent one
+          orders = [orders.sort((a, b) => b.id - a.id)[0]];
+          defaultLogger.log(`Multiple orders found with same transaction_id, using most recent order ID: ${orders[0].id}`);
+        }
+      }
+    }
+    
+    // If still not found, try tnx_id
     if (orders.length === 0 && tnx_id) {
       [orders] = await pool.execute(
         'SELECT * FROM hosting_orders WHERE transaction_id = ? OR order_id = ?',
         [tnx_id, tnx_id]
       );
+      defaultLogger.log(`Searching by tnx_id: ${tnx_id}, found ${orders.length} order(s)`);
     }
 
     if (orders.length === 0) {
@@ -620,10 +647,17 @@ router.post('/webhook', async (req, res) => {
 
     // If payment is successful (status is 'paid' or 'completed'), create hosting account automatically
     // Check both the new status and old status to avoid duplicate account creation
+    // Also check if account was already created (hosting_account_id is set)
     const isPaymentSuccessful = (status === 'paid' || status === 'completed');
     const wasNotPaid = (order.status !== 'paid' && order.status !== 'completed');
+    const accountNotCreated = !order.hosting_account_id;
     
-    if (isPaymentSuccessful && wasNotPaid) {
+    defaultLogger.log(`Payment check: isPaymentSuccessful=${isPaymentSuccessful}, wasNotPaid=${wasNotPaid}, accountNotCreated=${accountNotCreated}`);
+    defaultLogger.log(`Order details: id=${order.id}, order_id=${order.order_id}, status=${order.status}, hosting_account_id=${order.hosting_account_id || 'null'}`);
+    
+    // Create account if payment is successful, order was not paid before, and account not created
+    // Also allow creation if status is 'completed' and account not created (fallback for failed attempts)
+    if (isPaymentSuccessful && accountNotCreated && (wasNotPaid || status === 'completed')) {
       try {
         defaultLogger.log(`💰 Payment successful for order ${order.order_id}. Creating hosting account...`);
         
