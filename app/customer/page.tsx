@@ -189,7 +189,7 @@ export default function CustomerDashboard() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <p className="text-gray-600">Amount</p>
-                          <p className="font-semibold">{order.currency} {order.amount.toFixed(2)}</p>
+                          <p className="font-semibold">{order.currency} {Number(order.amount || 0).toFixed(2)}</p>
                         </div>
                         <div>
                           <p className="text-gray-600">Billing Period</p>

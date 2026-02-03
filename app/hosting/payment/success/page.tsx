@@ -90,7 +90,7 @@ function PaymentSuccessContent() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Amount:</span>
-                  <span className="font-semibold">{order.currency} {order.amount.toFixed(2)}</span>
+                  <span className="font-semibold">{order.currency} {Number(order.amount || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Status:</span>
