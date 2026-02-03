@@ -6,9 +6,9 @@ const crypto = require('crypto');
 const { defaultLogger, syncLogger } = require('../utils/logger');
 const { sendHostingCredentialsEmail, sendOrderConfirmationEmail } = require('../utils/email');
 
-const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'http://localhost:3000';
+const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fivedit.com';
 
 // Helper function to get DirectAdmin config and make requests
 async function getDirectAdminConfig() {
