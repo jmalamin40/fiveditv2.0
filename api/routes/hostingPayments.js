@@ -757,6 +757,14 @@ router.post('/webhook', async (req, res) => {
     
     defaultLogger.log(`✅ Order ${order.order_id} status updated to: ${status}`);
 
+    // Check if payment is successful
+    const isPaymentSuccessful = (status === 'paid' || status === 'completed');
+    const wasNotPaid = (order.status !== 'paid' && order.status !== 'completed');
+    const accountNotCreated = !order.hosting_account_id;
+
+    defaultLogger.log(`Payment check: isPaymentSuccessful=${isPaymentSuccessful}, wasNotPaid=${wasNotPaid}, accountNotCreated=${accountNotCreated}`);
+    defaultLogger.log(`Order details: id=${order.id}, order_id=${order.order_id}, status=${order.status}, hosting_account_id=${order.hosting_account_id || 'null'}`);
+
     // Auto-generate invoice if payment is successful
     if (isPaymentSuccessful && wasNotPaid) {
       try {
@@ -771,15 +779,10 @@ router.post('/webhook', async (req, res) => {
     // If payment is successful (status is 'paid' or 'completed'), create hosting account automatically
     // Check both the new status and old status to avoid duplicate account creation
     // Also check if account was already created (hosting_account_id is set)
-    const isPaymentSuccessful = (status === 'paid' || status === 'completed');
-    const wasNotPaid = (order.status !== 'paid' && order.status !== 'completed');
-    const accountNotCreated = !order.hosting_account_id;
-    
-    defaultLogger.log(`Payment check: isPaymentSuccessful=${isPaymentSuccessful}, wasNotPaid=${wasNotPaid}, accountNotCreated=${accountNotCreated}`);
-    defaultLogger.log(`Order details: id=${order.id}, order_id=${order.order_id}, status=${order.status}, hosting_account_id=${order.hosting_account_id || 'null'}`);
     
     // Create account if payment is successful, order was not paid before, and account not created
     // Also allow creation if status is 'completed' and account not created (fallback for failed attempts)
+    defaultLogger.log(`Account creation check: isPaymentSuccessful=${isPaymentSuccessful}, accountNotCreated=${accountNotCreated}, wasNotPaid=${wasNotPaid}, status=${status}`);
     if (isPaymentSuccessful && accountNotCreated && (wasNotPaid || status === 'completed')) {
       try {
         defaultLogger.log(`💰 Payment successful for order ${order.order_id}. Creating hosting account...`);
@@ -958,9 +961,13 @@ router.post('/webhook', async (req, res) => {
     defaultLogger.log(`✅ Webhook processed successfully for order ${order.order_id}`);
     res.json({ success: true, message: 'Webhook processed successfully' });
   } catch (error) {
-    defaultLogger.error('❌ Error processing webhook:', error);
+    defaultLogger.error('❌ Error processing webhook:');
+    defaultLogger.error('   Error message:', error?.message || 'No message');
+    defaultLogger.error('   Error stack:', error?.stack || 'No stack');
+    defaultLogger.error('   Error type:', typeof error);
+    defaultLogger.error('   Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     defaultLogger.error('Webhook request body:', JSON.stringify(req.body, null, 2));
-    res.status(500).json({ error: 'Failed to process webhook', message: error.message });
+    res.status(500).json({ error: 'Failed to process webhook', message: error?.message || 'Unknown error' });
   }
 });
 
