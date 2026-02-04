@@ -97,7 +97,16 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
         let data = '';
         
         defaultLogger.log(`Response status: ${res.statusCode}`);
-        defaultLogger.debug(`Response headers:`, res.headers);
+        defaultLogger.log(`Response response:`, JSON.stringify(res?.response, null, 2));
+        defaultLogger.log(`Response data:`, JSON.stringify(res?.data, null, 2));
+        defaultLogger.log(`Response text:`, res?.text);
+        defaultLogger.log(`Response json:`, JSON.stringify(res?.json, null, 2));
+        defaultLogger.log(`Response headers:`, JSON.stringify(res?.headers, null, 2));
+        defaultLogger.log(`Response statusCode:`, res?.statusCode);
+        defaultLogger.log(`Response statusMessage:`, res?.statusMessage);
+        defaultLogger.log(`Response rawHeaders:`, JSON.stringify(res?.rawHeaders, null, 2));
+        defaultLogger.log(`Response rawTrailers:`, JSON.stringify(res?.rawTrailers, null, 2));
+        // defaultLogger.debug(`Response headers:`, res.headers);
         
         // Check if response is valid HTTP
         if (res.statusCode === undefined) {
@@ -120,28 +129,60 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
             }
             
             // DirectAdmin can return JSON or key=value format
-            if (data.trim().startsWith('{')) {
-              const json = JSON.parse(data);
-              defaultLogger.debug(`Parsed JSON response:`, json);
-              if (json.error) {
-                defaultLogger.error(`JSON error:`, json.error);
-                reject(new Error(json.error || 'DirectAdmin API error'));
-              } else {
-                resolve(json);
+            // Sometimes the response is a JSON string containing URL-encoded data
+            let actualData = data;
+            
+            // Check if data is a JSON string (wrapped in quotes)
+            if (data.trim().startsWith('"') && data.trim().endsWith('"')) {
+              try {
+                // Parse JSON string to get the actual data
+                actualData = JSON.parse(data);
+                defaultLogger.log(`Data was JSON-encoded, extracted: ${actualData.substring(0, 100)}...`);
+                // If the extracted data is still a string with URL-encoded format, we need to parse it
+                if (typeof actualData === 'string' && actualData.includes('&') && actualData.includes('=')) {
+                  // The data is URL-encoded, we'll parse it below
+                  defaultLogger.log(`Extracted data is URL-encoded format`);
+                }
+              } catch (jsonErr) {
+                // Not valid JSON, use data as-is
+                defaultLogger.debug(`Failed to parse as JSON string, using data as-is`);
               }
-            } else {
-              // Parse key=value format
-              const result = {};
+            }
+            
+            if (actualData.trim().startsWith('{')) {
+              // Try to parse as JSON object
+              try {
+                const json = JSON.parse(actualData);
+                defaultLogger.debug(`Parsed JSON response:`, json);
+                if (json.error && json.error !== 0 && json.error !== '0') {
+                  defaultLogger.error(`JSON error:`, json.error);
+                  reject(new Error(json.error || 'DirectAdmin API error'));
+                } else {
+                  resolve(json);
+                }
+                return;
+              } catch (jsonErr) {
+                defaultLogger.debug(`Not valid JSON object, trying URL-encoded format`);
+              }
+            }
+            
+            // Parse key=value format (URL-encoded or newline-separated)
+            const result = {};
+            defaultLogger.log(`Parsing DirectAdmin response data (length: ${actualData.length})`);
+            defaultLogger.log(`Actual data preview: ${actualData.substring(0, 200)}`);
+            
+            // Check if data is in single-line URL-encoded format (key=value&key=value&...)
+            // This is common in DirectAdmin responses
+            // Also check if it's a string that contains URL-encoded format
+            const isUrlEncodedFormat = typeof actualData === 'string' && actualData.includes('&') && actualData.includes('=');
+            const isSingleLineUrlEncoded = isUrlEncodedFormat && !actualData.includes('\n');
               
-              // Check if data is in single-line URL-encoded format (key=value&key=value&...)
-              // This is common in DirectAdmin responses
-              const isSingleLineUrlEncoded = data.includes('&') && data.includes('=') && !data.includes('\n') && data.split('&').length > 3;
-              
-              if (isSingleLineUrlEncoded) {
-                defaultLogger.log(`Detected single-line URL-encoded format`);
+              if (isSingleLineUrlEncoded || (isUrlEncodedFormat && actualData.split('&').length >= 2)) {
+                defaultLogger.log(`Detected URL-encoded format (single-line: ${isSingleLineUrlEncoded})`);
                 try {
                   // Parse as URL-encoded query string
-                  const urlParams = new URLSearchParams(data);
+                  // URLSearchParams automatically handles URL decoding
+                  const urlParams = new URLSearchParams(actualData);
                   
                   // First, check if there are list[] entries (for CMD_API_SHOW_USERS)
                   const listValues = urlParams.getAll('list[]');
@@ -163,20 +204,45 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                     let parsedValue = value;
                     if (value === 'yes') parsedValue = true;
                     else if (value === 'no') parsedValue = false;
-                    else if (!isNaN(value) && value !== '') parsedValue = parseFloat(value);
+                    else if (!isNaN(value) && value.trim() !== '') {
+                      const numValue = parseFloat(value);
+                      // Only parse as number if it's actually a number (not NaN)
+                      if (!isNaN(numValue)) parsedValue = numValue;
+                    }
                     result[key] = parsedValue;
+                    defaultLogger.debug(`Parsed key-value: ${key} = ${typeof parsedValue === 'string' ? parsedValue.substring(0, 50) : parsedValue}`);
                   }
                   defaultLogger.log(`Parsed ${Object.keys(result).length} key-value pairs from URL-encoded format`);
+                  defaultLogger.log(`Result keys: ${Object.keys(result).join(', ')}`);
+                  
+                  // Check if URLSearchParams parsed correctly - if we only have one key and its value contains '&', it failed
+                  const resultKeys = Object.keys(result);
+                  if (resultKeys.length === 1 && typeof result[resultKeys[0]] === 'string' && result[resultKeys[0]].includes('&')) {
+                    defaultLogger.warn(`URLSearchParams didn't parse correctly (single key with '&' in value), using manual parsing`);
+                    // Clear result and use manual parsing
+                    Object.keys(result).forEach(key => delete result[key]);
+                    throw new Error('URLSearchParams parsing failed, using manual parsing');
+                  }
                 } catch (urlErr) {
-                  defaultLogger.warn(`Failed to parse as URLSearchParams, trying manual parsing:`, urlErr.message);
+                  defaultLogger.warn(`Failed to parse as URLSearchParams: ${urlErr.message}`);
+                  defaultLogger.warn(`Trying manual parsing...`);
                   // Fallback: manual parsing
-                  const parts = data.split('&');
+                  const parts = actualData.split('&');
+                  defaultLogger.log(`Manual parsing: split into ${parts.length} parts`);
                   const listUsers = [];
                   
                   for (const part of parts) {
-                    const [key, ...valueParts] = part.split('=');
-                    if (key && valueParts.length > 0) {
-                      let value = decodeURIComponent(valueParts.join('='));
+                    if (!part || !part.includes('=')) {
+                      defaultLogger.debug(`Skipping invalid part: ${part.substring(0, 50)}`);
+                      continue;
+                    }
+                    
+                    const equalIndex = part.indexOf('=');
+                    const key = part.substring(0, equalIndex).trim();
+                    const valueStr = part.substring(equalIndex + 1);
+                    
+                    if (key && valueStr) {
+                      let value = decodeURIComponent(valueStr);
                       
                       // Check if it's a list[] entry
                       if (key === 'list[]' || key.toLowerCase() === 'list%5b%5d') {
@@ -187,8 +253,13 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                       // Try to parse as number or boolean
                       if (value === 'yes') value = true;
                       else if (value === 'no') value = false;
-                      else if (!isNaN(value) && value !== '') value = parseFloat(value);
+                      else if (!isNaN(value) && value.trim() !== '') {
+                        const numValue = parseFloat(value);
+                        if (!isNaN(numValue)) value = numValue;
+                      }
+                      
                       result[key] = value;
+                      defaultLogger.debug(`Parsed: ${key} = ${typeof value === 'string' ? value.substring(0, 50) : value}`);
                     }
                   }
                   
@@ -199,10 +270,12 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                       result[`list[${index}]`] = user;
                     });
                   }
+                  
+                  defaultLogger.log(`Manual parsing complete: ${Object.keys(result).length} keys`);
                 }
               } else {
                 // Parse newline-separated key=value format
-                const pairs = data.split('\n').filter(line => line.includes('='));
+                const pairs = actualData.split('\n').filter(line => line.includes('='));
                 pairs.forEach(pair => {
                   const [key, ...valueParts] = pair.split('=');
                   if (key && valueParts.length > 0) {
@@ -217,7 +290,7 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                   }
                 });
               }
-              
+              defaultLogger.log(`Result:`, JSON.stringify(result, null, 2));
               // Check for error in parsed result
               // DirectAdmin: error=0 means success, error=1 (or any non-zero) means failure
               const errorValue = result.error;
@@ -238,7 +311,6 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
                 }
                 resolve(result);
               }
-            }
           } catch (error) {
             defaultLogger.error(`Error parsing DirectAdmin response:`, error);
             reject(error);

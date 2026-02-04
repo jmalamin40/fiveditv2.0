@@ -153,8 +153,8 @@ async function sendHostingCredentialsEmail({
               </div>
               
               <div style="text-align: center; margin: 30px 0;">
-                ${directAdminUrl ? `<a href="${directAdminUrl}" class="button">Access DirectAdmin</a>` : ''}
-                ${cpanelUrl ? `<a href="${cpanelUrl}" class="button">Access cPanel</a>` : ''}
+                ${directAdminUrl ? `<a href="${directAdminUrl}" target="_blank" style="color: white;" class="button">Access DirectAdmin</a>` : ''}
+                ${cpanelUrl ? `<a href="${cpanelUrl}" target="_blank" style="color: white;" class="button">Access cPanel</a>` : ''}
               </div>
               
               <div class="warning">
