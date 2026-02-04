@@ -63,7 +63,7 @@ router.get('/accounts', async (req, res) => {
     const customerId = req.user.id;
     const customerEmail = req.user.email;
 
-    // Get accounts from hosting_accounts table (linked by customer_id or email)
+    // Get accounts from hosting_accounts table (linked by email)
     // Also get accounts from orders that have been paid/completed
     const [accounts] = await pool.execute(
       `SELECT DISTINCT
@@ -88,10 +88,10 @@ router.get('/accounts', async (req, res) => {
       FROM hosting_accounts ha
       LEFT JOIN hosting_orders ho ON ha.id = ho.hosting_account_id
       LEFT JOIN hosting_packages hp ON ho.package_id = hp.id
-      WHERE (ha.customer_id = ? OR ha.customer_email = ?)
-        AND ho.status IN ('paid', 'completed')
+      WHERE ha.customer_email = ?
+        AND (ho.status IN ('paid', 'completed') OR ho.status IS NULL)
       ORDER BY ha.created_at DESC`,
-      [customerId, customerEmail]
+      [customerEmail]
     );
 
     // Also get accounts from orders that are paid but don't have hosting_accounts yet
@@ -121,7 +121,7 @@ router.get('/accounts', async (req, res) => {
         AND ho.status IN ('paid', 'completed')
         AND ho.hosting_account_id IS NULL
       ORDER BY ho.created_at DESC`,
-      [customerId, customerEmail]
+      [customerId || 0, customerEmail]
     );
 
     // Combine and deduplicate
