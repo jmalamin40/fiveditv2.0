@@ -19,27 +19,47 @@ function getTransporter() {
       user: process.env.SMTP_USER || '',
       pass: process.env.SMTP_PASS || '',
     },
+    // Add connection timeout and other options
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    // For Gmail and other providers that require TLS
+    requireTLS: process.env.SMTP_REQUIRE_TLS !== 'false',
   };
 
-  // If no SMTP credentials, use a test account (won't actually send emails)
+  // Log configuration (without sensitive data)
+  defaultLogger.log('📧 Email transporter configuration:');
+  defaultLogger.log(`   Host: ${emailConfig.host}`);
+  defaultLogger.log(`   Port: ${emailConfig.port}`);
+  defaultLogger.log(`   Secure: ${emailConfig.secure}`);
+  defaultLogger.log(`   User: ${emailConfig.auth.user ? 'SET' : 'NOT SET'}`);
+  defaultLogger.log(`   Pass: ${emailConfig.auth.pass ? 'SET' : 'NOT SET'}`);
+
+  // If no SMTP credentials, return null (will be handled by caller)
   if (!emailConfig.auth.user || !emailConfig.auth.pass) {
     defaultLogger.warn('⚠️  SMTP credentials not configured. Emails will not be sent.');
     defaultLogger.warn('   Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS in .env');
-    
-    // Create a test transporter (won't send real emails)
-    transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      auth: {
-        user: 'test@example.com',
-        pass: 'test',
-      },
-    });
-    return transporter;
+    defaultLogger.warn('   For Gmail, use App Password (not regular password)');
+    return null;
   }
 
-  transporter = nodemailer.createTransport(emailConfig);
-  return transporter;
+  try {
+    transporter = nodemailer.createTransport(emailConfig);
+    
+    // Verify connection
+    transporter.verify((error, success) => {
+      if (error) {
+        defaultLogger.error('❌ SMTP connection verification failed:', error);
+      } else {
+        defaultLogger.log('✅ SMTP connection verified successfully');
+      }
+    });
+    
+    return transporter;
+  } catch (error) {
+    defaultLogger.error('❌ Failed to create email transporter:', error);
+    return null;
+  }
 }
 
 /**
@@ -56,7 +76,28 @@ async function sendHostingCredentialsEmail({
   directAdminUrl,
 }) {
   try {
+    // Validate required parameters
+    if (!to || !customerName || !domain || !username || !password) {
+      throw new Error('Missing required email parameters');
+    }
+
+    defaultLogger.log(`📧 Attempting to send hosting credentials email to: ${to}`);
+    defaultLogger.log(`   Domain: ${domain}, Username: ${username}, Package: ${packageName}`);
+
     const emailTransporter = getTransporter();
+    
+    // Check if transporter is properly configured
+    if (!emailTransporter) {
+      throw new Error('Email transporter not initialized');
+    }
+
+    // Verify SMTP credentials are configured
+    const hasCredentials = process.env.SMTP_USER && process.env.SMTP_PASS;
+    if (!hasCredentials) {
+      defaultLogger.warn('⚠️  SMTP credentials not configured. Email will not be sent.');
+      defaultLogger.warn('   Please set SMTP_USER and SMTP_PASS in .env file');
+      throw new Error('SMTP credentials not configured');
+    }
     
     const mailOptions = {
       from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@fivedit.com',
@@ -171,18 +212,42 @@ FivedIT Hosting Team
       `,
     };
 
+    defaultLogger.log(`📤 Sending email via ${process.env.SMTP_HOST || 'smtp.gmail.com'}:${process.env.SMTP_PORT || '587'}`);
+    defaultLogger.log(`   From: ${mailOptions.from}`);
+    defaultLogger.log(`   To: ${mailOptions.to}`);
+    defaultLogger.log(`   Subject: ${mailOptions.subject}`);
+
     const info = await emailTransporter.sendMail(mailOptions);
-    defaultLogger.log(`✅ Hosting credentials email sent to ${to}`);
-    defaultLogger.debug('Email info:', info);
-    return { success: true, messageId: info.messageId };
+    
+    defaultLogger.log(`✅ Hosting credentials email sent successfully to ${to}`);
+    defaultLogger.log(`   Message ID: ${info.messageId || 'N/A'}`);
+    defaultLogger.log(`   Response: ${info.response || 'N/A'}`);
+    
+    return { success: true, messageId: info.messageId, response: info.response };
   } catch (error) {
-    defaultLogger.error('❌ Error sending hosting credentials email:', error);
+    defaultLogger.error('❌ Error sending hosting credentials email:');
+    defaultLogger.error('   Error message:', error?.message || 'No message');
+    defaultLogger.error('   Error code:', error?.code || 'N/A');
+    defaultLogger.error('   Error command:', error?.command || 'N/A');
+    defaultLogger.error('   Error response:', error?.response || 'N/A');
+    defaultLogger.error('   Error responseCode:', error?.responseCode || 'N/A');
+    defaultLogger.error('   Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    
+    // Log SMTP configuration status
+    defaultLogger.error('   SMTP Configuration:');
+    defaultLogger.error(`     SMTP_HOST: ${process.env.SMTP_HOST || 'NOT SET'}`);
+    defaultLogger.error(`     SMTP_PORT: ${process.env.SMTP_PORT || 'NOT SET'}`);
+    defaultLogger.error(`     SMTP_USER: ${process.env.SMTP_USER ? 'SET' : 'NOT SET'}`);
+    defaultLogger.error(`     SMTP_PASS: ${process.env.SMTP_PASS ? 'SET' : 'NOT SET'}`);
+    defaultLogger.error(`     SMTP_FROM: ${process.env.SMTP_FROM || 'NOT SET'}`);
+    
     throw error;
   }
 }
 
 /**
  * Send order confirmation email
+ * (Sent immediately after order is created - confirms receipt of order)
  */
 async function sendOrderConfirmationEmail({
   to,
@@ -190,68 +255,120 @@ async function sendOrderConfirmationEmail({
   orderId,
   packageName,
   amount,
+  paymentUrl,
   currency,
   billingPeriod,
 }) {
   try {
+    // Validate required parameters
+    if (!to || !customerName || !orderId || !packageName || amount === undefined) {
+      throw new Error('Missing required email parameters');
+    }
+
+    defaultLogger.log(`📧 Attempting to send order confirmation email to: ${to}`);
+    defaultLogger.log(`Order ID: ${orderId}, Package: ${packageName}, Amount: ${amount} ${currency}`);
+
     const emailTransporter = getTransporter();
-    
+
+    // Check if transporter is properly configured
+    if (!emailTransporter) {
+      throw new Error('Email transporter not initialized');
+    }
+
+    // Verify SMTP credentials are configured
+    const hasCredentials = process.env.SMTP_USER && process.env.SMTP_PASS;
+    if (!hasCredentials) {
+      defaultLogger.warn('⚠️ SMTP credentials not configured. Email will not be sent.');
+      defaultLogger.warn('Please set SMTP_USER and SMTP_PASS in .env file');
+      throw new Error('SMTP credentials not configured');
+    }
+
     const mailOptions = {
       from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@fivedit.com',
       to: to,
       subject: `Order Confirmation - ${orderId}`,
       html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-            .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-            .order-details { background: white; padding: 20px; margin: 20px 0; border-radius: 5px; }
-            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>Order Confirmation</h1>
-            </div>
-            <div class="content">
-              <p>Dear ${customerName},</p>
-              
-              <p>Thank you for your order! We have received your payment and are processing your hosting account.</p>
-              
-              <div class="order-details">
-                <h2 style="margin-top: 0;">Order Details</h2>
-                <p><strong>Order ID:</strong> ${orderId}</p>
-                <p><strong>Package:</strong> ${packageName}</p>
-                <p><strong>Billing Period:</strong> ${billingPeriod === 'monthly' ? 'Monthly' : 'Yearly'}</p>
-                <p><strong>Amount:</strong> ${currency} ${amount.toFixed(2)}</p>
-              </div>
-              
-              <p>Your hosting account will be set up shortly. You will receive another email with your account credentials once it's ready.</p>
-              
-              <p>If you have any questions, please contact our support team.</p>
-              
-              <p>Best regards,<br>FivedIT Hosting Team</p>
-            </div>
-            <div class="footer">
-              <p>This is an automated email. Please do not reply to this message.</p>
-            </div>
-          </div>
-        </body>
-        </html>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+    .order-details { background: white; padding: 20px; margin: 20px 0; border-radius: 5px; }
+    .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Order Confirmation</h1>
+  </div>
+  <div class="content">
+    <p>Dear ${customerName},</p>
+
+    <p>Thank you for your order! We have successfully received and confirmed your order.</p>
+
+    <div class="order-details">
+      <h2 style="margin-top: 0;">Order Details</h2>
+      <p><strong>Order ID:</strong> ${orderId}</p>
+      <p><strong>Package:</strong> ${packageName}</p>
+      <p><strong>Billing Period:</strong> ${billingPeriod === 'monthly' ? 'Monthly' : 'Yearly'}</p>
+      <p><strong>Amount:</strong> ${currency} ${Number(amount || 0).toFixed(2)}</p>
+    </div>
+
+    <p>Next steps:</p>
+    <ul>
+      <li>Please complete the payment using the secure payment link that was provided during checkout.</li>
+      <li>Once payment is confirmed, your hosting account will be automatically set up.</li>
+      <li>You will receive a separate email with your account credentials and control panel login details shortly after payment.</li>
+    </ul>
+
+    <p>If you have any questions or need assistance with payment, please contact our support team.</p>
+
+    <p>Best regards,<br>FivedIT Hosting Team</p>
+  </div>
+  <div class="footer">
+    <p>This is an automated email. Please do not reply to this message.</p>
+  </div>
+</div>
+</body>
+</html>
       `,
     };
 
+    defaultLogger.log(`📤 Sending email via ${process.env.SMTP_HOST || 'smtp.gmail.com'}:${process.env.SMTP_PORT || '587'}`);
+    defaultLogger.log(`From: ${mailOptions.from}`);
+    defaultLogger.log(`To: ${mailOptions.to}`);
+    defaultLogger.log(`Subject: ${mailOptions.subject}`);
+
     const info = await emailTransporter.sendMail(mailOptions);
-    defaultLogger.log(`✅ Order confirmation email sent to ${to}`);
-    return { success: true, messageId: info.messageId };
+
+    defaultLogger.log(`✅ Order confirmation email sent successfully to ${to}`);
+    defaultLogger.log(`Message ID: ${info.messageId || 'N/A'}`);
+    defaultLogger.log(`Response: ${info.response || 'N/A'}`);
+
+    return { success: true, messageId: info.messageId, response: info.response };
   } catch (error) {
-    defaultLogger.error('❌ Error sending order confirmation email:', error);
+    defaultLogger.error('❌ Error sending order confirmation email:');
+    defaultLogger.error(`Error message: ${error?.message || 'No message'}`);
+    defaultLogger.error(`Error code: ${error?.code || 'N/A'}`);
+    defaultLogger.error(`Error command: ${error?.command || 'N/A'}`);
+    defaultLogger.error(`Error response: ${error?.response || 'N/A'}`);
+    defaultLogger.error(`Error responseCode: ${error?.responseCode || 'N/A'}`);
+    defaultLogger.error(`Error stack: ${error?.stack || 'No stack'}`);
+    defaultLogger.error('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+
+    // Log SMTP configuration status
+    defaultLogger.error('SMTP Configuration:');
+    defaultLogger.error(`SMTP_HOST: ${process.env.SMTP_HOST || 'NOT SET'}`);
+    defaultLogger.error(`SMTP_PORT: ${process.env.SMTP_PORT || 'NOT SET'}`);
+    defaultLogger.error(`SMTP_USER: ${process.env.SMTP_USER ? 'SET' : 'NOT SET'}`);
+    defaultLogger.error(`SMTP_PASS: ${process.env.SMTP_PASS ? 'SET' : 'NOT SET'}`);
+    defaultLogger.error(`SMTP_FROM: ${process.env.SMTP_FROM || 'NOT SET'}`);
+
     throw error;
   }
 }

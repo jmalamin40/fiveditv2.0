@@ -6,6 +6,7 @@ import ScriptsManager from './ScriptsManager';
 import ChatManager from './ChatManager';
 import HostingManager from './HostingManager';
 import ProfileManager from './ProfileManager';
+import InvoiceManager from './InvoiceManager';
 import { fetchAdminProfile } from '../api';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './ToastContainer';
@@ -26,6 +27,7 @@ const tabs = [
   { id: 'services', label: 'Services', icon: '⚙️' },
   { id: 'scripts', label: 'CodeCanyon Scripts', icon: '💻' },
   { id: 'hosting', label: 'Hosting', icon: '🖥️' },
+  { id: 'invoices', label: 'Invoices', icon: '🧾' },
   { id: 'chat', label: 'Support Chat', icon: '💬' },
   { id: 'profile', label: 'Profile', icon: '👤' },
 ];
@@ -102,6 +104,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
           <Route path="services" element={<ServicesManager token={token} />} />
           <Route path="scripts" element={<ScriptsManager token={token} />} />
           <Route path="hosting/*" element={<HostingManager token={token} toast={toast} />} />
+          <Route path="invoices" element={<InvoiceManager token={token} toast={toast} />} />
           <Route path="chat" element={<ChatManager token={token} />} />
           <Route path="profile" element={<ProfileManager token={token} />} />
           <Route path="" element={<Navigate to="categories" replace />} />

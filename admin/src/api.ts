@@ -295,4 +295,80 @@ export async function fetchActiveAdmins() {
   return data;
 }
 
+// Invoice interfaces
+export interface Invoice {
+  id: number;
+  invoice_id?: string; // API might return invoice_number instead
+  invoice_number?: string; // Some APIs use this
+  customer_id: number;
+  order_id: number | null;
+  order_reference?: string;
+  package_name?: string;
+  billing_period?: string;
+  customer_name_full?: string;
+  due_date: string;
+  amount: number;
+  currency: string;
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  payment_method: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+  invoice_items?: any;
+  notes?: string;
+}
+
+export interface InvoiceListResponse {
+  invoices: Invoice[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface InvoiceFilters {
+  status?: string;
+  customer_id?: number;
+  page?: number;
+  limit?: number;
+}
+
+// Invoice API functions
+export async function fetchInvoices(token: string, filters?: InvoiceFilters): Promise<InvoiceListResponse> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.append('status', filters.status);
+  if (filters?.customer_id) params.append('customer_id', filters.customer_id.toString());
+  if (filters?.page) params.append('page', filters.page.toString());
+  if (filters?.limit) params.append('limit', filters.limit.toString());
+  
+  const url = `/admin/invoices${params.toString() ? '?' + params.toString() : ''}`;
+  const { data } = await client.get<InvoiceListResponse>(url, authHeaders(token));
+  return data;
+}
+
+export async function fetchInvoice(token: string, invoiceId: number) {
+  const { data } = await client.get<{ invoice: Invoice }>(`/admin/invoices/${invoiceId}`, authHeaders(token));
+  return data;
+}
+
+export async function updateInvoiceStatus(token: string, invoiceId: number, status: string, notes?: string) {
+  const { data } = await client.put<{ success: boolean; message: string }>(
+    `/admin/invoices/${invoiceId}/status`,
+    { status, notes },
+    authHeaders(token)
+  );
+  return data;
+}
+
+export async function generateInvoiceForOrder(token: string, orderId: number) {
+  const { data } = await client.post<{ invoice: Invoice; message: string }>(
+    `/admin/invoices/generate/${orderId}`,
+    {},
+    authHeaders(token)
+  );
+  return data;
+}
+
 

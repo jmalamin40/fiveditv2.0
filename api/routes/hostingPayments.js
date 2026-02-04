@@ -467,6 +467,7 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
           amount: amount,
           currency: packageData.currency,
           billingPeriod: billing_period,
+          paymentUrl: paymentUrl,
         });
       } catch (emailError) {
         defaultLogger.error('Failed to send order confirmation email:', emailError);
@@ -955,6 +956,7 @@ router.post('/webhook', async (req, res) => {
         
         // Send credentials email to customer (AFTER account is created and saved)
         try {
+
           const emailResult = await sendHostingCredentialsEmail({
             to: order.customer_email,
             customerName: order.customer_name,
