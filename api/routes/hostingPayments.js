@@ -219,14 +219,23 @@ function makeDirectAdminRequest(config, command, params = {}, method = 'GET') {
               }
               
               // Check for error in parsed result
-              if (result.error) {
-                defaultLogger.error(`Error in response:`, result.error);
-                reject(new Error(result.error || 'DirectAdmin API error'));
-              } else if (result.text === 'error' || result.text && result.text.toLowerCase().includes('error')) {
+              // DirectAdmin: error=0 means success, error=1 (or any non-zero) means failure
+              const errorValue = result.error;
+              if (errorValue !== undefined && errorValue !== null && errorValue !== 0 && errorValue !== '0') {
+                defaultLogger.error(`Error in response:`, errorValue);
+                // If there's a text field with error message, use it
+                const errorMessage = result.text || result.details || errorValue;
+                reject(new Error(String(errorMessage) || 'DirectAdmin API error'));
+              } else if (result.text === 'error' || (result.text && typeof result.text === 'string' && result.text.toLowerCase().includes('error') && !result.text.toLowerCase().includes('successfully'))) {
                 defaultLogger.error(`Error text in response:`, result.text);
                 reject(new Error(result.text || 'DirectAdmin API error'));
               } else {
-                defaultLogger.log(`Parsed ${Object.keys(result).length} key-value pairs`);
+                // Success! DirectAdmin returns error=0 for success
+                defaultLogger.log(`✅ DirectAdmin response parsed successfully`);
+                defaultLogger.log(`   Parsed ${Object.keys(result).length} key-value pairs`);
+                if (result.text) {
+                  defaultLogger.log(`   Response text: ${result.text.substring(0, 100)}`);
+                }
                 resolve(result);
               }
             }
