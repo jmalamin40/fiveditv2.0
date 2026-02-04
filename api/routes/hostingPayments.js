@@ -336,30 +336,66 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
     const orderId = `HOST-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
     // Create order in database
-    const [orderResult] = await pool.execute(
-      `INSERT INTO hosting_orders (
-        order_id, package_id, package_name, billing_period, amount, currency,
-        customer_name, customer_email, customer_phone, domain, username,
-        return_url, cancel_url, status, customer_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [
-        orderId,
-        package_id,
-        packageData.display_name,
-        billing_period,
-        amount,
-        packageData.currency,
-        customer_name,
-        customer_email,
-        customer_phone || null,
-        domain || null,
-        username || null,
-        `${FRONTEND_URL}/hosting/payment/success`,
-        `${FRONTEND_URL}/hosting/payment/cancel`,
-        customer_id,
-      ]
-    );
+    // Check if customer_id column exists, if not, insert without it
+    let orderResult;
+    try {
+      // Try with customer_id first
+      [orderResult] = await pool.execute(
+        `INSERT INTO hosting_orders (
+          order_id, package_id, package_name, billing_period, amount, currency,
+          customer_name, customer_email, customer_phone, domain, username,
+          return_url, cancel_url, status, customer_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+        [
+          orderId,
+          package_id,
+          packageData.display_name,
+          billing_period,
+          amount,
+          packageData.currency,
+          customer_name,
+          customer_email,
+          customer_phone || null,
+          domain || null,
+          username || null,
+          `${FRONTEND_URL}/hosting/payment/success`,
+          `${FRONTEND_URL}/hosting/payment/cancel`,
+          customer_id,
+        ]
+      );
+    } catch (dbError) {
+      // If customer_id column doesn't exist, insert without it
+      if (dbError.code === 'ER_BAD_FIELD_ERROR' && dbError.message?.includes('customer_id')) {
+        defaultLogger.warn('customer_id column not found, inserting order without customer_id. Please run migration.');
+        [orderResult] = await pool.execute(
+          `INSERT INTO hosting_orders (
+            order_id, package_id, package_name, billing_period, amount, currency,
+            customer_name, customer_email, customer_phone, domain, username,
+            return_url, cancel_url, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+          [
+            orderId,
+            package_id,
+            packageData.display_name,
+            billing_period,
+            amount,
+            packageData.currency,
+            customer_name,
+            customer_email,
+            customer_phone || null,
+            domain || null,
+            username || null,
+            `${FRONTEND_URL}/hosting/payment/success`,
+            `${FRONTEND_URL}/hosting/payment/cancel`,
+          ]
+        );
+      } else {
+        // Re-throw if it's a different error
+        throw dbError;
+      }
+    }
     syncLogger.info('Hosting order created:', orderResult);
+    defaultLogger.log(`Order created with ID: ${orderResult.insertId}, customer_id: ${customer_id || 'null'}`);
     
     // Validate and construct URLs
     const validateUrl = (url) => {
@@ -473,8 +509,36 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error creating hosting payment order:', error);
-    res.status(500).json({ error: 'Failed to create payment order' });
+    defaultLogger.error('Error creating hosting payment order:', error);
+    defaultLogger.error('Error stack:', error.stack);
+    defaultLogger.error('Request body:', req.body);
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to create payment order';
+    let statusCode = 500;
+    
+    if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    // Check for database errors
+    if (error.code === 'ER_NO_SUCH_TABLE' || error.message?.includes('customer_id')) {
+      errorMessage = 'Database schema error. Please run migration: node scripts/migrate.js';
+      statusCode = 500;
+    } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+      errorMessage = `Database field error: ${error.message}. Please run migration: node scripts/migrate.js`;
+      statusCode = 500;
+    } else if (error.response) {
+      // Axios error from payment gateway
+      errorMessage = error.response.data?.message || error.response.data?.error || errorMessage;
+      statusCode = error.response.status || 500;
+    }
+    
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      code: error.code
+    });
   }
 });
 
