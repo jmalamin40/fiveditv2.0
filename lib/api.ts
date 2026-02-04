@@ -300,6 +300,7 @@ export interface CustomerOrder {
   order_id: string;
   transaction_id: string;
   status: string;
+  display_status?: string; // Normalized status for display (account status if available, otherwise order status)
   amount: number;
   currency: string;
   billing_period: string;
@@ -318,11 +319,12 @@ export interface CustomerOrder {
 }
 
 export interface CustomerAccount {
-  id: number;
+  id: number | null;
   domain: string;
   username: string;
   package_name: string;
   status: string;
+  display_status?: string; // Normalized status for display
   disk_used: number;
   disk_limit: number;
   bandwidth_used: number;
@@ -332,6 +334,11 @@ export interface CustomerAccount {
   expires_at?: string;
   order_id?: string;
   billing_period?: string;
+  amount?: number;
+  currency?: string;
+  paid_at?: string;
+  package_display_name?: string;
+  order_status?: string;
 }
 
 export async function getCustomerOrders(token: string): Promise<{ orders: CustomerOrder[] }> {
