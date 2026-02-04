@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, CustomerOrder, CustomerAccount } from '@/lib/api';
-import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, CustomerOrder, CustomerAccount, Invoice } from '@/lib/api';
+import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -11,8 +11,9 @@ export default function CustomerDashboard() {
   const [user, setUser] = useState<any>(null);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'profile'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'invoices' | 'profile'>('orders');
 
   useEffect(() => {
     const storedToken = localStorage.getItem('customer_token');
@@ -32,13 +33,15 @@ export default function CustomerDashboard() {
   const loadData = async (authToken: string) => {
     try {
       setLoading(true);
-      const [ordersData, accountsData, profileData] = await Promise.all([
+      const [ordersData, accountsData, invoicesData, profileData] = await Promise.all([
         getCustomerOrders(authToken),
         getCustomerAccounts(authToken),
+        getCustomerInvoices(authToken).catch(() => ({ invoices: [] })), // Don't fail if invoices fail
         getCustomerProfile(authToken),
       ]);
       setOrders(ordersData.orders);
       setAccounts(accountsData.accounts);
+      setInvoices(invoicesData.invoices);
       setUser(profileData.user);
       localStorage.setItem('customer_user', JSON.stringify(profileData.user));
     } catch (error) {
@@ -143,6 +146,17 @@ export default function CustomerDashboard() {
               >
                 <Server className="w-4 h-4 inline mr-2" />
                 Hosting Accounts
+              </button>
+              <button
+                onClick={() => setActiveTab('invoices')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 ${
+                  activeTab === 'invoices'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <FileText className="w-4 h-4 inline mr-2" />
+                Invoices
               </button>
               <button
                 onClick={() => setActiveTab('profile')}
@@ -276,6 +290,75 @@ export default function CustomerDashboard() {
                         <div className="pt-4 border-t">
                           <p className="text-sm text-gray-600">
                             <span className="font-semibold">IP Address:</span> {account.ip_address}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'invoices' && (
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Your Invoices</h2>
+              {invoices.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No invoices found</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {invoices.map((invoice) => (
+                    <div key={invoice.id} className="border border-gray-200 rounded-lg p-6">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">Invoice #{invoice.invoice_number}</h3>
+                          <p className="text-sm text-gray-600">
+                            {invoice.package_name && `Package: ${invoice.package_name}`}
+                            {invoice.order_reference && ` • Order: ${invoice.order_reference}`}
+                          </p>
+                        </div>
+                        {getStatusBadge(invoice.status)}
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                        <div>
+                          <p className="text-gray-600">Total Amount</p>
+                          <p className="font-semibold text-lg">{invoice.currency} {Number(invoice.total_amount || 0).toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Due Date</p>
+                          <p className="font-semibold">{new Date(invoice.due_date).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Invoice Date</p>
+                          <p className="font-semibold">{new Date(invoice.created_at).toLocaleDateString()}</p>
+                        </div>
+                        {invoice.paid_at && (
+                          <div>
+                            <p className="text-gray-600">Paid Date</p>
+                            <p className="font-semibold">{new Date(invoice.paid_at).toLocaleDateString()}</p>
+                          </div>
+                        )}
+                      </div>
+                      {invoice.invoice_items && invoice.invoice_items.length > 0 && (
+                        <div className="pt-4 border-t">
+                          <p className="text-sm font-semibold text-gray-700 mb-2">Items:</p>
+                          <ul className="space-y-1">
+                            {invoice.invoice_items.map((item, idx) => (
+                              <li key={idx} className="text-sm text-gray-600 flex justify-between">
+                                <span>{item.description} {item.billing_period && `(${item.billing_period})`}</span>
+                                <span className="font-semibold">{invoice.currency} {Number(item.total || 0).toFixed(2)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {invoice.notes && (
+                        <div className="mt-4 pt-4 border-t">
+                          <p className="text-sm text-gray-600">
+                            <span className="font-semibold">Notes:</span> {invoice.notes}
                           </p>
                         </div>
                       )}

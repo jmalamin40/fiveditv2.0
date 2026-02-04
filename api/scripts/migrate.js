@@ -387,6 +387,40 @@ async function migrate() {
     `);
     console.log('✅ Customer users table created');
 
+    // Create invoices table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        invoice_number VARCHAR(50) NOT NULL UNIQUE,
+        order_id INT NOT NULL,
+        customer_id INT,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(50),
+        customer_address TEXT,
+        amount DECIMAL(10, 2) NOT NULL,
+        tax_amount DECIMAL(10, 2) DEFAULT 0,
+        discount_amount DECIMAL(10, 2) DEFAULT 0,
+        total_amount DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        status ENUM('draft', 'sent', 'paid', 'overdue', 'cancelled') DEFAULT 'draft',
+        due_date DATE,
+        paid_at TIMESTAMP NULL,
+        notes TEXT,
+        invoice_items JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES hosting_orders(id) ON DELETE RESTRICT,
+        FOREIGN KEY (customer_id) REFERENCES customer_users(id) ON DELETE SET NULL,
+        INDEX idx_invoice_number (invoice_number),
+        INDEX idx_order_id (order_id),
+        INDEX idx_customer_id (customer_id),
+        INDEX idx_status (status),
+        INDEX idx_due_date (due_date)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Invoices table created');
+
     console.log('\n🎉 Database migration completed successfully!');
     
   } catch (error) {

@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { defaultLogger, syncLogger } = require('../utils/logger');
 const { sendHostingCredentialsEmail, sendOrderConfirmationEmail } = require('../utils/email');
+const { generateInvoiceForOrder } = require('./invoices');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
@@ -743,28 +744,6 @@ router.post('/webhook', async (req, res) => {
       }
     }
 
-    // If order doesn't have customer_id, try to link it to a customer account by email
-    if (!order.customer_id && order.customer_email) {
-      try {
-        const [customers] = await pool.execute(
-          'SELECT id FROM customer_users WHERE email = ? LIMIT 1',
-          [order.customer_email]
-        );
-        if (customers.length > 0) {
-          await pool.execute(
-            'UPDATE hosting_orders SET customer_id = ? WHERE id = ?',
-            [customers[0].id, order.id]
-          );
-          defaultLogger.log(`✅ Linked order ${order.order_id} to customer account ${customers[0].id}`);
-          // Update order object for later use
-          order.customer_id = customers[0].id;
-        }
-      } catch (linkError) {
-        defaultLogger.warn('Failed to link order to customer account:', linkError.message);
-        // Don't fail the webhook if linking fails
-      }
-    }
-
     // Update order status and transaction_id if provided
     await pool.execute(
       `UPDATE hosting_orders 
@@ -777,6 +756,17 @@ router.post('/webhook', async (req, res) => {
     );
     
     defaultLogger.log(`✅ Order ${order.order_id} status updated to: ${status}`);
+
+    // Auto-generate invoice if payment is successful
+    if (isPaymentSuccessful && wasNotPaid) {
+      try {
+        await generateInvoiceForOrder(order.id);
+        defaultLogger.log(`✅ Invoice generated for order ${order.order_id}`);
+      } catch (invoiceError) {
+        defaultLogger.error('Failed to generate invoice:', invoiceError);
+        // Don't fail the webhook if invoice generation fails
+      }
+    }
 
     // If payment is successful (status is 'paid' or 'completed'), create hosting account automatically
     // Check both the new status and old status to avoid duplicate account creation

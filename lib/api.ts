@@ -397,3 +397,64 @@ export async function updateCustomerProfile(token: string, data: { name: string;
   return response.json();
 }
 
+// Invoice interfaces and functions
+export interface InvoiceItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  billing_period?: string;
+}
+
+export interface Invoice {
+  id: number;
+  invoice_number: string;
+  order_id: number;
+  customer_id?: number;
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string;
+  customer_address?: string;
+  amount: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  currency: string;
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  due_date: string;
+  paid_at?: string;
+  notes?: string;
+  invoice_items: InvoiceItem[];
+  order_reference?: string;
+  package_name?: string;
+  billing_period?: string;
+  domain?: string;
+  username?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getCustomerInvoices(token: string): Promise<{ invoices: Invoice[] }> {
+  const response = await fetch(`${API_BASE_URL}/customer/invoices`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch invoices');
+  }
+  return response.json();
+}
+
+export async function getCustomerInvoice(token: string, invoiceId: string): Promise<{ invoice: Invoice }> {
+  const response = await fetch(`${API_BASE_URL}/customer/invoices/${invoiceId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch invoice');
+  }
+  return response.json();
+}
+

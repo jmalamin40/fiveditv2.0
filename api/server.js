@@ -42,6 +42,11 @@ app.use('/api/hosting', hostingPackages.public);
 app.use('/api/admin/hosting', hostingPackages.admin);
 app.use('/api/admin', require('./routes/adminProfile'));
 
+// Invoice routes
+const invoices = require('./routes/invoices');
+app.use('/api/customer/invoices', invoices.customerRouter);
+app.use('/api/admin/invoices', invoices.adminRouter);
+
 // Setup Socket.IO handlers
 const { setupSocketHandlers } = require('./socket/socketHandler');
 setupSocketHandlers(io);

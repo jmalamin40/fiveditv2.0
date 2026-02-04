@@ -60,10 +60,13 @@ router.get('/orders', async (req, res) => {
 // Get customer's hosting accounts
 router.get('/accounts', async (req, res) => {
   try {
+    const customerId = req.user.id;
     const customerEmail = req.user.email;
 
+    // Get accounts from hosting_accounts table (linked by customer_id or email)
+    // Also get accounts from orders that have been paid/completed
     const [accounts] = await pool.execute(
-      `SELECT 
+      `SELECT DISTINCT
         ha.id,
         ha.domain,
         ha.username,
@@ -77,15 +80,57 @@ router.get('/accounts', async (req, res) => {
         ha.created_at,
         ha.expires_at,
         ho.order_id,
-        ho.billing_period
+        ho.billing_period,
+        ho.amount,
+        ho.currency,
+        ho.paid_at,
+        hp.display_name as package_display_name
       FROM hosting_accounts ha
       LEFT JOIN hosting_orders ho ON ha.id = ho.hosting_account_id
-      WHERE ha.customer_email = ?
+      LEFT JOIN hosting_packages hp ON ho.package_id = hp.id
+      WHERE (ha.customer_id = ? OR ha.customer_email = ?)
+        AND ho.status IN ('paid', 'completed')
       ORDER BY ha.created_at DESC`,
-      [customerEmail]
+      [customerId, customerEmail]
     );
 
-    res.json({ accounts });
+    // Also get accounts from orders that are paid but don't have hosting_accounts yet
+    const [orderAccounts] = await pool.execute(
+      `SELECT 
+        NULL as id,
+        ho.domain,
+        ho.username,
+        ho.package_name,
+        'pending' as status,
+        0 as disk_used,
+        0 as disk_limit,
+        0 as bandwidth_used,
+        0 as bandwidth_limit,
+        NULL as ip_address,
+        ho.created_at,
+        NULL as expires_at,
+        ho.order_id,
+        ho.billing_period,
+        ho.amount,
+        ho.currency,
+        ho.paid_at,
+        hp.display_name as package_display_name
+      FROM hosting_orders ho
+      LEFT JOIN hosting_packages hp ON ho.package_id = hp.id
+      WHERE (ho.customer_id = ? OR ho.customer_email = ?)
+        AND ho.status IN ('paid', 'completed')
+        AND ho.hosting_account_id IS NULL
+      ORDER BY ho.created_at DESC`,
+      [customerId, customerEmail]
+    );
+
+    // Combine and deduplicate
+    const allAccounts = [...accounts, ...orderAccounts];
+    const uniqueAccounts = allAccounts.filter((account, index, self) =>
+      index === self.findIndex(a => a.order_id === account.order_id)
+    );
+
+    res.json({ accounts: uniqueAccounts });
   } catch (error) {
     defaultLogger.error('Error fetching customer accounts:', error);
     res.status(500).json({ error: 'Failed to fetch accounts' });
