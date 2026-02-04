@@ -20,6 +20,7 @@ router.use(requireCustomer);
 // Get customer's orders
 router.get('/orders', async (req, res) => {
   try {
+    const customerId = req.user.id;
     const customerEmail = req.user.email;
 
     const [orders] = await pool.execute(
@@ -45,12 +46,28 @@ router.get('/orders', async (req, res) => {
       FROM hosting_orders ho
       LEFT JOIN hosting_packages hp ON ho.package_id = hp.id
       LEFT JOIN hosting_accounts ha ON ho.hosting_account_id = ha.id
-      WHERE ho.customer_email = ?
+      WHERE (ho.customer_id = ? OR ho.customer_email = ?)
       ORDER BY ho.created_at DESC`,
-      [customerEmail]
+      [customerId, customerEmail]
     );
 
-    res.json({ orders });
+    // Normalize status - if order is completed and has account, show account status, otherwise show order status
+    const normalizedOrders = orders.map(order => {
+      // If order is completed and has hosting account, use account status
+      if (order.status === 'completed' && order.hosting_account_id && order.account_status) {
+        return {
+          ...order,
+          display_status: order.account_status, // Use account status for display
+        };
+      }
+      // Otherwise use order status
+      return {
+        ...order,
+        display_status: order.status,
+      };
+    });
+
+    res.json({ orders: normalizedOrders });
   } catch (error) {
     defaultLogger.error('Error fetching customer orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
@@ -84,6 +101,7 @@ router.get('/accounts', async (req, res) => {
         ho.amount,
         ho.currency,
         ho.paid_at,
+        ho.status as order_status,
         hp.display_name as package_display_name
       FROM hosting_accounts ha
       LEFT JOIN hosting_orders ho ON ha.id = ho.hosting_account_id
@@ -101,7 +119,11 @@ router.get('/accounts', async (req, res) => {
         ho.domain,
         ho.username,
         ho.package_name,
-        'pending' as status,
+        CASE 
+          WHEN ho.status = 'completed' THEN 'active'
+          WHEN ho.status = 'paid' THEN 'pending'
+          ELSE ho.status
+        END as status,
         0 as disk_used,
         0 as disk_limit,
         0 as bandwidth_used,
@@ -114,6 +136,7 @@ router.get('/accounts', async (req, res) => {
         ho.amount,
         ho.currency,
         ho.paid_at,
+        ho.status as order_status,
         hp.display_name as package_display_name
       FROM hosting_orders ho
       LEFT JOIN hosting_packages hp ON ho.package_id = hp.id
@@ -130,7 +153,25 @@ router.get('/accounts', async (req, res) => {
       index === self.findIndex(a => a.order_id === account.order_id)
     );
 
-    res.json({ accounts: uniqueAccounts });
+    // Normalize account status - if account exists in hosting_accounts, use its status
+    // If it's from orders only, use appropriate status based on order status
+    const normalizedAccounts = uniqueAccounts.map(account => {
+      if (account.id) {
+        // Account exists in hosting_accounts table
+        return {
+          ...account,
+          display_status: account.status || 'active', // Default to active if null
+        };
+      } else {
+        // Account only exists in orders (not yet created in DirectAdmin)
+        return {
+          ...account,
+          display_status: account.status || (account.order_status === 'completed' ? 'active' : 'pending'),
+        };
+      }
+    });
+
+    res.json({ accounts: normalizedAccounts });
   } catch (error) {
     defaultLogger.error('Error fetching customer accounts:', error);
     res.status(500).json({ error: 'Failed to fetch accounts' });

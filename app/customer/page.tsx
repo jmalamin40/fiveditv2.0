@@ -198,7 +198,7 @@ export default function CustomerDashboard() {
                           <h3 className="text-lg font-semibold text-gray-900">{order.package_display_name || order.package_name}</h3>
                           <p className="text-sm text-gray-600">Order ID: {order.order_id}</p>
                         </div>
-                        {getStatusBadge(order.status)}
+                        {getStatusBadge(order.display_status || order.status)}
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
@@ -262,7 +262,7 @@ export default function CustomerDashboard() {
                           <h3 className="text-lg font-semibold text-gray-900">{account.domain}</h3>
                           <p className="text-sm text-gray-600">Package: {account.package_name}</p>
                         </div>
-                        {getStatusBadge(account.status)}
+                        {getStatusBadge(account.display_status || account.status)}
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                         <div>

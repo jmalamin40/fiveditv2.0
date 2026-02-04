@@ -879,13 +879,18 @@ router.post('/webhook', async (req, res) => {
           throw daError;
         }
         
-        // Check for error in response (same as working version in hosting.js)
-        if (daResult.error) {
+        // Check for error in response - DirectAdmin can return errors in different formats
+        const hasError = daResult.error || 
+                        daResult.text === 'error' || 
+                        (daResult.text && daResult.text.toLowerCase().includes('error')) ||
+                        (daResult.error && daResult.error !== '');
+        
+        if (hasError) {
           defaultLogger.error('❌ DirectAdmin account creation failed - error in response');
           defaultLogger.error('   Response:', JSON.stringify(daResult, null, 2));
           await pool.execute(
             'UPDATE hosting_orders SET status = "paid", payment_gateway_response = ? WHERE id = ?',
-            [JSON.stringify({ ...req.body, da_error: daResult.error || daResult }), order.id]
+            [JSON.stringify({ ...req.body, da_error: daResult.error || daResult.text || daResult }), order.id]
           );
           return res.json({ success: true, message: 'Webhook processed, but account creation failed' });
         }
@@ -893,44 +898,83 @@ router.post('/webhook', async (req, res) => {
         defaultLogger.log('✅ DirectAdmin account created successfully');
         
         // Save account to database
-        const [accountResult] = await pool.execute(
-          `INSERT INTO hosting_accounts 
-           (domain, username, package_name, status, customer_name, customer_email, customer_phone)
-           VALUES (?, ?, ?, 'active', ?, ?, ?)`,
-          [domain, username, packageName, order.customer_name, order.customer_email, order.customer_phone]
-        );
-        
-        const hostingAccountId = accountResult.insertId;
+        let hostingAccountId;
+        try {
+          // Check if account already exists (might have been created manually or in a previous attempt)
+          const [existingAccounts] = await pool.execute(
+            'SELECT id FROM hosting_accounts WHERE domain = ? OR username = ? LIMIT 1',
+            [domain, username]
+          );
+          
+          if (existingAccounts.length > 0) {
+            hostingAccountId = existingAccounts[0].id;
+            defaultLogger.log(`✅ Found existing hosting account in database with ID: ${hostingAccountId}`);
+            
+            // Update existing account status to active if it was pending
+            await pool.execute(
+              'UPDATE hosting_accounts SET status = "active", customer_name = ?, customer_email = ?, customer_phone = ? WHERE id = ?',
+              [order.customer_name, order.customer_email, order.customer_phone || null, hostingAccountId]
+            );
+          } else {
+            // Create new account record
+            const [accountResult] = await pool.execute(
+              `INSERT INTO hosting_accounts 
+               (domain, username, package_name, status, customer_name, customer_email, customer_phone)
+               VALUES (?, ?, ?, 'active', ?, ?, ?)`,
+              [domain, username, packageName, order.customer_name, order.customer_email, order.customer_phone || null]
+            );
+            
+            hostingAccountId = accountResult.insertId;
+            defaultLogger.log(`✅ Hosting account saved to database with ID: ${hostingAccountId}`);
+          }
+        } catch (dbError) {
+          defaultLogger.error('❌ Failed to save/find hosting account in database:', dbError);
+          defaultLogger.error('   Error details:', JSON.stringify(dbError, Object.getOwnPropertyNames(dbError)));
+          // This is critical - we need the account ID to link the order
+          throw new Error(`Failed to save hosting account to database: ${dbError.message}`);
+        }
         
         // Update order with hosting account ID and mark as completed
-        await pool.execute(
-          'UPDATE hosting_orders SET status = "completed", hosting_account_id = ? WHERE id = ?',
-          [hostingAccountId, order.id]
-        );
+        try {
+          await pool.execute(
+            'UPDATE hosting_orders SET status = "completed", hosting_account_id = ? WHERE id = ?',
+            [hostingAccountId, order.id]
+          );
+          defaultLogger.log(`✅ Order ${order.order_id} updated with hosting_account_id: ${hostingAccountId} and status: completed`);
+        } catch (updateError) {
+          defaultLogger.error('❌ Failed to update order with hosting_account_id:', updateError);
+          throw updateError; // This is critical, so re-throw
+        }
         
         // Get DirectAdmin URL (construct from config)
         const protocol = config.whm_ssl !== false ? 'https' : 'http';
         const directAdminUrl = `${protocol}://${config.whm_host}:${config.whm_port || 2222}`;
         
-        // Send credentials email to customer
+        defaultLogger.log(`✅ Order ${order.order_id} completed successfully. Account ID: ${hostingAccountId}`);
+        defaultLogger.log(`📧 Preparing to send credentials email to ${order.customer_email}...`);
+        
+        // Send credentials email to customer (AFTER account is created and saved)
         try {
-          await sendHostingCredentialsEmail({
+          const emailResult = await sendHostingCredentialsEmail({
             to: order.customer_email,
             customerName: order.customer_name,
             domain: domain,
             username: username,
             password: password,
-            packageName: order.package_name,
+            packageName: packageName || order.package_name,
             directAdminUrl: directAdminUrl,
             cpanelUrl: null, // DirectAdmin doesn't use cPanel
           });
-          defaultLogger.log(`✅ Credentials email sent to ${order.customer_email}`);
+          defaultLogger.log(`✅ Credentials email sent successfully to ${order.customer_email}`);
+          defaultLogger.log(`   Email message ID: ${emailResult?.messageId || 'N/A'}`);
         } catch (emailError) {
-          defaultLogger.error('❌ Failed to send credentials email:', emailError);
-          // Don't fail the webhook if email fails
+          defaultLogger.error('❌ Failed to send credentials email:');
+          defaultLogger.error('   Error message:', emailError?.message || 'No message');
+          defaultLogger.error('   Error stack:', emailError?.stack || 'No stack');
+          defaultLogger.error('   Full error:', JSON.stringify(emailError, Object.getOwnPropertyNames(emailError)));
+          // Don't fail the webhook if email fails, but log it clearly
+          defaultLogger.warn('⚠️  Account created successfully but email failed. Customer should be notified manually.');
         }
-        
-        defaultLogger.log(`✅ Order ${order.order_id} completed successfully. Account ID: ${hostingAccountId}`);
       } catch (accountError) {
         defaultLogger.error('❌ Error creating hosting account after payment:');
         defaultLogger.error('   Error message:', accountError?.message || 'No error message');
@@ -968,6 +1012,63 @@ router.post('/webhook', async (req, res) => {
     defaultLogger.error('   Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     defaultLogger.error('Webhook request body:', JSON.stringify(req.body, null, 2));
     res.status(500).json({ error: 'Failed to process webhook', message: error?.message || 'Unknown error' });
+  }
+});
+
+// Utility endpoint to link existing accounts to orders (admin only, for fixing data)
+router.post('/orders/link-accounts', async (req, res) => {
+  try {
+    // Find orders that are completed/paid but don't have hosting_account_id
+    // and try to link them to existing accounts by domain/username/email
+    const [unlinkedOrders] = await pool.execute(
+      `SELECT ho.id, ho.order_id, ho.domain, ho.username, ho.customer_email, ho.status
+       FROM hosting_orders ho
+       WHERE ho.status IN ('paid', 'completed')
+         AND ho.hosting_account_id IS NULL
+         AND (ho.domain IS NOT NULL OR ho.username IS NOT NULL)`
+    );
+
+    let linked = 0;
+    let notFound = 0;
+
+    for (const order of unlinkedOrders) {
+      // Try to find account by domain or username
+      let [accounts] = await pool.execute(
+        'SELECT id FROM hosting_accounts WHERE domain = ? OR username = ? LIMIT 1',
+        [order.domain || '', order.username || '']
+      );
+
+      // If not found, try by customer email
+      if (accounts.length === 0 && order.customer_email) {
+        [accounts] = await pool.execute(
+          'SELECT id FROM hosting_accounts WHERE customer_email = ? LIMIT 1',
+          [order.customer_email]
+        );
+      }
+
+      if (accounts.length > 0) {
+        await pool.execute(
+          'UPDATE hosting_orders SET hosting_account_id = ? WHERE id = ?',
+          [accounts[0].id, order.id]
+        );
+        linked++;
+        defaultLogger.log(`✅ Linked order ${order.order_id} to account ${accounts[0].id}`);
+      } else {
+        notFound++;
+        defaultLogger.warn(`⚠️  Could not find account for order ${order.order_id}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Linked ${linked} orders, ${notFound} not found`,
+      linked,
+      notFound,
+      total: unlinkedOrders.length,
+    });
+  } catch (error) {
+    defaultLogger.error('Error linking accounts to orders:', error);
+    res.status(500).json({ error: 'Failed to link accounts' });
   }
 });
 
