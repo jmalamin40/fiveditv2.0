@@ -348,6 +348,29 @@ async function migrate() {
     `);
     console.log('✅ Hosting orders table created');
 
+    // Add customer_id column to hosting_orders if it doesn't exist
+    try {
+      const [columns] = await connection.execute(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'hosting_orders' 
+        AND COLUMN_NAME = 'customer_id'
+      `);
+      
+      if (columns.length === 0) {
+        await connection.execute(`
+          ALTER TABLE hosting_orders 
+          ADD COLUMN customer_id INT NULL,
+          ADD INDEX idx_customer_id (customer_id),
+          ADD FOREIGN KEY (customer_id) REFERENCES customer_users(id) ON DELETE SET NULL
+        `);
+        console.log('✅ Added customer_id column to hosting_orders table');
+      }
+    } catch (error) {
+      console.log('⚠️  customer_id column may already exist or error:', error.message);
+    }
+
     // Create customer_users table (for customer portal authentication)
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS customer_users (

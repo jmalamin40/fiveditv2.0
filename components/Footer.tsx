@@ -40,6 +40,16 @@ export default function Footer() {
               <li><a href="#services" className="hover:text-blue-400 transition-colors">Services</a></li>
               <li><a href="#technologies" className="hover:text-blue-400 transition-colors">Technologies</a></li>
               <li><a href="#industries" className="hover:text-blue-400 transition-colors">Industries</a></li>
+              <li><a href="/hosting" className="hover:text-blue-400 transition-colors">Hosting Plans</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-white font-bold mb-4">Customer</h3>
+            <ul className="space-y-2">
+              <li><a href="/customer/login" className="hover:text-blue-400 transition-colors">Customer Login</a></li>
+              <li><a href="/customer" className="hover:text-blue-400 transition-colors">Customer Portal</a></li>
+              <li><a href="/customer/register" className="hover:text-blue-400 transition-colors">Register</a></li>
             </ul>
           </div>
 

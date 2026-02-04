@@ -4,6 +4,9 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getHostingOrderStatus } from '@/lib/api';
 import { CheckCircle, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Chat from '@/components/Chat';
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams();
@@ -39,26 +42,36 @@ function PaymentSuccessContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </main>
+        <Footer />
+        <Chat />
       </div>
     );
   }
 
   if (error || !order) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
-          <p className="text-gray-600 mb-6">{error || 'Order not found'}</p>
-          <button
-            onClick={() => router.push('/hosting')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Back to Hosting Plans
-          </button>
-        </div>
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh] bg-gray-50">
+          <div className="text-center max-w-md">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
+            <p className="text-gray-600 mb-6">{error || 'Order not found'}</p>
+            <button
+              onClick={() => router.push('/hosting')}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Back to Hosting Plans
+            </button>
+          </div>
+        </main>
+        <Footer />
+        <Chat />
       </div>
     );
   }
@@ -67,8 +80,10 @@ function PaymentSuccessContent() {
   const isPending = order.status === 'pending';
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen">
+      <Header />
+      <main className="bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto">
         {isPaid ? (
           <div className="bg-white rounded-lg shadow-md p-8 text-center">
             <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-6" />
@@ -153,7 +168,10 @@ function PaymentSuccessContent() {
             </button>
           </div>
         )}
-      </div>
+        </div>
+      </main>
+      <Footer />
+      <Chat />
     </div>
   );
 }
@@ -161,8 +179,13 @@ function PaymentSuccessContent() {
 export default function PaymentSuccessPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </main>
+        <Footer />
+        <Chat />
       </div>
     }>
       <PaymentSuccessContent />

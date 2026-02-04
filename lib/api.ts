@@ -214,11 +214,21 @@ export async function createHostingOrder(data: {
   domain?: string;
   username?: string;
 }): Promise<HostingOrder> {
+  // Get customer token if available
+  const token = typeof window !== 'undefined' ? localStorage.getItem('customer_token') : null;
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Add authorization header if customer is logged in
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
   const response = await fetch(`${API_BASE_URL}/hosting/payments/orders`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(data),
   });
   if (!response.ok) {

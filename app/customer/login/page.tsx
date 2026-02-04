@@ -1,12 +1,16 @@
 'use client'
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { customerLogin } from '@/lib/api';
 import { Loader2, AlertCircle } from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Chat from '@/components/Chat';
 
-export default function CustomerLoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +25,14 @@ export default function CustomerLoginPage() {
       const response = await customerLogin(email, password);
       localStorage.setItem('customer_token', response.token);
       localStorage.setItem('customer_user', JSON.stringify(response.user));
-      router.push('/customer');
+      
+      // Redirect to the redirect URL if provided, otherwise to customer portal
+      const redirectUrl = searchParams.get('redirect');
+      if (redirectUrl) {
+        router.push(redirectUrl);
+      } else {
+        router.push('/customer');
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -30,17 +41,19 @@ export default function CustomerLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Customer Portal Login
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Access your hosting accounts and orders
-          </p>
-        </div>
-        <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-md" onSubmit={handleSubmit}>
+    <div className="min-h-screen">
+      <Header />
+      <main className="bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 mt-16">
+        <div className="max-w-md w-full space-y-8">
+          <div>
+            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+              Customer Portal Login
+            </h2>
+            <p className="mt-2 text-center text-sm text-gray-600">
+              Access your hosting accounts and orders
+            </p>
+          </div>
+          <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-md" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
@@ -106,9 +119,29 @@ export default function CustomerLoginPage() {
               </button>
             </p>
           </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      </main>
+      <Footer />
+      <Chat />
     </div>
+  );
+}
+
+export default function CustomerLoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </main>
+        <Footer />
+        <Chat />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
 

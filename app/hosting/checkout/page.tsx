@@ -1,14 +1,18 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { fetchHostingPackage, createHostingOrder } from '@/lib/api';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { fetchHostingPackage, createHostingOrder, getCustomerProfile, customerRegister } from '@/lib/api';
 import { HostingPackage } from '@/lib/api';
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, User } from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Chat from '@/components/Chat';
 
 function CheckoutContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const packageId = searchParams.get('package');
   const billingPeriod = searchParams.get('period') as 'monthly' | 'yearly' || 'monthly';
 
@@ -16,20 +20,52 @@ function CheckoutContent() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
   const [formData, setFormData] = useState({
     customer_name: '',
     customer_email: '',
     customer_phone: '',
     domain: '',
     username: '',
+    password: '',
+    confirmPassword: '',
   });
 
   useEffect(() => {
     if (packageId) {
       loadPackage();
     }
+    checkCustomerLogin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packageId]);
+
+  const checkCustomerLogin = async () => {
+    const token = localStorage.getItem('customer_token');
+    if (token) {
+      try {
+        setLoadingProfile(true);
+        const profile = await getCustomerProfile(token);
+        setIsLoggedIn(true);
+        setFormData({
+          customer_name: profile.user.name,
+          customer_email: profile.user.email,
+          customer_phone: profile.user.phone || '',
+          domain: '',
+          username: '',
+          password: '',
+          confirmPassword: '',
+        });
+      } catch (err) {
+        // Token invalid, clear it
+        localStorage.removeItem('customer_token');
+        localStorage.removeItem('customer_user');
+        setIsLoggedIn(false);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
+  };
 
   const loadPackage = async () => {
     try {
@@ -51,6 +87,34 @@ function CheckoutContent() {
     try {
       if (!packageId) {
         throw new Error('Package ID is required');
+      }
+
+      // If not logged in and password is provided, register the customer first
+      if (!isLoggedIn && formData.password) {
+        if (formData.password !== formData.confirmPassword) {
+          throw new Error('Passwords do not match');
+        }
+        if (formData.password.length < 6) {
+          throw new Error('Password must be at least 6 characters');
+        }
+
+        try {
+          const registerResponse = await customerRegister({
+            name: formData.customer_name,
+            email: formData.customer_email,
+            password: formData.password,
+            phone: formData.customer_phone || undefined,
+          });
+          // Save login credentials
+          localStorage.setItem('customer_token', registerResponse.token);
+          localStorage.setItem('customer_user', JSON.stringify(registerResponse.user));
+          setIsLoggedIn(true);
+        } catch (regErr: any) {
+          // If email already exists, continue with order (user might already be registered)
+          if (!regErr.message?.includes('already exists') && !regErr.message?.includes('Email')) {
+            throw regErr;
+          }
+        }
       }
 
       const order = await createHostingOrder({
@@ -75,28 +139,38 @@ function CheckoutContent() {
     }
   };
 
-  if (loading) {
+  if (loading || loadingProfile) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </main>
+        <Footer />
+        <Chat />
       </div>
     );
   }
 
   if (!packageData) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Package Not Found</h2>
-          <p className="text-gray-600 mb-4">The hosting package you&apos;re looking for doesn&apos;t exist.</p>
-          <button
-            onClick={() => router.push('/hosting')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Back to Hosting Plans
-          </button>
-        </div>
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Package Not Found</h2>
+            <p className="text-gray-600 mb-4">The hosting package you&apos;re looking for doesn&apos;t exist.</p>
+            <button
+              onClick={() => router.push('/hosting')}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Back to Hosting Plans
+            </button>
+          </div>
+        </main>
+        <Footer />
+        <Chat />
       </div>
     );
   }
@@ -104,9 +178,11 @@ function CheckoutContent() {
   const price = billingPeriod === 'monthly' ? packageData.price_monthly : packageData.price_yearly;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
+    <div className="min-h-screen">
+      <Header />
+      <main className="bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 mt-16">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Order Summary */}
@@ -145,7 +221,22 @@ function CheckoutContent() {
               )}
 
               <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Customer Information</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">Customer Information</h2>
+                  {isLoggedIn && (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <User className="w-4 h-4" />
+                      <span>Logged in</span>
+                    </div>
+                  )}
+                </div>
+                {isLoggedIn && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      Your account information is pre-filled. You can manage your orders from the customer portal after purchase.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -154,9 +245,12 @@ function CheckoutContent() {
                     <input
                       type="text"
                       required
+                      readOnly={isLoggedIn}
                       value={formData.customer_name}
                       onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        isLoggedIn ? 'bg-gray-100 cursor-not-allowed' : ''
+                      }`}
                       placeholder="John Doe"
                     />
                   </div>
@@ -168,9 +262,12 @@ function CheckoutContent() {
                     <input
                       type="email"
                       required
+                      readOnly={isLoggedIn}
                       value={formData.customer_email}
                       onChange={(e) => setFormData({ ...formData, customer_email: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        isLoggedIn ? 'bg-gray-100 cursor-not-allowed' : ''
+                      }`}
                       placeholder="john@example.com"
                     />
                   </div>
@@ -181,12 +278,66 @@ function CheckoutContent() {
                     </label>
                     <input
                       type="tel"
+                      readOnly={isLoggedIn}
                       value={formData.customer_phone}
                       onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                        isLoggedIn ? 'bg-gray-100 cursor-not-allowed' : ''
+                      }`}
                       placeholder="+1234567890"
                     />
                   </div>
+
+                  {!isLoggedIn && (
+                    <>
+                      <div className="pt-4 border-t">
+                        <div className="flex items-center justify-between mb-4">
+                          <p className="text-sm text-gray-600">
+                            Create an account to easily manage your hosting orders and access your customer portal.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const redirectUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+                              router.push(`/customer/login?redirect=${encodeURIComponent(redirectUrl)}`);
+                            }}
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            Already have an account? Login
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Password (Optional - for account creation)
+                        </label>
+                        <input
+                          type="password"
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="At least 6 characters"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Leave empty if you don&apos;t want to create an account now
+                        </p>
+                      </div>
+                      {formData.password && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Confirm Password
+                          </label>
+                          <input
+                            type="password"
+                            value={formData.confirmPassword}
+                            onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Confirm password"
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -246,7 +397,10 @@ function CheckoutContent() {
             </form>
           </div>
         </div>
-      </div>
+        </div>
+      </main>
+      <Footer />
+      <Chat />
     </div>
   );
 }
@@ -254,8 +408,13 @@ function CheckoutContent() {
 export default function CheckoutPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="min-h-screen">
+        <Header />
+        <main className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </main>
+        <Footer />
+        <Chat />
       </div>
     }>
       <CheckoutContent />

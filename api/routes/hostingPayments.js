@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const axios = require('axios');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { defaultLogger, syncLogger } = require('../utils/logger');
 const { sendHostingCredentialsEmail, sendOrderConfirmationEmail } = require('../utils/email');
 
@@ -263,8 +264,28 @@ function generatePassword(length = 16) {
   return Array.from(values, x => charset[x % charset.length]).join('');
 }
 
+// Optional customer authentication middleware (doesn't fail if token is missing)
+function optionalCustomerAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      if (process.env.JWT_SECRET) {
+        const payload = jwt.verify(token, process.env.JWT_SECRET);
+        if (payload.role === 'customer') {
+          req.customer = payload;
+        }
+      }
+    } catch (error) {
+      // Token invalid or expired, but continue without customer auth
+      defaultLogger.debug('Optional customer auth failed:', error.message);
+    }
+  }
+  next();
+}
+
 // Create payment order for hosting
-router.post('/orders', async (req, res) => {
+router.post('/orders', optionalCustomerAuth, async (req, res) => {
   try {
     const {
       package_id,
@@ -278,6 +299,24 @@ router.post('/orders', async (req, res) => {
 
     if (!package_id || !billing_period || !customer_name || !customer_email) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Get customer_id if customer is authenticated
+    let customer_id = null;
+    if (req.customer && req.customer.id) {
+      customer_id = req.customer.id;
+      // Verify customer exists and email matches
+      const [customers] = await pool.execute(
+        'SELECT id, email FROM customer_users WHERE id = ? AND email = ?',
+        [customer_id, customer_email]
+      );
+      if (customers.length > 0) {
+        defaultLogger.log(`Order linked to customer account: ${customer_id} (${customer_email})`);
+      } else {
+        // Email doesn't match, don't link to this customer account
+        defaultLogger.warn(`Customer ID ${customer_id} email mismatch, not linking order`);
+        customer_id = null;
+      }
     }
 
     // Get package details
@@ -301,8 +340,8 @@ router.post('/orders', async (req, res) => {
       `INSERT INTO hosting_orders (
         order_id, package_id, package_name, billing_period, amount, currency,
         customer_name, customer_email, customer_phone, domain, username,
-        return_url, cancel_url, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        return_url, cancel_url, status, customer_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         orderId,
         package_id,
@@ -317,6 +356,7 @@ router.post('/orders', async (req, res) => {
         username || null,
         `${FRONTEND_URL}/hosting/payment/success`,
         `${FRONTEND_URL}/hosting/payment/cancel`,
+        customer_id,
       ]
     );
     syncLogger.info('Hosting order created:', orderResult);
@@ -608,30 +648,58 @@ router.post('/webhook', async (req, res) => {
         order_id, 
         tnx_id
       });
-      defaultLogger.error('   Full request body:', JSON.stringify(req.body, null, 2));
-      
-      // Log recent orders in database for debugging
-      try {
-        const [allOrders] = await pool.execute(
-          'SELECT id, order_id, transaction_id, status FROM hosting_orders ORDER BY id DESC LIMIT 10'
-        );
-        defaultLogger.error('   Recent orders in database:', JSON.stringify(allOrders, null, 2));
-      } catch (dbError) {
-        defaultLogger.error('   Could not fetch orders for debugging:', dbError.message);
-      }
-      
       // Return 200 to prevent payment gateway from retrying
-      // But log the error for investigation
       return res.status(200).json({ 
         success: false, 
-        error: 'Order not found', 
-        received: req.body,
-        message: 'Webhook received but order not found in database'
+        message: 'Order not found',
+        note: 'This is normal if the order was created outside the payment gateway flow'
       });
     }
 
     const order = orders[0];
     defaultLogger.log(`✅ Found order: ${order.order_id} (ID: ${order.id}), current status: ${order.status}, new status: ${status}`);
+
+    // If order doesn't have customer_id, try to link it to a customer account by email
+    if (!order.customer_id && order.customer_email) {
+      try {
+        const [customers] = await pool.execute(
+          'SELECT id FROM customer_users WHERE email = ? LIMIT 1',
+          [order.customer_email]
+        );
+        if (customers.length > 0) {
+          await pool.execute(
+            'UPDATE hosting_orders SET customer_id = ? WHERE id = ?',
+            [customers[0].id, order.id]
+          );
+          defaultLogger.log(`✅ Linked order ${order.order_id} to customer account ${customers[0].id}`);
+        }
+      } catch (linkError) {
+        defaultLogger.warn('Failed to link order to customer account:', linkError.message);
+        // Don't fail the webhook if linking fails
+      }
+    }
+
+    // If order doesn't have customer_id, try to link it to a customer account by email
+    if (!order.customer_id && order.customer_email) {
+      try {
+        const [customers] = await pool.execute(
+          'SELECT id FROM customer_users WHERE email = ? LIMIT 1',
+          [order.customer_email]
+        );
+        if (customers.length > 0) {
+          await pool.execute(
+            'UPDATE hosting_orders SET customer_id = ? WHERE id = ?',
+            [customers[0].id, order.id]
+          );
+          defaultLogger.log(`✅ Linked order ${order.order_id} to customer account ${customers[0].id}`);
+          // Update order object for later use
+          order.customer_id = customers[0].id;
+        }
+      } catch (linkError) {
+        defaultLogger.warn('Failed to link order to customer account:', linkError.message);
+        // Don't fail the webhook if linking fails
+      }
+    }
 
     // Update order status and transaction_id if provided
     await pool.execute(

@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { customerRegister } from '@/lib/api';
 import { Loader2, AlertCircle } from 'lucide-react';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import Chat from '@/components/Chat';
 
 export default function CustomerRegisterPage() {
   const router = useRouter();
@@ -51,17 +54,19 @@ export default function CustomerRegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create Customer Account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Register to manage your hosting accounts
-          </p>
-        </div>
-        <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-md" onSubmit={handleSubmit}>
+    <div className="min-h-screen">
+      <Header />
+      <main className="bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 mt-16">
+        <div className="max-w-md w-full space-y-8">
+          <div>
+            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+              Create Customer Account
+            </h2>
+            <p className="mt-2 text-center text-sm text-gray-600">
+              Register to manage your hosting accounts
+            </p>
+          </div>
+          <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-md" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
@@ -171,8 +176,11 @@ export default function CustomerRegisterPage() {
               </button>
             </p>
           </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      </main>
+      <Footer />
+      <Chat />
     </div>
   );
 }
