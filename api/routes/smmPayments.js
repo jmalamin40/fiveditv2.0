@@ -13,8 +13,11 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fivedit.com';
 const SMM_SUBDOMAIN_BASE = process.env.SMM_SUBDOMAIN_BASE || 'fivedit.com';
 const SMM_INSTANCES_DIR = process.env.SMM_INSTANCES_PATH || path.join(__dirname, '..', 'smm_instances');
 const SMM_SOURCE_DIR = path.join(__dirname, '..', 'ecomerce_dist');
-// To serve subdomain sites (e.g. user.fivedit.com): point your web server (nginx/Apache + PHP)
-// at SMM_INSTANCES_DIR and route by host to the subfolder matching the subdomain.
+const {
+  getSmmDaConfig,
+  createSubdomainInDirectAdmin,
+  createDomainInDirectAdmin,
+} = require('../utils/directAdminSmm');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -68,16 +71,20 @@ function copyDirSync(src, dest) {
   }
 }
 
-// Provision SMM instance: copy ecomerce_dist to smm_instances/<folder_name>
-function provisionSmmInstance(folderName) {
-  const destDir = path.join(SMM_INSTANCES_DIR, folderName);
-  if (fs.existsSync(destDir)) {
-    defaultLogger.warn(`SMM instance folder already exists: ${destDir}`);
-    return destDir;
+// Provision SMM instance: copy ecomerce_dist to target dir (DA docroot or smm_instances)
+function provisionSmmInstanceToPath(destDir) {
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
   }
   copyDirSync(SMM_SOURCE_DIR, destDir);
   defaultLogger.log(`SMM instance provisioned: ${destDir}`);
   return destDir;
+}
+
+// Fallback: provision to smm_instances/<folder_name> only (no DirectAdmin)
+function provisionSmmInstance(folderName) {
+  const destDir = path.join(SMM_INSTANCES_DIR, folderName);
+  return provisionSmmInstanceToPath(destDir);
 }
 
 // ----- Public: products -----
@@ -277,23 +284,73 @@ router.post('/payments/webhook', async (req, res) => {
         : (order.domain ? `https://${order.domain.replace(/^https?:\/\//, '')}` : `https://${subdomainPart}.${baseHost}`);
 
       let instanceId = null;
+      let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+      let usedDirectAdmin = false;
+
       try {
-        if (!fs.existsSync(SMM_INSTANCES_DIR)) {
-          fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+        const daConfig = await getSmmDaConfig(pool);
+        if (daConfig) {
+          try {
+            if (order.subdomain_slug) {
+              const docroot = await createSubdomainInDirectAdmin(daConfig, baseHost, subdomainPart);
+              folderPathToStore = docroot;
+              usedDirectAdmin = true;
+              try {
+                provisionSmmInstanceToPath(docroot);
+              } catch (copyErr) {
+                defaultLogger.error('SMM: copy to DA docroot failed (check permissions):', copyErr.message);
+                defaultLogger.warn('SMM: falling back to smm_instances; copy files to ' + docroot + ' manually if needed.');
+                if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+                provisionSmmInstance(folderName);
+                folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+              }
+            } else if (order.domain) {
+              const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
+              const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
+              folderPathToStore = docroot;
+              usedDirectAdmin = true;
+              try {
+                provisionSmmInstanceToPath(docroot);
+              } catch (copyErr) {
+                defaultLogger.error('SMM: copy to DA docroot failed (check permissions):', copyErr.message);
+                defaultLogger.warn('SMM: falling back to smm_instances; copy files to ' + docroot + ' manually if needed.');
+                if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+                provisionSmmInstance(folderName);
+                folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+              }
+            }
+          } catch (daErr) {
+            defaultLogger.error('SMM DirectAdmin create failed, using smm_instances only:', daErr.message);
+            if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+            provisionSmmInstance(folderName);
+            folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+          }
+        } else {
+          if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+          provisionSmmInstance(folderName);
         }
-        const folderPath = path.relative(path.join(__dirname, '..', '..'), path.join(SMM_INSTANCES_DIR, folderName));
-        provisionSmmInstance(folderName);
+
+        const folderPathRelative = path.isAbsolute(folderPathToStore)
+          ? folderPathToStore
+          : path.relative(path.join(__dirname, '..', '..'), folderPathToStore);
         const [ins] = await pool.execute(
           `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status)
            VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-          [order.id, order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0], folderName, folderPath, siteUrl, order.customer_email]
+          [
+            order.id,
+            order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0],
+            folderName,
+            folderPathRelative,
+            siteUrl,
+            order.customer_email,
+          ]
         );
         instanceId = ins.insertId;
         await pool.execute(
           'UPDATE smm_website_orders SET smm_instance_id = ?, status = ? WHERE id = ?',
           [instanceId, 'completed', order.id]
         );
-        defaultLogger.log(`SMM instance created: id=${instanceId}, folder=${folderName}, site_url=${siteUrl}`);
+        defaultLogger.log(`SMM instance created: id=${instanceId}, folder=${folderName}, site_url=${siteUrl}, da=${usedDirectAdmin}`);
       } catch (provisionError) {
         defaultLogger.error('SMM provisioning error:', provisionError);
         // do not fail webhook; order is already paid
