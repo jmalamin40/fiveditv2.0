@@ -421,6 +421,107 @@ async function migrate() {
     `);
     console.log('✅ Invoices table created');
 
+    // SMM (Social Media Marketing) Website service tables
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS smm_website_products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        display_name VARCHAR(255) NOT NULL,
+        description TEXT,
+        price DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_is_active (is_active)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ SMM website products table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS smm_website_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id VARCHAR(50) NOT NULL UNIQUE,
+        product_id INT NOT NULL,
+        transaction_id VARCHAR(100),
+        customer_id INT NULL,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(50),
+        domain VARCHAR(255) NULL,
+        subdomain_slug VARCHAR(100) NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        status ENUM('pending', 'paid', 'failed', 'cancelled', 'completed') DEFAULT 'pending',
+        payment_url VARCHAR(500),
+        return_url VARCHAR(500),
+        cancel_url VARCHAR(500),
+        webhook_url VARCHAR(500),
+        payment_gateway_response TEXT,
+        smm_instance_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        paid_at TIMESTAMP NULL,
+        FOREIGN KEY (product_id) REFERENCES smm_website_products(id) ON DELETE RESTRICT,
+        FOREIGN KEY (customer_id) REFERENCES customer_users(id) ON DELETE SET NULL,
+        INDEX idx_status (status),
+        INDEX idx_transaction_id (transaction_id),
+        INDEX idx_customer_email (customer_email),
+        INDEX idx_customer_id (customer_id),
+        INDEX idx_order_id (order_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ SMM website orders table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS smm_instances (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL COMMENT 'smm_website_orders.id',
+        domain VARCHAR(255) NOT NULL COMMENT 'Full domain: custom domain or subdomain e.g. user.fivedit.com',
+        folder_name VARCHAR(255) NOT NULL UNIQUE COMMENT 'Sanitized folder name under smm_instances',
+        folder_path VARCHAR(500) NOT NULL COMMENT 'Relative path from project root',
+        site_url VARCHAR(500) NOT NULL COMMENT 'Full URL for customer to access',
+        customer_email VARCHAR(255) NOT NULL,
+        status ENUM('pending', 'active', 'suspended') DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES smm_website_orders(id) ON DELETE CASCADE,
+        INDEX idx_customer_email (customer_email),
+        INDEX idx_folder_name (folder_name),
+        INDEX idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ SMM instances table created');
+
+    // Add FK from smm_website_orders to smm_instances after table exists
+    try {
+      const [fkCheck] = await connection.execute(`
+        SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'smm_website_orders'
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME LIKE '%smm_instance%'
+      `);
+      if (fkCheck.length === 0) {
+        await connection.execute(`
+          ALTER TABLE smm_website_orders
+          ADD CONSTRAINT fk_smm_order_instance
+          FOREIGN KEY (smm_instance_id) REFERENCES smm_instances(id) ON DELETE SET NULL
+        `);
+        console.log('✅ Added smm_instance_id FK to smm_website_orders');
+      }
+    } catch (e) {
+      if (!e.message || !e.message.includes('Duplicate')) console.log('⚠️ smm_website_orders FK:', e.message);
+    }
+
+    // Seed default SMM product if none exists
+    const [existing] = await connection.execute('SELECT id FROM smm_website_products LIMIT 1');
+    if (existing.length === 0) {
+      await connection.execute(`
+        INSERT INTO smm_website_products (name, display_name, description, price, currency, is_active)
+        VALUES ('smm-website', 'Social Media Marketing Website', 'One-time setup: install our social media marketing script on your custom domain or on our subdomain.', 99.00, 'BDT', TRUE)
+      `);
+      console.log('✅ Seeded default SMM website product');
+    }
+
     console.log('\n🎉 Database migration completed successfully!');
     
   } catch (error) {

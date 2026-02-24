@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, CustomerOrder, CustomerAccount, Invoice } from '@/lib/api';
-import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText } from 'lucide-react';
+import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, getCustomerSmmOrders, getCustomerSmmInstances, CustomerOrder, CustomerAccount, Invoice, SmmOrder, SmmInstance } from '@/lib/api';
+import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText, Share2, ExternalLink } from 'lucide-react';
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -12,8 +12,10 @@ export default function CustomerDashboard() {
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [smmOrders, setSmmOrders] = useState<SmmOrder[]>([]);
+  const [smmInstances, setSmmInstances] = useState<SmmInstance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'invoices' | 'profile'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'smm' | 'invoices' | 'profile'>('orders');
 
   useEffect(() => {
     const storedToken = localStorage.getItem('customer_token');
@@ -33,15 +35,19 @@ export default function CustomerDashboard() {
   const loadData = async (authToken: string) => {
     try {
       setLoading(true);
-      const [ordersData, accountsData, invoicesData, profileData] = await Promise.all([
+      const [ordersData, accountsData, invoicesData, smmOrdersData, smmInstancesData, profileData] = await Promise.all([
         getCustomerOrders(authToken),
         getCustomerAccounts(authToken),
-        getCustomerInvoices(authToken).catch(() => ({ invoices: [] })), // Don't fail if invoices fail
+        getCustomerInvoices(authToken).catch(() => ({ invoices: [] })),
+        getCustomerSmmOrders(authToken).catch(() => ({ orders: [] })),
+        getCustomerSmmInstances(authToken).catch(() => ({ instances: [] })),
         getCustomerProfile(authToken),
       ]);
       setOrders(ordersData.orders);
       setAccounts(accountsData.accounts);
       setInvoices(invoicesData.invoices);
+      setSmmOrders(smmOrdersData.orders);
+      setSmmInstances(smmInstancesData.instances);
       setUser(profileData.user);
       localStorage.setItem('customer_user', JSON.stringify(profileData.user));
     } catch (error) {
@@ -146,6 +152,17 @@ export default function CustomerDashboard() {
               >
                 <Server className="w-4 h-4 inline mr-2" />
                 Hosting Accounts
+              </button>
+              <button
+                onClick={() => setActiveTab('smm')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 ${
+                  activeTab === 'smm'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Share2 className="w-4 h-4 inline mr-2" />
+                SMM Websites
               </button>
               <button
                 onClick={() => setActiveTab('invoices')}
@@ -295,6 +312,89 @@ export default function CustomerDashboard() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'smm' && (
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Your SMM Websites</h2>
+              <p className="text-sm text-gray-600 mb-4">Social Media Marketing Website orders and instances.</p>
+              {smmInstances.length > 0 && (
+                <div className="space-y-4 mb-8">
+                  <h3 className="text-lg font-semibold text-gray-800">Active websites</h3>
+                  {smmInstances.map((inst) => (
+                    <div key={inst.id} className="border border-gray-200 rounded-lg p-6">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{inst.domain}</h4>
+                          <p className="text-sm text-gray-500">{inst.product_display_name || 'SMM Website'}</p>
+                        </div>
+                        {getStatusBadge(inst.status)}
+                      </div>
+                      <a
+                        href={inst.site_url.startsWith('http') ? inst.site_url : 'https://' + inst.site_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm mt-2"
+                      >
+                        {inst.site_url}
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                      <p className="text-xs text-gray-500 mt-2">Created {new Date(inst.created_at).toLocaleDateString()}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {smmOrders.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800">SMM Orders</h3>
+                  {smmOrders.map((order) => (
+                    <div key={order.order_id} className="border border-gray-200 rounded-lg p-6">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{order.product_display_name || 'SMM Website'}</h4>
+                          <p className="text-sm text-gray-500">Order: {order.order_id}</p>
+                        </div>
+                        {getStatusBadge(order.status)}
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-2">
+                        <div>
+                          <p className="text-gray-600">Amount</p>
+                          <p className="font-semibold">{order.currency} {Number(order.amount || 0).toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Date</p>
+                          <p className="font-semibold">{new Date(order.created_at).toLocaleDateString()}</p>
+                        </div>
+                        {order.domain && (
+                          <div>
+                            <p className="text-gray-600">Domain</p>
+                            <p className="font-semibold">{order.domain}</p>
+                          </div>
+                        )}
+                        {order.subdomain_slug && (
+                          <div>
+                            <p className="text-gray-600">Subdomain</p>
+                            <p className="font-semibold">{order.subdomain_slug}.fivedit.com</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {smmInstances.length === 0 && smmOrders.length === 0 && (
+                <div className="text-center py-12">
+                  <Share2 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No SMM website orders yet</p>
+                  <button
+                    onClick={() => router.push('/smm')}
+                    className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Get SMM Website
+                  </button>
                 </div>
               )}
             </div>

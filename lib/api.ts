@@ -465,3 +465,101 @@ export async function getCustomerInvoice(token: string, invoiceId: string): Prom
   return response.json();
 }
 
+// SMM (Social Media Marketing) Website service
+export interface SmmProduct {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  is_active?: boolean;
+}
+
+export interface SmmOrder {
+  order_id: string;
+  transaction_id?: string;
+  status: string;
+  amount: number;
+  currency: string;
+  domain?: string;
+  subdomain_slug?: string;
+  created_at: string;
+  paid_at?: string;
+  smm_instance_id?: number;
+  product_display_name?: string;
+}
+
+export interface SmmInstance {
+  id: number;
+  domain: string;
+  folder_name: string;
+  folder_path: string;
+  site_url: string;
+  status: string;
+  created_at: string;
+  order_id?: string;
+  amount?: number;
+  currency?: string;
+  product_display_name?: string;
+}
+
+export async function fetchSmmProducts(): Promise<SmmProduct[]> {
+  const response = await fetch(`${API_BASE_URL}/smm/products`);
+  if (!response.ok) throw new Error('Failed to fetch SMM products');
+  const data = await response.json();
+  return data.products || [];
+}
+
+export async function fetchSmmProduct(id: number): Promise<SmmProduct> {
+  const response = await fetch(`${API_BASE_URL}/smm/products/${id}`);
+  if (!response.ok) throw new Error('Failed to fetch SMM product');
+  const data = await response.json();
+  return data.product;
+}
+
+export async function createSmmOrder(data: {
+  product_id: number;
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string;
+  domain?: string;
+  subdomain_slug?: string;
+}): Promise<{ order_id: string; payment_url: string; amount: number; currency: string }> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('customer_token') : null;
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}/smm/payments/orders`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Failed to create SMM order');
+  }
+  return response.json();
+}
+
+export async function getSmmOrderStatus(orderId: string): Promise<{ order: SmmOrder; instance?: SmmInstance }> {
+  const response = await fetch(`${API_BASE_URL}/smm/payments/orders/${encodeURIComponent(orderId)}`);
+  if (!response.ok) throw new Error('Failed to fetch SMM order');
+  return response.json();
+}
+
+export async function getCustomerSmmOrders(token: string): Promise<{ orders: SmmOrder[] }> {
+  const response = await fetch(`${API_BASE_URL}/customer/smm-orders`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch SMM orders');
+  return response.json();
+}
+
+export async function getCustomerSmmInstances(token: string): Promise<{ instances: SmmInstance[] }> {
+  const response = await fetch(`${API_BASE_URL}/customer/smm-instances`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Failed to fetch SMM instances');
+  return response.json();
+}
+

@@ -41,6 +41,7 @@ export default function Footer() {
               <li><a href="#technologies" className="hover:text-blue-400 transition-colors">Technologies</a></li>
               <li><a href="#industries" className="hover:text-blue-400 transition-colors">Industries</a></li>
               <li><a href="/hosting" className="hover:text-blue-400 transition-colors">Hosting Plans</a></li>
+              <li><a href="/smm" className="hover:text-blue-400 transition-colors">SMM Website</a></li>
             </ul>
           </div>
 

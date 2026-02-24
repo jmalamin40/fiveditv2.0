@@ -252,6 +252,72 @@ router.put('/profile', async (req, res) => {
   }
 });
 
+// Get customer's SMM website orders
+router.get('/smm-orders', async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const customerEmail = req.user.email;
+
+    const [orders] = await pool.execute(
+      `SELECT 
+        o.order_id,
+        o.transaction_id,
+        o.status,
+        o.amount,
+        o.currency,
+        o.domain,
+        o.subdomain_slug,
+        o.created_at,
+        o.paid_at,
+        o.smm_instance_id,
+        p.display_name as product_display_name
+      FROM smm_website_orders o
+      LEFT JOIN smm_website_products p ON o.product_id = p.id
+      WHERE o.customer_id = ? OR o.customer_email = ?
+      ORDER BY o.created_at DESC`,
+      [customerId, customerEmail]
+    );
+
+    res.json({ orders });
+  } catch (error) {
+    defaultLogger.error('Error fetching customer SMM orders:', error);
+    res.status(500).json({ error: 'Failed to fetch SMM orders' });
+  }
+});
+
+// Get customer's SMM instances (provisioned websites)
+router.get('/smm-instances', async (req, res) => {
+  try {
+    const customerEmail = req.user.email;
+
+    const [instances] = await pool.execute(
+      `SELECT 
+        i.id,
+        i.domain,
+        i.folder_name,
+        i.folder_path,
+        i.site_url,
+        i.status,
+        i.created_at,
+        o.order_id,
+        o.amount,
+        o.currency,
+        p.display_name as product_display_name
+      FROM smm_instances i
+      INNER JOIN smm_website_orders o ON i.order_id = o.id
+      LEFT JOIN smm_website_products p ON o.product_id = p.id
+      WHERE i.customer_email = ? AND o.status IN ('paid', 'completed')
+      ORDER BY i.created_at DESC`,
+      [customerEmail]
+    );
+
+    res.json({ instances });
+  } catch (error) {
+    defaultLogger.error('Error fetching customer SMM instances:', error);
+    res.status(500).json({ error: 'Failed to fetch SMM instances' });
+  }
+});
+
 module.exports = router;
 
 
