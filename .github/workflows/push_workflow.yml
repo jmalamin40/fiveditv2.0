@@ -156,11 +156,11 @@ jobs:
             cd $API_DIR
             npm install --production
             
-            echo "Migrating API database..."
-            npm run migrate
+            # echo "Migrating API database..."
+            # npm run migrate
             
-            echo "Seeding API database..."
-            npm run seed
+            # echo "Seeding API database..."
+            # npm run seed
             
             echo "Restarting API..."
             cloudlinux-selector restart \
