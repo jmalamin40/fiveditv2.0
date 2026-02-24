@@ -157,11 +157,9 @@ jobs:
             npm install --production
             
             echo "Migrating API database..."
-            cd $API_DIR
             npm run migrate
             
             echo "Seeding API database..."
-            cd $API_DIR
             npm run seed
             
             echo "Restarting API..."
