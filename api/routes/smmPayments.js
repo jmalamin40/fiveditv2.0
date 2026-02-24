@@ -12,7 +12,8 @@ const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fivedit.com';
 const SMM_SUBDOMAIN_BASE = process.env.SMM_SUBDOMAIN_BASE || 'fivedit.com';
 const SMM_INSTANCES_DIR = process.env.SMM_INSTANCES_PATH || path.join(__dirname, '..', 'smm_instances');
-const SMM_SOURCE_DIR = path.join(__dirname, '..', 'ecomerce_dist');
+// Source of the SMM script (set SMM_SOURCE_PATH in env if api/ecomerce_dist is elsewhere, e.g. in production)
+const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..', 'ecomerce_dist');
 const {
   getSmmDaConfig,
   createSubdomainInDirectAdmin,
@@ -71,10 +72,35 @@ function copyDirSync(src, dest) {
   }
 }
 
+// Write a minimal placeholder index.php when source is missing (so domain does not 404)
+function writePlaceholderIndexPhp(destDir) {
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+  const indexPath = path.join(destDir, 'index.php');
+  const content = `<?php
+// SMM site – placeholder. Upload your script or set SMM_SOURCE_PATH to api/ecomerce_dist.
+header('Content-Type: text/html; charset=utf-8');
+echo '<h1>Site is being set up</h1><p>Content will appear shortly. If this persists, contact support.</p>';
+`;
+  fs.writeFileSync(indexPath, content, 'utf8');
+  defaultLogger.warn(`SMM: source dir missing, wrote placeholder ${indexPath}. Set SMM_SOURCE_PATH or add api/ecomerce_dist.`);
+}
+
 // Provision SMM instance: copy ecomerce_dist to target dir (DA docroot or smm_instances)
 function provisionSmmInstanceToPath(destDir) {
   if (!fs.existsSync(destDir)) {
     fs.mkdirSync(destDir, { recursive: true });
+  }
+  if (!fs.existsSync(SMM_SOURCE_DIR)) {
+    defaultLogger.error(`SMM: source directory not found: ${SMM_SOURCE_DIR}. Set SMM_SOURCE_PATH in env or add api/ecomerce_dist.`);
+    writePlaceholderIndexPhp(destDir);
+    return destDir;
+  }
+  if (!fs.statSync(SMM_SOURCE_DIR).isDirectory()) {
+    defaultLogger.error(`SMM: source path is not a directory: ${SMM_SOURCE_DIR}`);
+    writePlaceholderIndexPhp(destDir);
+    return destDir;
   }
   copyDirSync(SMM_SOURCE_DIR, destDir);
   defaultLogger.log(`SMM instance provisioned: ${destDir}`);
@@ -298,8 +324,13 @@ router.post('/payments/webhook', async (req, res) => {
               try {
                 provisionSmmInstanceToPath(docroot);
               } catch (copyErr) {
-                defaultLogger.error('SMM: copy to DA docroot failed (check permissions):', copyErr.message);
-                defaultLogger.warn('SMM: falling back to smm_instances; copy files to ' + docroot + ' manually if needed.');
+                defaultLogger.error('SMM: copy to DA docroot failed (check permissions or source path):', copyErr.message);
+                defaultLogger.warn('SMM: writing placeholder to docroot; copy api/ecomerce_dist to ' + docroot + ' manually if needed.');
+                try {
+                  writePlaceholderIndexPhp(docroot);
+                } catch (e) {
+                  defaultLogger.error('SMM: could not write placeholder to docroot:', e.message);
+                }
                 if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
                 provisionSmmInstance(folderName);
                 folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
@@ -312,8 +343,13 @@ router.post('/payments/webhook', async (req, res) => {
               try {
                 provisionSmmInstanceToPath(docroot);
               } catch (copyErr) {
-                defaultLogger.error('SMM: copy to DA docroot failed (check permissions):', copyErr.message);
-                defaultLogger.warn('SMM: falling back to smm_instances; copy files to ' + docroot + ' manually if needed.');
+                defaultLogger.error('SMM: copy to DA docroot failed (check permissions or source path):', copyErr.message);
+                defaultLogger.warn('SMM: writing placeholder to docroot; copy api/ecomerce_dist to ' + docroot + ' manually if needed.');
+                try {
+                  writePlaceholderIndexPhp(docroot);
+                } catch (e) {
+                  defaultLogger.error('SMM: could not write placeholder to docroot:', e.message);
+                }
                 if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
                 provisionSmmInstance(folderName);
                 folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
