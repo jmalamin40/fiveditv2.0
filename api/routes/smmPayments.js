@@ -87,6 +87,37 @@ echo '<h1>Site is being set up</h1><p>Content will appear shortly. If this persi
   defaultLogger.warn(`SMM: source dir missing, wrote placeholder ${indexPath}. Set SMM_SOURCE_PATH or add api/ecomerce_dist.`);
 }
 
+// Write .htaccess after copying files (DirectoryIndex, optional rewrite for PHP apps)
+function writeHtaccess(destDir) {
+  if (!destDir) return;
+  try {
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+    const htaccessPath = path.join(destDir, '.htaccess');
+    const content = `# SMM site - created by FivedIT
+DirectoryIndex index.php index.html
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /
+
+# If the request is not for a real file or directory, send to index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?$1 [L,QSA]
+</IfModule>
+
+# Prevent directory listing
+Options -Indexes
+`;
+    fs.writeFileSync(htaccessPath, content, 'utf8');
+    defaultLogger.log(`SMM: wrote .htaccess to ${destDir}`);
+  } catch (e) {
+    defaultLogger.warn('SMM: could not write .htaccess:', e.message);
+  }
+}
+
 // Provision SMM instance: copy ecomerce_dist to target dir (DA docroot or smm_instances)
 function provisionSmmInstanceToPath(destDir) {
   if (!fs.existsSync(destDir)) {
@@ -103,6 +134,7 @@ function provisionSmmInstanceToPath(destDir) {
     return destDir;
   }
   copyDirSync(SMM_SOURCE_DIR, destDir);
+  writeHtaccess(destDir);
   defaultLogger.log(`SMM instance provisioned: ${destDir}`);
   return destDir;
 }
@@ -328,6 +360,7 @@ router.post('/payments/webhook', async (req, res) => {
                 defaultLogger.warn('SMM: writing placeholder to docroot; copy api/ecomerce_dist to ' + docroot + ' manually if needed.');
                 try {
                   writePlaceholderIndexPhp(docroot);
+                  writeHtaccess(docroot);
                 } catch (e) {
                   defaultLogger.error('SMM: could not write placeholder to docroot:', e.message);
                 }
@@ -347,6 +380,7 @@ router.post('/payments/webhook', async (req, res) => {
                 defaultLogger.warn('SMM: writing placeholder to docroot; copy api/ecomerce_dist to ' + docroot + ' manually if needed.');
                 try {
                   writePlaceholderIndexPhp(docroot);
+                  writeHtaccess(docroot);
                 } catch (e) {
                   defaultLogger.error('SMM: could not write placeholder to docroot:', e.message);
                 }
@@ -359,11 +393,13 @@ router.post('/payments/webhook', async (req, res) => {
             defaultLogger.error('SMM DirectAdmin create failed, using smm_instances only:', daErr.message);
             if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
             provisionSmmInstance(folderName);
+            writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
             folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
           }
         } else {
           if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
           provisionSmmInstance(folderName);
+          writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
         }
 
         const folderPathRelative = path.isAbsolute(folderPathToStore)
