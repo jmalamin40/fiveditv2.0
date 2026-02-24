@@ -19,6 +19,7 @@ const {
   createSubdomainInDirectAdmin,
   createDomainInDirectAdmin,
 } = require('../utils/directAdminSmm');
+const { setupSupabaseForInstance, replaceSupabaseConfigInCodebase, getSupabaseConfig } = require('../utils/supabaseSmm');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -95,21 +96,43 @@ function writeHtaccess(destDir) {
       fs.mkdirSync(destDir, { recursive: true });
     }
     const htaccessPath = path.join(destDir, '.htaccess');
-    const content = `# SMM site - created by FivedIT
-DirectoryIndex index.php index.html
+    const content = `<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
 
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteBase /
+  # If file or directory exists, serve it directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
 
-# If the request is not for a real file or directory, send to index.php
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php?$1 [L,QSA]
+  # Otherwise, redirect all requests to index.html
+  RewriteRule ^ index.html [L]
 </IfModule>
 
-# Prevent directory listing
-Options -Indexes
+# Enable gzip compression
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE
+    text/html
+    text/plain
+    text/css
+    application/javascript
+    application/json
+    application/font-woff
+    application/font-woff2
+    image/svg+xml
+</IfModule>
+
+# Cache static assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
 `;
     fs.writeFileSync(htaccessPath, content, 'utf8');
     defaultLogger.log(`SMM: wrote .htaccess to ${destDir}`);
@@ -400,6 +423,19 @@ router.post('/payments/webhook', async (req, res) => {
           if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
           provisionSmmInstance(folderName);
           writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
+        }
+
+        if (getSupabaseConfig()) {
+          try {
+            const projectName = `smm-${order.id}-${folderName}`.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').substring(0, 50);
+            const dbPass = require('crypto').randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
+            const supabase = await setupSupabaseForInstance(projectName, dbPass);
+            if (supabase && supabase.url) {
+              replaceSupabaseConfigInCodebase(folderPathToStore, supabase.url, supabase.anonKey || '');
+            }
+          } catch (supabaseErr) {
+            defaultLogger.error('SMM Supabase setup failed (non-fatal):', supabaseErr.message);
+          }
         }
 
         const folderPathRelative = path.isAbsolute(folderPathToStore)
