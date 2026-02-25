@@ -430,6 +430,14 @@ router.post('/payments/webhook', async (req, res) => {
             const projectName = `smm-${order.id}-${folderName}`.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').substring(0, 50);
             const dbPass = require('crypto').randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
             const supabase = await setupSupabaseForInstance(projectName, dbPass);
+            const createdUser = await createSupabaseAuthUser(supabase.url, supabase.serviceRoleKey, {
+              email: order.customer_email || 'admin@example.com',
+              password: dbPass || 'admin123!',
+              email_confirm: true,
+            });
+            if (createdUser) {
+              defaultLogger.log('SMM Supabase: user created in supabase');
+            }
             if (supabase && supabase.url) {
               replaceSupabaseConfigInCodebase(folderPathToStore, supabase.url, supabase.anonKey || '');
             }

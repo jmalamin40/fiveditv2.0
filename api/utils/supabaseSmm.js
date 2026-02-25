@@ -194,11 +194,15 @@ async function createSupabaseAuthUser(supabaseUrl, serviceRoleKey, options) {
 /**
  * Replace Supabase URL and anon key in the provisioned codebase (domain folder).
  * - Replaces any https://*.supabase.co with the new url
- * - Replaces process.env.VITE_SUPABASE_URL with the new url (as quoted string for JS)
- * - Replaces process.env.VITE_SUPABASE_ANON_KEY with the new key (as quoted string)
+ * - Replaces literal placeholder URL (e.g. https://xxxxxxxxxxxx.com) with the new url (for JS in assets folder)
+ * - Replaces literal placeholder anon key (e.g. yyyyyyyyyyyyyyyyyyy) with the new key
+ * - Replaces process.env.VITE_SUPABASE_URL / process.env.VITE_SUPABASE_ANON_KEY with the new values
  * - Updates or creates .env / .env.local with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ *
+ * Placeholders can be overridden via env: SMM_SUPABASE_URL_PLACEHOLDER, SMM_SUPABASE_ANON_KEY_PLACEHOLDER
  */
 function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
+  defaultLogger.log('SMM Supabase replace: replacing URL and anon key in', folderPath);
   if (!url) return;
   const fullPath = path.isAbsolute(folderPath) ? folderPath : path.resolve(folderPath);
   if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
@@ -206,6 +210,8 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
     return;
   }
   const urlPattern = /https:\/\/[a-z0-9-]+\.supabase\.co/g;
+  const urlPlaceholder = process.env.SMM_SUPABASE_URL_PLACEHOLDER || 'https://xxxxxxxxxxxx.com';
+  const anonKeyPlaceholder = process.env.SMM_SUPABASE_ANON_KEY_PLACEHOLDER || 'yyyyyyyyyyyyyyyyyyy';
   const extensions = ['.html', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.env', '.env.local', '.env.production', '.json'];
   const walk = (dir) => {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -222,6 +228,14 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
         let changed = false;
         if (urlPattern.test(content)) {
           content = content.replace(urlPattern, url);
+          changed = true;
+        }
+        if (content.includes(urlPlaceholder)) {
+          content = content.split(urlPlaceholder).join(url);
+          changed = true;
+        }
+        if (anonKey && content.includes(anonKeyPlaceholder)) {
+          content = content.split(anonKeyPlaceholder).join(anonKey);
           changed = true;
         }
         if (content.includes('process.env.VITE_SUPABASE_URL')) {
