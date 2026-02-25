@@ -50,8 +50,8 @@ async function createSupabaseProject(name, dbPass, orgSlug, region) {
 }
 
 /**
- * Step 02: Fetch API keys for the project. Use ?reveal=true to get the anon key value.
- * Returns array of { name, api_key, ... }. Find the one with name "anon".
+ * Step 02: Fetch API keys for the project. Use ?reveal=true to get key values.
+ * Returns { anonKey, serviceRoleKey } for use in client and admin auth.
  */
 async function getSupabaseApiKeys(projectRef, token) {
   const url = `${SUPABASE_API}/projects/${projectRef}/api-keys?reveal=true`;
@@ -60,9 +60,13 @@ async function getSupabaseApiKeys(projectRef, token) {
     headers: getAuthHeaders(token),
     timeout: 15000,
   });
-  if (!Array.isArray(data)) return null;
+  if (!Array.isArray(data)) return { anonKey: null, serviceRoleKey: null };
   const anon = data.find((k) => k.name === 'anon');
-  return anon ? anon.api_key : (data[0] && data[0].api_key) || null;
+  const serviceRole = data.find((k) => k.name === 'service_role');
+  return {
+    anonKey: anon ? anon.api_key : (data[0] && data[0].api_key) || null,
+    serviceRoleKey: serviceRole ? serviceRole.api_key : null,
+  };
 }
 
 /**
@@ -107,21 +111,20 @@ async function setupSupabaseForInstance(projectName, dbPass) {
 
     // Project may be INACTIVE initially; wait a bit then fetch keys (keys may appear after DB is ready)
     await new Promise((r) => setTimeout(r, 15000));
-    let anonKey = await getSupabaseApiKeys(ref, token);
+    let keys = await getSupabaseApiKeys(ref, token);
     let retries = 6;
-    while (!anonKey && retries > 0) {
+    while (!keys.anonKey && retries > 0) {
       await new Promise((r) => setTimeout(r, 10000));
-      anonKey = await getSupabaseApiKeys(ref, token);
+      keys = await getSupabaseApiKeys(ref, token);
       retries--;
     }
-    if (!anonKey) {
+    if (!keys.anonKey) {
       defaultLogger.warn('SMM Supabase: anon key not found yet, url will work when project is ready');
     }
 
     const schemaPath = process.env.SMM_SUPABASE_SCHEMA_PATH || path.join(__dirname, '..', 'supabasedb', 'db.sql');
     if (fs.existsSync(schemaPath)) {
       const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-      const escaped = schemaSql.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
       try {
         await runSupabaseQuery(ref, schemaSql, token);
       } catch (err) {
@@ -132,9 +135,58 @@ async function setupSupabaseForInstance(projectName, dbPass) {
     }
 
     const url = `https://${ref}.supabase.co`;
-    return { url, anonKey: anonKey || '' };
+    return {
+      url,
+      anonKey: keys.anonKey || '',
+      serviceRoleKey: keys.serviceRoleKey || '',
+    };
   } catch (err) {
     defaultLogger.error('SMM Supabase setup error:', err.response?.data || err.message);
+    return null;
+  }
+}
+
+/**
+ * Create an authentication user in a Supabase project (admin API).
+ * Uses the project's service_role key. Call this after the project is ready.
+ *
+ * @param {string} supabaseUrl - Project URL, e.g. https://<ref>.supabase.co
+ * @param {string} serviceRoleKey - Service role key (from getSupabaseApiKeys)
+ * @param {object} options - User options
+ * @param {string} options.email - User email
+ * @param {string} options.password - User password
+ * @param {boolean} [options.email_confirm=true] - Mark email as confirmed
+ * @param {object} [options.user_metadata] - Optional user_metadata
+ * @returns {Promise<{ id: string, email: string }|null>} Created user or null on failure
+ */
+async function createSupabaseAuthUser(supabaseUrl, serviceRoleKey, options) {
+  if (!supabaseUrl || !serviceRoleKey) {
+    defaultLogger.warn('SMM Supabase: createSupabaseAuthUser requires supabaseUrl and serviceRoleKey');
+    return null;
+  }
+  const { email, password, email_confirm = true, user_metadata } = options || {};
+  if (!email || !password) {
+    defaultLogger.warn('SMM Supabase: createSupabaseAuthUser requires email and password');
+    return null;
+  }
+  const baseUrl = supabaseUrl.replace(/\/$/, '');
+  const url = `${baseUrl}/auth/v1/admin/users`;
+  const body = { email, password, email_confirm: !!email_confirm };
+  if (user_metadata && typeof user_metadata === 'object') body.user_metadata = user_metadata;
+  try {
+    defaultLogger.log(`SMM Supabase: creating auth user ${email}`);
+    const { data } = await axios.post(url, body, {
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+        'Content-Type': 'application/json',
+      },
+      timeout: 15000,
+    });
+    defaultLogger.log('SMM Supabase: auth user created', data?.id);
+    return data ? { id: data.id, email: data.email } : null;
+  } catch (err) {
+    defaultLogger.error('SMM Supabase: create auth user failed', err.response?.data || err.message);
     return null;
   }
 }
@@ -216,5 +268,6 @@ module.exports = {
   getSupabaseApiKeys,
   runSupabaseQuery,
   setupSupabaseForInstance,
+  createSupabaseAuthUser,
   replaceSupabaseConfigInCodebase,
 };
