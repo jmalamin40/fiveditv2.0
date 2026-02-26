@@ -27,6 +27,7 @@ const {
   recordStepEnd,
   getSteps,
 } = require('../utils/smmProvisioning');
+const { sendSmmCredentialsEmail } = require('../utils/email');
 const crypto = require('crypto');
 
 // Optional customer auth (same pattern as hosting)
@@ -486,6 +487,21 @@ router.post('/payments/webhook', async (req, res) => {
             });
             if (!u) throw new Error('Create auth user failed');
             supabaseUserEmail = u.email || email;
+            // Send credentials email to customer (non-blocking: log only if SMTP not configured or send fails)
+            try {
+              const result = await sendSmmCredentialsEmail({
+                to: order.customer_email || email,
+                customerName: order.customer_name || null,
+                siteUrl,
+                loginEmail: supabaseUserEmail,
+                password: adminPassword,
+              });
+              if (result.skipped) {
+                defaultLogger.warn('SMM credentials email skipped:', result.reason || 'unknown');
+              }
+            } catch (emailErr) {
+              defaultLogger.error('SMM credentials email failed (user was created):', emailErr?.message || emailErr);
+            }
           }
         });
 
@@ -744,6 +760,18 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
           });
           if (!u) throw new Error('Create auth user failed');
           supabaseUserEmail = u.email || email;
+          try {
+            const result = await sendSmmCredentialsEmail({
+              to: order.customer_email || email,
+              customerName: order.customer_name || null,
+              siteUrl,
+              loginEmail: supabaseUserEmail,
+              password: adminPassword,
+            });
+            if (result.skipped) defaultLogger.warn('SMM credentials email skipped:', result.reason || 'unknown');
+          } catch (emailErr) {
+            defaultLogger.error('SMM credentials email failed (user was created):', emailErr?.message || emailErr);
+          }
         }
       });
       await runStep('replace_config', async () => {

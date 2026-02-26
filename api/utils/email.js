@@ -373,9 +373,133 @@ async function sendOrderConfirmationEmail({
   }
 }
 
+/**
+ * Send SMM site credentials email to customer after Supabase user is created.
+ * Includes site URL, login email, and password.
+ */
+async function sendSmmCredentialsEmail({
+  to,
+  customerName,
+  siteUrl,
+  loginEmail,
+  password,
+}) {
+  try {
+    if (!to || !siteUrl || !loginEmail || !password) {
+      throw new Error('Missing required SMM email parameters (to, siteUrl, loginEmail, password)');
+    }
+
+    defaultLogger.log(`📧 Sending SMM credentials email to: ${to}`);
+    defaultLogger.log(`   Site: ${siteUrl}, Login: ${loginEmail}`);
+
+    const emailTransporter = getTransporter();
+    if (!emailTransporter) {
+      defaultLogger.warn('⚠️ Email transporter not configured. SMM credentials email skipped.');
+      return { success: false, skipped: true, reason: 'SMTP not configured' };
+    }
+
+    const hasCredentials = process.env.SMTP_USER && process.env.SMTP_PASS;
+    if (!hasCredentials) {
+      defaultLogger.warn('⚠️ SMTP credentials not configured. SMM credentials email skipped.');
+      return { success: false, skipped: true, reason: 'SMTP credentials not set' };
+    }
+
+    const name = customerName || to.split('@')[0] || 'Customer';
+    const mailOptions = {
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@fivedit.com',
+      to,
+      subject: `Your SMM Store is Ready – ${siteUrl.replace(/^https?:\/\//, '').split('/')[0]}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+            .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+            .credentials { background: white; padding: 20px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #2563eb; }
+            .credential-item { margin: 10px 0; }
+            .label { font-weight: bold; color: #6b7280; }
+            .value { color: #111; font-family: monospace; background: #f3f4f6; padding: 6px 10px; border-radius: 3px; word-break: break-all; }
+            .button { display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 12px; }
+            .warning { background: #fef3c7; border: 1px solid #f59e0b; padding: 15px; border-radius: 5px; margin: 20px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Your SMM Store is Ready</h1>
+            </div>
+            <div class="content">
+              <p>Dear ${name},</p>
+              <p>Your Social Media Marketing store has been set up and your admin account is ready.</p>
+              <div class="credentials">
+                <h2 style="margin-top: 0;">Login details</h2>
+                <div class="credential-item">
+                  <span class="label">Store URL:</span><br>
+                  <span class="value">${siteUrl}</span>
+                </div>
+                <div class="credential-item">
+                  <span class="label">Email:</span><br>
+                  <span class="value">${loginEmail}</span>
+                </div>
+                <div class="credential-item">
+                  <span class="label">Password:</span><br>
+                  <span class="value">${password}</span>
+                </div>
+              </div>
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${siteUrl}" target="_blank" class="button">Open your store</a>
+              </div>
+              <div class="warning">
+                <strong>Keep your password safe.</strong> You can change it after logging in. Do not share these credentials.
+              </div>
+              <p>If you have any questions, contact our support team.</p>
+              <p>Best regards,<br>FivedIT Team</p>
+            </div>
+            <div class="footer">
+              <p>This is an automated message. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+Your SMM Store is Ready
+
+Dear ${name},
+
+Your store has been set up. Use these details to log in:
+
+Store URL: ${siteUrl}
+Email: ${loginEmail}
+Password: ${password}
+
+Open your store: ${siteUrl}
+
+Keep your password safe. Do not share these credentials.
+
+Best regards,
+FivedIT Team
+      `,
+    };
+
+    const info = await emailTransporter.sendMail(mailOptions);
+    defaultLogger.log(`✅ SMM credentials email sent to ${to} (Message ID: ${info.messageId || 'N/A'})`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    defaultLogger.error('❌ Error sending SMM credentials email:', error?.message || error);
+    throw error;
+  }
+}
+
 module.exports = {
   sendHostingCredentialsEmail,
   sendOrderConfirmationEmail,
+  sendSmmCredentialsEmail,
   getTransporter,
 };
 
