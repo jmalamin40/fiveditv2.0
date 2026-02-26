@@ -217,6 +217,9 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
   const anonKeyPlaceholder = process.env.SMM_SUPABASE_ANON_KEY_PLACEHOLDER || 'yyyyyyyyyyyyyyyyyyy';
   const urlPlaceholderRegex = /https:\/\/x+\.com/g;
   const bearerPlaceholderRegex = /Bearer\s+y{10,}/g;
+  // Minified bundle pattern: const o0="https://xxxxxxxxxxxx.com",a0="yyyyyyyyyyyyyyyyyyy"
+  const quotedUrlPlaceholderRegex = /["']https:\/\/x+\.com["']/g;
+  const quotedAnonKeyPlaceholderRegex = /["']y{15,}["']/g;
   const extensions = ['.html', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.env', '.env.local', '.env.production', '.json'];
   const walk = (dir) => {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -231,6 +234,22 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
       try {
         let content = fs.readFileSync(full, 'utf8');
         let changed = false;
+        // 1) Quoted placeholders (minified JS: o0="https://xxx...", a0="yyy...")
+        quotedUrlPlaceholderRegex.lastIndex = 0;
+        const afterQuotedUrl = content.replace(quotedUrlPlaceholderRegex, () => `"${url.replace(/"/g, '\\"')}"`);
+        if (afterQuotedUrl !== content) {
+          content = afterQuotedUrl;
+          changed = true;
+        }
+        if (anonKey) {
+          quotedAnonKeyPlaceholderRegex.lastIndex = 0;
+          const afterQuotedKey = content.replace(quotedAnonKeyPlaceholderRegex, () => `"${String(anonKey).replace(/"/g, '\\"')}"`);
+          if (afterQuotedKey !== content) {
+            content = afterQuotedKey;
+            changed = true;
+          }
+        }
+        // 2) Existing supabase.co URLs
         if (urlPattern.test(content)) {
           content = content.replace(urlPattern, url);
           changed = true;
