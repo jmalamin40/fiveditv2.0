@@ -19,7 +19,14 @@ const {
   createSubdomainInDirectAdmin,
   createDomainInDirectAdmin,
 } = require('../utils/directAdminSmm');
-const { setupSupabaseForInstance, replaceSupabaseConfigInCodebase, getSupabaseConfig } = require('../utils/supabaseSmm');
+const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
+const {
+  ensureStepRows,
+  recordStepStart,
+  recordStepEnd,
+  getSteps,
+} = require('../utils/smmProvisioning');
+const crypto = require('crypto');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -337,9 +344,15 @@ router.post('/payments/webhook', async (req, res) => {
     const order = orders[0];
     defaultLogger.log(`SMM Webhook: order ${order.order_id} (id: ${order.id}), status: ${status}`);
 
+    const isPaid = status === 'completed' || status === 'paid';
+    const oneTimeToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     await pool.execute(
-      'UPDATE smm_website_orders SET status = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [status === 'completed' ? 'completed' : status, order.id]
+      `UPDATE smm_website_orders SET status = ?, paid_at = CURRENT_TIMESTAMP,
+       one_time_login_token = ?, one_time_login_expires_at = ?
+       WHERE id = ?`,
+      [status === 'completed' ? 'completed' : status, oneTimeToken, tokenExpires, order.id]
     );
 
     if (order.customer_id === null && order.customer_email) {
@@ -349,7 +362,6 @@ router.post('/payments/webhook', async (req, res) => {
       }
     }
 
-    const isPaid = status === 'completed' || status === 'paid';
     const alreadyHasInstance = order.smm_instance_id != null;
 
     if (isPaid && !alreadyHasInstance) {
@@ -364,94 +376,132 @@ router.post('/payments/webhook', async (req, res) => {
         ? `https://${subdomainPart}.${baseHost}`
         : (order.domain ? `https://${order.domain.replace(/^https?:\/\//, '')}` : `https://${subdomainPart}.${baseHost}`);
 
-      let instanceId = null;
+      ensureStepRows(pool, order.id);
+
       let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
       let usedDirectAdmin = false;
+      let supabaseUrl = null;
+      let supabaseRef = null;
+      let adminPassword = null;
+      const steps = await getSteps(pool, order.id);
+      const stepStatus = Object.fromEntries(steps.map((s) => [s.step_name, s.status]));
 
-      try {
+      const runStep = async (name, fn) => {
+        if (stepStatus[name] === 'success') return true;
+        recordStepStart(pool, order.id, name);
+        try {
+          await fn();
+          recordStepEnd(pool, order.id, name, true, null, null);
+          return true;
+        } catch (err) {
+          const msg = err?.response?.data?.message || err?.message || String(err);
+          recordStepEnd(pool, order.id, name, false, msg, null);
+          defaultLogger.error(`SMM step ${name} failed:`, msg);
+          return false;
+        }
+      };
+
+      // Step 1: DirectAdmin domain/subdomain
+      const daOk = await runStep('directadmin_domain', async () => {
         const daConfig = await getSmmDaConfig(pool);
         if (daConfig) {
+          if (order.subdomain_slug) {
+            const docroot = await createSubdomainInDirectAdmin(daConfig, baseHost, subdomainPart);
+            folderPathToStore = docroot;
+            usedDirectAdmin = true;
+          } else if (order.domain) {
+            const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
+            const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
+            folderPathToStore = docroot;
+            usedDirectAdmin = true;
+          }
+        }
+      });
+      if (!daOk) {
+        return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
+      }
+
+      // Step 2: Copy files
+      const copyOk = await runStep('copy_files', async () => {
+        if (usedDirectAdmin && folderPathToStore) {
           try {
-            if (order.subdomain_slug) {
-              const docroot = await createSubdomainInDirectAdmin(daConfig, baseHost, subdomainPart);
-              folderPathToStore = docroot;
-              usedDirectAdmin = true;
-              try {
-                provisionSmmInstanceToPath(docroot);
-              } catch (copyErr) {
-                defaultLogger.error('SMM: copy to DA docroot failed (check permissions or source path):', copyErr.message);
-                defaultLogger.warn('SMM: writing placeholder to docroot; copy api/ecomerce_dist to ' + docroot + ' manually if needed.');
-                try {
-                  writePlaceholderIndexPhp(docroot);
-                  writeHtaccess(docroot);
-                } catch (e) {
-                  defaultLogger.error('SMM: could not write placeholder to docroot:', e.message);
-                }
-                if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
-                provisionSmmInstance(folderName);
-                folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
-              }
-            } else if (order.domain) {
-              const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
-              const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
-              folderPathToStore = docroot;
-              usedDirectAdmin = true;
-              try {
-                provisionSmmInstanceToPath(docroot);
-              } catch (copyErr) {
-                defaultLogger.error('SMM: copy to DA docroot failed (check permissions or source path):', copyErr.message);
-                defaultLogger.warn('SMM: writing placeholder to docroot; copy api/ecomerce_dist to ' + docroot + ' manually if needed.');
-                try {
-                  writePlaceholderIndexPhp(docroot);
-                  writeHtaccess(docroot);
-                } catch (e) {
-                  defaultLogger.error('SMM: could not write placeholder to docroot:', e.message);
-                }
-                if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
-                provisionSmmInstance(folderName);
-                folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
-              }
-            }
-          } catch (daErr) {
-            defaultLogger.error('SMM DirectAdmin create failed, using smm_instances only:', daErr.message);
+            provisionSmmInstanceToPath(folderPathToStore);
+            writeHtaccess(folderPathToStore);
+          } catch (copyErr) {
+            defaultLogger.warn('SMM: copy to DA docroot failed, using smm_instances fallback:', copyErr.message);
             if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
             provisionSmmInstance(folderName);
-            writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
             folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+            writeHtaccess(folderPathToStore);
           }
         } else {
           if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
           provisionSmmInstance(folderName);
           writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
         }
+      });
+      if (!copyOk) {
+        return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
+      }
 
-        if (getSupabaseConfig()) {
-          try {
-            const projectName = `smm-${order.id}-${folderName}`.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').substring(0, 50);
-            const dbPass = require('crypto').randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
-            const supabase = await setupSupabaseForInstance(projectName, dbPass);
-            const createdUser = await createSupabaseAuthUser(supabase.url, supabase.serviceRoleKey, {
-              email: order.customer_email || 'admin@example.com',
-              password: dbPass || 'admin123!',
-              email_confirm: true,
-            });
-            if (createdUser) {
-              defaultLogger.log('SMM Supabase: user created in supabase');
-            }
-            if (supabase && supabase.url) {
-              replaceSupabaseConfigInCodebase(folderPathToStore, supabase.url, supabase.anonKey || '');
-            }
-          } catch (supabaseErr) {
-            defaultLogger.error('SMM Supabase setup failed (non-fatal):', supabaseErr.message);
-          }
+      if (getSupabaseConfig()) {
+        const projectName = `smm-${order.id}-${folderName}`.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').substring(0, 50);
+        adminPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
+
+        const supabaseOk = await runStep('supabase_project', async () => {
+          const supabase = await setupSupabaseForInstance(projectName, adminPassword);
+          if (!supabase || !supabase.url) throw new Error('Supabase project creation failed');
+          supabaseUrl = supabase.url;
+          supabaseRef = supabase.url.replace('https://', '').split('.')[0];
+        });
+        if (!supabaseOk) {
+          return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
         }
 
+        await runStep('supabase_schema', async () => {
+          /* schema is run inside setupSupabaseForInstance */
+        });
+
+        await runStep('supabase_user', async () => {
+          const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+          const serviceKey = keys?.serviceRoleKey;
+          if (serviceKey) {
+            const u = await createSupabaseAuthUser(supabaseUrl, serviceKey, {
+              email: order.customer_email || 'admin@example.com',
+              password: adminPassword,
+              email_confirm: true,
+            });
+            if (!u) throw new Error('Create auth user failed');
+          }
+        });
+
+        await runStep('replace_config', async () => {
+          const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+          replaceSupabaseConfigInCodebase(folderPathToStore, supabaseUrl, keys?.anonKey || '');
+        });
+      } else {
+        await recordStepEnd(pool, order.id, 'supabase_project', true, null, null);
+        await recordStepEnd(pool, order.id, 'supabase_schema', true, null, null);
+        await recordStepEnd(pool, order.id, 'supabase_user', true, null, null);
+        await recordStepEnd(pool, order.id, 'replace_config', true, null, null);
+      }
+
+      const insertOk = await runStep('insert_instance', async () => {
         const folderPathRelative = path.isAbsolute(folderPathToStore)
           ? folderPathToStore
           : path.relative(path.join(__dirname, '..', '..'), folderPathToStore);
+        let adminEnc = null;
+        if (adminPassword && process.env.SMM_ENCRYPT_KEY) {
+          const key = Buffer.from(process.env.SMM_ENCRYPT_KEY.slice(0, 32).padEnd(32, '0'));
+          const iv = crypto.randomBytes(16);
+          const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+          const enc = Buffer.concat([cipher.update(adminPassword, 'utf8'), cipher.final()]);
+          const authTag = cipher.getAuthTag();
+          adminEnc = iv.toString('hex') + ':' + authTag.toString('hex') + ':' + enc.toString('hex');
+        }
         const [ins] = await pool.execute(
-          `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status)
-           VALUES (?, ?, ?, ?, ?, ?, 'active')`,
+          `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, admin_password_encrypted)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
           [
             order.id,
             order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0],
@@ -459,17 +509,19 @@ router.post('/payments/webhook', async (req, res) => {
             folderPathRelative,
             siteUrl,
             order.customer_email,
+            supabaseRef,
+            adminEnc,
           ]
         );
-        instanceId = ins.insertId;
+        const instanceId = ins.insertId;
         await pool.execute(
           'UPDATE smm_website_orders SET smm_instance_id = ?, status = ? WHERE id = ?',
           [instanceId, 'completed', order.id]
         );
-        defaultLogger.log(`SMM instance created: id=${instanceId}, folder=${folderName}, site_url=${siteUrl}, da=${usedDirectAdmin}`);
-      } catch (provisionError) {
-        defaultLogger.error('SMM provisioning error:', provisionError);
-        // do not fail webhook; order is already paid
+        defaultLogger.log(`SMM instance created: id=${instanceId}, folder=${folderName}, site_url=${siteUrl}`);
+      });
+      if (!insertOk) {
+        return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
       }
     }
 
@@ -497,10 +549,209 @@ router.get('/payments/orders/:order_id', async (req, res) => {
       const [instances] = await pool.execute('SELECT * FROM smm_instances WHERE id = ?', [order.smm_instance_id]);
       if (instances.length > 0) instance = instances[0];
     }
-    res.json({ order, instance });
+    const steps = await getSteps(pool, order.id);
+    res.json({ order, instance, provisioning_steps: steps });
   } catch (error) {
     defaultLogger.error('SMM get order error:', error);
     res.status(500).json({ error: 'Failed to fetch order' });
+  }
+});
+
+// One-time guest session token for auto-login after purchase (no auth)
+router.get('/payments/orders/:order_id/guest-session', async (req, res) => {
+  try {
+    const [orders] = await pool.execute(
+      `SELECT one_time_login_token, one_time_login_expires_at, status
+       FROM smm_website_orders WHERE order_id = ? LIMIT 1`,
+      [req.params.order_id]
+    );
+    if (orders.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const o = orders[0];
+    if (o.status !== 'completed' && o.status !== 'paid') return res.status(400).json({ error: 'Order not paid' });
+    if (!o.one_time_login_token || !o.one_time_login_expires_at) return res.status(400).json({ error: 'No session available' });
+    if (new Date(o.one_time_login_expires_at) <= new Date()) return res.status(400).json({ error: 'Session expired' });
+    res.json({ token: o.one_time_login_token, expires_at: o.one_time_login_expires_at });
+  } catch (error) {
+    defaultLogger.error('SMM guest-session error:', error);
+    res.status(500).json({ error: 'Failed to get session' });
+  }
+});
+
+// Get provisioning steps for an order (by order_id string)
+router.get('/payments/orders/:order_id/provisioning', async (req, res) => {
+  try {
+    const [orders] = await pool.execute(
+      'SELECT id FROM smm_website_orders WHERE order_id = ? LIMIT 1',
+      [req.params.order_id]
+    );
+    if (orders.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const steps = await getSteps(pool, orders[0].id);
+    res.json({ steps });
+  } catch (error) {
+    defaultLogger.error('SMM get provisioning error:', error);
+    res.status(500).json({ error: 'Failed to fetch provisioning steps' });
+  }
+});
+
+// Retry provisioning: requires customer auth or one_time_login_token in body
+router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) => {
+  try {
+    const orderIdStr = req.body?.order_id || req.query?.order_id;
+    const token = req.body?.token;
+    if (!orderIdStr) return res.status(400).json({ error: 'order_id required' });
+
+    const [orders] = await pool.execute(
+      'SELECT * FROM smm_website_orders WHERE order_id = ? LIMIT 1',
+      [orderIdStr]
+    );
+    if (orders.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orders[0];
+
+    if (order.smm_instance_id) {
+      return res.status(400).json({ error: 'Instance already created' });
+    }
+    if (order.status !== 'completed' && order.status !== 'paid') {
+      return res.status(400).json({ error: 'Order not paid' });
+    }
+
+    const customerId = req.customer?.id;
+    const customerEmail = req.customer?.email;
+    const validToken = token && order.one_time_login_token && order.one_time_login_token === token &&
+      order.one_time_login_expires_at && new Date(order.one_time_login_expires_at) > new Date();
+    const validCustomer = customerId && (Number(order.customer_id) === Number(customerId) || order.customer_email === customerEmail);
+    if (!validToken && !validCustomer) {
+      return res.status(403).json({ error: 'Unauthorized: use customer login or valid one-time token' });
+    }
+
+    const folderName = order.subdomain_slug
+      ? sanitizeFolderName(order.subdomain_slug)
+      : sanitizeFolderName(order.domain || order.order_id);
+    const baseHost = SMM_SUBDOMAIN_BASE.replace(/^https?:\/\//, '').split('/')[0];
+    const subdomainPart = order.subdomain_slug
+      ? String(order.subdomain_slug).toLowerCase().replace(/[^a-z0-9-]/g, '').substring(0, 64) || folderName
+      : folderName;
+    const siteUrl = order.subdomain_slug
+      ? `https://${subdomainPart}.${baseHost}`
+      : (order.domain ? `https://${order.domain.replace(/^https?:\/\//, '')}` : `https://${subdomainPart}.${baseHost}`);
+
+    ensureStepRows(pool, order.id);
+    let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+    let usedDirectAdmin = false;
+    let supabaseUrl = null;
+    let supabaseRef = null;
+    let adminPassword = null;
+    const steps = await getSteps(pool, order.id);
+    const stepStatus = Object.fromEntries(steps.map((s) => [s.step_name, s.status]));
+
+    const runStep = async (name, fn) => {
+      if (stepStatus[name] === 'success') return true;
+      recordStepStart(pool, order.id, name);
+      try {
+        await fn();
+        recordStepEnd(pool, order.id, name, true, null, null);
+        return true;
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.message || String(err);
+        recordStepEnd(pool, order.id, name, false, msg, null);
+        defaultLogger.error(`SMM step ${name} failed:`, msg);
+        return false;
+      }
+    };
+
+    const daOk = await runStep('directadmin_domain', async () => {
+      const daConfig = await getSmmDaConfig(pool);
+      if (daConfig) {
+        if (order.subdomain_slug) {
+          const docroot = await createSubdomainInDirectAdmin(daConfig, baseHost, subdomainPart);
+          folderPathToStore = docroot;
+          usedDirectAdmin = true;
+        } else if (order.domain) {
+          const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
+          const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
+          folderPathToStore = docroot;
+          usedDirectAdmin = true;
+        }
+      }
+    });
+    if (!daOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
+
+    const copyOk = await runStep('copy_files', async () => {
+      if (usedDirectAdmin && folderPathToStore) {
+        try {
+          provisionSmmInstanceToPath(folderPathToStore);
+          writeHtaccess(folderPathToStore);
+        } catch (copyErr) {
+          if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+          provisionSmmInstance(folderName);
+          folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+          writeHtaccess(folderPathToStore);
+        }
+      } else {
+        if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+        provisionSmmInstance(folderName);
+        writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
+      }
+    });
+    if (!copyOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
+
+    if (getSupabaseConfig()) {
+      const projectName = `smm-${order.id}-${folderName}`.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').substring(0, 50);
+      adminPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
+      const supabaseOk = await runStep('supabase_project', async () => {
+        const supabase = await setupSupabaseForInstance(projectName, adminPassword);
+        if (!supabase || !supabase.url) throw new Error('Supabase project creation failed');
+        supabaseUrl = supabase.url;
+        supabaseRef = supabase.url.replace('https://', '').split('.')[0];
+      });
+      if (!supabaseOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
+      await runStep('supabase_schema', async () => {});
+      await runStep('supabase_user', async () => {
+        const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+        if (keys?.serviceRoleKey) {
+          const u = await createSupabaseAuthUser(supabaseUrl, keys.serviceRoleKey, {
+            email: order.customer_email || 'admin@example.com',
+            password: adminPassword,
+            email_confirm: true,
+          });
+          if (!u) throw new Error('Create auth user failed');
+        }
+      });
+      await runStep('replace_config', async () => {
+        const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+        replaceSupabaseConfigInCodebase(folderPathToStore, supabaseUrl, keys?.anonKey || '');
+      });
+    } else {
+      await recordStepEnd(pool, order.id, 'supabase_project', true, null, null);
+      await recordStepEnd(pool, order.id, 'supabase_schema', true, null, null);
+      await recordStepEnd(pool, order.id, 'supabase_user', true, null, null);
+      await recordStepEnd(pool, order.id, 'replace_config', true, null, null);
+    }
+
+    const insertOk = await runStep('insert_instance', async () => {
+      const folderPathRelative = path.isAbsolute(folderPathToStore)
+        ? folderPathToStore
+        : path.relative(path.join(__dirname, '..', '..'), folderPathToStore);
+      let adminEnc = null;
+      if (adminPassword && process.env.SMM_ENCRYPT_KEY) {
+        const key = Buffer.from(process.env.SMM_ENCRYPT_KEY.slice(0, 32).padEnd(32, '0'));
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        const enc = Buffer.concat([cipher.update(adminPassword, 'utf8'), cipher.final()]);
+        adminEnc = iv.toString('hex') + ':' + cipher.getAuthTag().toString('hex') + ':' + enc.toString('hex');
+      }
+      const [ins] = await pool.execute(
+        `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, admin_password_encrypted)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+        [order.id, order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0], folderName, folderPathRelative, siteUrl, order.customer_email, supabaseRef, adminEnc]
+      );
+      await pool.execute('UPDATE smm_website_orders SET smm_instance_id = ?, status = ? WHERE id = ?', [ins.insertId, 'completed', order.id]);
+    });
+    if (!insertOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
+
+    return res.status(200).json({ success: true, message: 'Provisioning completed', steps: await getSteps(pool, order.id) });
+  } catch (error) {
+    defaultLogger.error('SMM provision retry error:', error);
+    res.status(500).json({ error: error.message || 'Internal error' });
   }
 });
 

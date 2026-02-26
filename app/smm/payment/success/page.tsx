@@ -6,10 +6,12 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Chat from '@/components/Chat';
-import { getSmmOrderStatus, SmmOrder, SmmInstance } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { getSmmOrderStatus, getSmmGuestSession, SmmOrder, SmmInstance } from '@/lib/api';
 import { Loader2, CheckCircle, ExternalLink } from 'lucide-react';
 
 function SuccessContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get('order_id');
 
@@ -29,13 +31,24 @@ function SuccessContent() {
         const data = await getSmmOrderStatus(orderId);
         setOrder(data.order);
         setInstance(data.instance || null);
+        if ((data.order?.status === 'completed' || data.order?.status === 'paid') && typeof window !== 'undefined' && !localStorage.getItem('customer_token')) {
+          try {
+            const session = await getSmmGuestSession(orderId);
+            if (session?.token) {
+              router.replace(`/customer/auto-login?token=${encodeURIComponent(session.token)}&order_id=${encodeURIComponent(orderId)}`);
+              return;
+            }
+          } catch {
+            // no guest session, user can still go to customer portal and log in
+          }
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Failed to load order');
       } finally {
         setLoading(false);
       }
     })();
-  }, [orderId]);
+  }, [orderId, router]);
 
   if (loading) {
     return (

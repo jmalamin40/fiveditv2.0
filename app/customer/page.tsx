@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, getCustomerSmmOrders, getCustomerSmmInstances, CustomerOrder, CustomerAccount, Invoice, SmmOrder, SmmInstance } from '@/lib/api';
-import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText, Share2, ExternalLink } from 'lucide-react';
+import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, getCustomerSmmOrders, getCustomerSmmInstances, getSmmProvisioningSteps, retrySmmProvisioning, CustomerOrder, CustomerAccount, Invoice, SmmOrder, SmmInstance, SmmProvisioningStep } from '@/lib/api';
+import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText, Share2, ExternalLink, RefreshCw } from 'lucide-react';
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -14,6 +14,8 @@ export default function CustomerDashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [smmOrders, setSmmOrders] = useState<SmmOrder[]>([]);
   const [smmInstances, setSmmInstances] = useState<SmmInstance[]>([]);
+  const [provisioningSteps, setProvisioningSteps] = useState<Record<string, SmmProvisioningStep[]>>({});
+  const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'smm' | 'invoices' | 'profile'>('orders');
 
@@ -49,6 +51,11 @@ export default function CustomerDashboard() {
       setSmmOrders(smmOrdersData.orders);
       setSmmInstances(smmInstancesData.instances);
       setUser(profileData.user);
+      for (const o of smmOrdersData.orders) {
+        if ((o.status === 'paid' || o.status === 'completed') && !o.smm_instance_id) {
+          getSmmProvisioningSteps(o.order_id).then((r) => setProvisioningSteps((prev) => ({ ...prev, [o.order_id]: r.steps }))).catch(() => {});
+        }
+      }
       localStorage.setItem('customer_user', JSON.stringify(profileData.user));
     } catch (error) {
       console.error('Error loading data:', error);
@@ -381,6 +388,45 @@ export default function CustomerDashboard() {
                           </div>
                         )}
                       </div>
+                      {(order.status === 'paid' || order.status === 'completed') && !order.smm_instance_id && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Provisioning steps</p>
+                          <ul className="space-y-1 text-sm mb-3">
+                            {(provisioningSteps[order.order_id] || []).map((step) => (
+                              <li key={step.step_name} className="flex items-center gap-2">
+                                {step.status === 'success' && <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />}
+                                {step.status === 'failed' && <XCircle className="w-4 h-4 text-red-600 shrink-0" />}
+                                {(step.status === 'pending' || step.status === 'running') && <Loader2 className="w-4 h-4 animate-spin text-gray-500 shrink-0" />}
+                                <span className={step.status === 'failed' ? 'text-red-700' : ''}>
+                                  {step.step_name.replace(/_/g, ' ')}: {step.status}
+                                  {step.error_message && <span className="block text-xs text-red-600 mt-0.5">{step.error_message}</span>}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                          <button
+                            onClick={async () => {
+                              if (!token || retryingOrderId) return;
+                              setRetryingOrderId(order.order_id);
+                              try {
+                                await retrySmmProvisioning(order.order_id, token);
+                                const res = await getSmmProvisioningSteps(order.order_id);
+                                setProvisioningSteps((prev) => ({ ...prev, [order.order_id]: res.steps }));
+                                await loadData(token);
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setRetryingOrderId(null);
+                              }
+                            }}
+                            disabled={!!retryingOrderId}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            {retryingOrderId === order.order_id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            Retry provisioning
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

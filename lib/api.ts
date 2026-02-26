@@ -563,3 +563,48 @@ export async function getCustomerSmmInstances(token: string): Promise<{ instance
   return response.json();
 }
 
+export interface SmmProvisioningStep {
+  step_name: string;
+  step_order: number;
+  status: 'pending' | 'running' | 'success' | 'failed';
+  error_message?: string | null;
+  details?: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getSmmProvisioningSteps(orderId: string): Promise<{ steps: SmmProvisioningStep[] }> {
+  const response = await fetch(`${API_BASE_URL}/smm/payments/orders/${encodeURIComponent(orderId)}/provisioning`);
+  if (!response.ok) throw new Error('Failed to fetch provisioning steps');
+  return response.json();
+}
+
+export async function retrySmmProvisioning(orderId: string, token?: string | null): Promise<{ success: boolean; message?: string; steps?: SmmProvisioningStep[] }> {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}/smm/payments/provision-retry`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ order_id: orderId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Retry failed');
+  return data;
+}
+
+export async function getSmmGuestSession(orderId: string): Promise<{ token: string; expires_at: string }> {
+  const response = await fetch(`${API_BASE_URL}/smm/payments/orders/${encodeURIComponent(orderId)}/guest-session`);
+  if (!response.ok) throw new Error('Failed to get session');
+  return response.json();
+}
+
+export async function customerGuestLogin(token: string, orderId: string): Promise<{ token: string; user: { id: number; name: string; email: string; phone?: string; role: string } }> {
+  const response = await fetch(`${API_BASE_URL}/customer/auth/guest-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, order_id: orderId }),
+  });
+  if (!response.ok) throw new Error('Failed to login');
+  return response.json();
+}
+

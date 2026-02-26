@@ -459,6 +459,8 @@ async function migrate() {
         webhook_url VARCHAR(500),
         payment_gateway_response TEXT,
         smm_instance_id INT NULL,
+        one_time_login_token VARCHAR(64) NULL,
+        one_time_login_expires_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         paid_at TIMESTAMP NULL,
@@ -474,6 +476,24 @@ async function migrate() {
     console.log('✅ SMM website orders table created');
 
     await connection.execute(`
+      CREATE TABLE IF NOT EXISTS smm_provisioning_steps (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL COMMENT 'smm_website_orders.id',
+        step_name VARCHAR(64) NOT NULL COMMENT 'e.g. directadmin_domain, copy_files, supabase_project, supabase_schema, supabase_user, replace_config, insert_instance',
+        step_order INT NOT NULL DEFAULT 0,
+        status ENUM('pending', 'running', 'success', 'failed') DEFAULT 'pending',
+        error_message TEXT NULL,
+        details JSON NULL COMMENT 'Step output e.g. folder_path, supabase_url',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES smm_website_orders(id) ON DELETE CASCADE,
+        INDEX idx_order_status (order_id, status),
+        INDEX idx_order_steps (order_id, step_order)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ SMM provisioning steps table created');
+
+    await connection.execute(`
       CREATE TABLE IF NOT EXISTS smm_instances (
         id INT AUTO_INCREMENT PRIMARY KEY,
         order_id INT NOT NULL COMMENT 'smm_website_orders.id',
@@ -483,6 +503,8 @@ async function migrate() {
         site_url VARCHAR(500) NOT NULL COMMENT 'Full URL for customer to access',
         customer_email VARCHAR(255) NOT NULL,
         status ENUM('pending', 'active', 'suspended') DEFAULT 'active',
+        supabase_project_ref VARCHAR(50) NULL COMMENT 'Supabase project ref for auth magic link',
+        admin_password_encrypted TEXT NULL COMMENT 'Encrypted admin password for SMM site auto-login',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (order_id) REFERENCES smm_website_orders(id) ON DELETE CASCADE,
@@ -510,6 +532,32 @@ async function migrate() {
       }
     } catch (e) {
       if (!e.message || !e.message.includes('Duplicate')) console.log('⚠️ smm_website_orders FK:', e.message);
+    }
+
+    // Add optional columns to smm_website_orders for auto-login after purchase (existing DBs)
+    for (const col of [
+      'ADD COLUMN one_time_login_token VARCHAR(64) NULL',
+      'ADD COLUMN one_time_login_expires_at TIMESTAMP NULL',
+    ]) {
+      try {
+        await connection.execute(`ALTER TABLE smm_website_orders ${col}`);
+        console.log('✅ smm_website_orders: added', col.split(' ')[2]);
+      } catch (e) {
+        if (!e.message || !e.message.includes('Duplicate column')) console.log('⚠️ smm_website_orders alter:', e.message);
+      }
+    }
+
+    // Add optional columns to smm_instances for Supabase (existing DBs)
+    for (const col of [
+      'ADD COLUMN supabase_project_ref VARCHAR(50) NULL',
+      'ADD COLUMN admin_password_encrypted TEXT NULL',
+    ]) {
+      try {
+        await connection.execute(`ALTER TABLE smm_instances ${col}`);
+        console.log('✅ smm_instances: added', col.split(' ')[2]);
+      } catch (e) {
+        if (!e.message || !e.message.includes('Duplicate column')) console.log('⚠️ smm_instances alter:', e.message);
+      }
     }
 
     // Seed default SMM product if none exists
