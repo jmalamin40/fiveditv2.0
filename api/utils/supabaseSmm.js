@@ -88,7 +88,8 @@ async function runSupabaseQuery(projectRef, query, token) {
 
 /**
  * Full setup: create project, wait for it to be ready (poll status), get api keys, run schema.
- * Returns { url, anonKey } or null on failure.
+ * Returns { url, anonKey, serviceRoleKey, projectResponse } or null on failure.
+ * projectResponse is the raw API response from create project (id, ref, name, region, etc.).
  * Project name must be unique (e.g. smm-order-37 or domain-com).
  */
 async function setupSupabaseForInstance(projectName, dbPass) {
@@ -108,6 +109,7 @@ async function setupSupabaseForInstance(projectName, dbPass) {
       defaultLogger.error('SMM Supabase: create project did not return ref');
       return null;
     }
+    const projectResponse = { ...project };
 
     // Project may be INACTIVE initially; wait a bit then fetch keys (keys may appear after DB is ready)
     await new Promise((r) => setTimeout(r, 15000));
@@ -139,6 +141,7 @@ async function setupSupabaseForInstance(projectName, dbPass) {
       url,
       anonKey: keys.anonKey || '',
       serviceRoleKey: keys.serviceRoleKey || '',
+      projectResponse,
     };
   } catch (err) {
     defaultLogger.error('SMM Supabase setup error:', err.response?.data || err.message);
@@ -194,8 +197,8 @@ async function createSupabaseAuthUser(supabaseUrl, serviceRoleKey, options) {
 /**
  * Replace Supabase URL and anon key in the provisioned codebase (domain folder).
  * - Replaces any https://*.supabase.co with the new url
- * - Replaces literal placeholder URL (e.g. https://xxxxxxxxxxxx.com) with the new url (for JS in assets folder)
- * - Replaces literal placeholder anon key (e.g. yyyyyyyyyyyyyyyyyyy) with the new key
+ * - Replaces placeholder URL (e.g. https://xxxxxxxxxxxx.com or with path like /rest/v1/...) with the new url
+ * - Replaces placeholder anon key everywhere: literal string, apikey value, "Bearer yyy..." in authorization
  * - Replaces process.env.VITE_SUPABASE_URL / process.env.VITE_SUPABASE_ANON_KEY with the new values
  * - Updates or creates .env / .env.local with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
  *
@@ -212,6 +215,8 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
   const urlPattern = /https:\/\/[a-z0-9-]+\.supabase\.co/g;
   const urlPlaceholder = process.env.SMM_SUPABASE_URL_PLACEHOLDER || 'https://xxxxxxxxxxxx.com';
   const anonKeyPlaceholder = process.env.SMM_SUPABASE_ANON_KEY_PLACEHOLDER || 'yyyyyyyyyyyyyyyyyyy';
+  const urlPlaceholderRegex = /https:\/\/x+\.com/g;
+  const bearerPlaceholderRegex = /Bearer\s+y{10,}/g;
   const extensions = ['.html', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.env', '.env.local', '.env.production', '.json'];
   const walk = (dir) => {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -234,9 +239,19 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
           content = content.split(urlPlaceholder).join(url);
           changed = true;
         }
-        if (anonKey && content.includes(anonKeyPlaceholder)) {
-          content = content.split(anonKeyPlaceholder).join(anonKey);
+        if (urlPlaceholderRegex.test(content)) {
+          content = content.replace(urlPlaceholderRegex, url);
           changed = true;
+        }
+        if (anonKey) {
+          if (content.includes(anonKeyPlaceholder)) {
+            content = content.split(anonKeyPlaceholder).join(anonKey);
+            changed = true;
+          }
+          if (bearerPlaceholderRegex.test(content)) {
+            content = content.replace(bearerPlaceholderRegex, 'Bearer ' + anonKey);
+            changed = true;
+          }
         }
         if (content.includes('process.env.VITE_SUPABASE_URL')) {
           content = content.replace(/process\.env\.VITE_SUPABASE_URL/g, JSON.stringify(url));

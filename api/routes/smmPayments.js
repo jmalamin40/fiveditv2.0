@@ -385,6 +385,8 @@ router.post('/payments/webhook', async (req, res) => {
       let supabaseUrl = null;
       let supabaseRef = null;
       let adminPassword = null;
+      let supabaseProjectResponse = null;
+      let supabaseUserEmail = null;
       const steps = await getSteps(pool, order.id);
       const stepStatus = Object.fromEntries(steps.map((s) => [s.step_name, s.status]));
 
@@ -462,6 +464,7 @@ router.post('/payments/webhook', async (req, res) => {
           if (!supabase || !supabase.url) throw new Error('Supabase project creation failed');
           supabaseUrl = supabase.url;
           supabaseRef = supabase.url.replace('https://', '').split('.')[0];
+          supabaseProjectResponse = supabase.projectResponse || null;
         });
         if (!supabaseOk) {
           return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
@@ -474,13 +477,15 @@ router.post('/payments/webhook', async (req, res) => {
         await runStep('supabase_user', async () => {
           const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
           const serviceKey = keys?.serviceRoleKey;
+          const email = order.customer_email || 'admin@example.com';
           if (serviceKey) {
             const u = await createSupabaseAuthUser(supabaseUrl, serviceKey, {
-              email: order.customer_email || 'admin@example.com',
+              email,
               password: adminPassword,
               email_confirm: true,
             });
             if (!u) throw new Error('Create auth user failed');
+            supabaseUserEmail = u.email || email;
           }
         });
 
@@ -508,9 +513,10 @@ router.post('/payments/webhook', async (req, res) => {
           const authTag = cipher.getAuthTag();
           adminEnc = iv.toString('hex') + ':' + authTag.toString('hex') + ':' + enc.toString('hex');
         }
+        const projectResponseJson = supabaseProjectResponse ? JSON.stringify(supabaseProjectResponse) : null;
         const [ins] = await pool.execute(
-          `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, admin_password_encrypted)
-           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+          `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, supabase_project_response, supabase_user_email, admin_password_encrypted)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
           [
             order.id,
             order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0],
@@ -519,6 +525,8 @@ router.post('/payments/webhook', async (req, res) => {
             siteUrl,
             order.customer_email,
             supabaseRef,
+            projectResponseJson,
+            supabaseUserEmail,
             adminEnc,
           ]
         );
@@ -650,6 +658,8 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     let supabaseUrl = null;
     let supabaseRef = null;
     let adminPassword = null;
+    let supabaseProjectResponse = null;
+    let supabaseUserEmail = null;
     const steps = await getSteps(pool, order.id);
     const stepStatus = Object.fromEntries(steps.map((s) => [s.step_name, s.status]));
 
@@ -719,18 +729,21 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
         if (!supabase || !supabase.url) throw new Error('Supabase project creation failed');
         supabaseUrl = supabase.url;
         supabaseRef = supabase.url.replace('https://', '').split('.')[0];
+        supabaseProjectResponse = supabase.projectResponse || null;
       });
       if (!supabaseOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
       await runStep('supabase_schema', async () => {});
       await runStep('supabase_user', async () => {
         const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+        const email = order.customer_email || 'admin@example.com';
         if (keys?.serviceRoleKey) {
           const u = await createSupabaseAuthUser(supabaseUrl, keys.serviceRoleKey, {
-            email: order.customer_email || 'admin@example.com',
+            email,
             password: adminPassword,
             email_confirm: true,
           });
           if (!u) throw new Error('Create auth user failed');
+          supabaseUserEmail = u.email || email;
         }
       });
       await runStep('replace_config', async () => {
@@ -756,10 +769,11 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
         const enc = Buffer.concat([cipher.update(adminPassword, 'utf8'), cipher.final()]);
         adminEnc = iv.toString('hex') + ':' + cipher.getAuthTag().toString('hex') + ':' + enc.toString('hex');
       }
+      const projectResponseJson = supabaseProjectResponse ? JSON.stringify(supabaseProjectResponse) : null;
       const [ins] = await pool.execute(
-        `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, admin_password_encrypted)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-        [order.id, order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0], folderName, folderPathRelative, siteUrl, order.customer_email, supabaseRef, adminEnc]
+        `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, supabase_project_response, supabase_user_email, admin_password_encrypted)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+        [order.id, order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0], folderName, folderPathRelative, siteUrl, order.customer_email, supabaseRef, projectResponseJson, supabaseUserEmail, adminEnc]
       );
       await pool.execute('UPDATE smm_website_orders SET smm_instance_id = ?, status = ? WHERE id = ?', [ins.insertId, 'completed', order.id]);
     });

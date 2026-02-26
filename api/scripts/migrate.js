@@ -504,6 +504,8 @@ async function migrate() {
         customer_email VARCHAR(255) NOT NULL,
         status ENUM('pending', 'active', 'suspended') DEFAULT 'active',
         supabase_project_ref VARCHAR(50) NULL COMMENT 'Supabase project ref for auth magic link',
+        supabase_project_response JSON NULL COMMENT 'Full Supabase create project API response',
+        supabase_user_email VARCHAR(255) NULL COMMENT 'Supabase auth user email created for this instance',
         admin_password_encrypted TEXT NULL COMMENT 'Encrypted admin password for SMM site auto-login',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -550,6 +552,8 @@ async function migrate() {
     // Add optional columns to smm_instances for Supabase (existing DBs)
     for (const col of [
       'ADD COLUMN supabase_project_ref VARCHAR(50) NULL',
+      'ADD COLUMN supabase_project_response JSON NULL',
+      'ADD COLUMN supabase_user_email VARCHAR(255) NULL',
       'ADD COLUMN admin_password_encrypted TEXT NULL',
     ]) {
       try {
