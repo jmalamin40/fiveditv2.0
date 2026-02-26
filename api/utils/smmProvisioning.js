@@ -35,6 +35,22 @@ async function ensureStepRows(pool, orderId) {
 }
 
 /**
+ * Reset any step stuck in 'running' to 'failed' so they can be retried.
+ * Call at the start of a provisioning run so we never leave steps as "running".
+ */
+async function clearStaleRunningSteps(pool, orderId) {
+  const [res] = await pool.execute(
+    `UPDATE smm_provisioning_steps
+     SET status = 'failed', error_message = 'Interrupted or timed out (retry to run again)', updated_at = CURRENT_TIMESTAMP
+     WHERE order_id = ? AND status = 'running'`,
+    [orderId]
+  );
+  if (res && res.affectedRows > 0) {
+    defaultLogger.log('SMM provisioning: cleared stale running steps for order', orderId, res.affectedRows);
+  }
+}
+
+/**
  * Record step start (running).
  */
 async function recordStepStart(pool, orderId, stepName) {
@@ -86,6 +102,7 @@ module.exports = {
   STEP_ORDER,
   stepIndex,
   ensureStepRows,
+  clearStaleRunningSteps,
   recordStepStart,
   recordStepEnd,
   getSteps,

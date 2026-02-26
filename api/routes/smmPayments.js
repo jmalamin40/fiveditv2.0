@@ -22,6 +22,7 @@ const {
 const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
 const {
   ensureStepRows,
+  clearStaleRunningSteps,
   recordStepStart,
   recordStepEnd,
   getSteps,
@@ -377,6 +378,7 @@ router.post('/payments/webhook', async (req, res) => {
         : (order.domain ? `https://${order.domain.replace(/^https?:\/\//, '')}` : `https://${subdomainPart}.${baseHost}`);
 
       ensureStepRows(pool, order.id);
+      await clearStaleRunningSteps(pool, order.id);
 
       let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
       let usedDirectAdmin = false;
@@ -388,16 +390,23 @@ router.post('/payments/webhook', async (req, res) => {
 
       const runStep = async (name, fn) => {
         if (stepStatus[name] === 'success') return true;
-        recordStepStart(pool, order.id, name);
+        await recordStepStart(pool, order.id, name);
+        let ended = false;
         try {
           await fn();
-          recordStepEnd(pool, order.id, name, true, null, null);
+          await recordStepEnd(pool, order.id, name, true, null, null);
+          ended = true;
           return true;
         } catch (err) {
           const msg = err?.response?.data?.message || err?.message || String(err);
-          recordStepEnd(pool, order.id, name, false, msg, null);
+          await recordStepEnd(pool, order.id, name, false, msg, null);
+          ended = true;
           defaultLogger.error(`SMM step ${name} failed:`, msg);
           return false;
+        } finally {
+          if (!ended) {
+            await recordStepEnd(pool, order.id, name, false, 'Step did not complete (timeout or error)', null);
+          }
         }
       };
 
@@ -635,6 +644,7 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
       : (order.domain ? `https://${order.domain.replace(/^https?:\/\//, '')}` : `https://${subdomainPart}.${baseHost}`);
 
     ensureStepRows(pool, order.id);
+    await clearStaleRunningSteps(pool, order.id);
     let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
     let usedDirectAdmin = false;
     let supabaseUrl = null;
@@ -645,16 +655,23 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
 
     const runStep = async (name, fn) => {
       if (stepStatus[name] === 'success') return true;
-      recordStepStart(pool, order.id, name);
+      await recordStepStart(pool, order.id, name);
+      let ended = false;
       try {
         await fn();
-        recordStepEnd(pool, order.id, name, true, null, null);
+        await recordStepEnd(pool, order.id, name, true, null, null);
+        ended = true;
         return true;
       } catch (err) {
         const msg = err?.response?.data?.message || err?.message || String(err);
-        recordStepEnd(pool, order.id, name, false, msg, null);
+        await recordStepEnd(pool, order.id, name, false, msg, null);
+        ended = true;
         defaultLogger.error(`SMM step ${name} failed:`, msg);
         return false;
+      } finally {
+        if (!ended) {
+          await recordStepEnd(pool, order.id, name, false, 'Step did not complete (timeout or error)', null);
+        }
       }
     };
 

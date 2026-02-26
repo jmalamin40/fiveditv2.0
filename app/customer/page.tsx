@@ -357,7 +357,19 @@ export default function CustomerDashboard() {
               {smmOrders.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-800">SMM Orders</h3>
-                  {smmOrders.map((order) => (
+                  {smmOrders.map((order) => {
+                    const stepsForOrder = provisioningSteps[order.order_id] || [];
+                    const hasFailedStep = stepsForOrder.some((s) => s.status === 'failed');
+                    const showProvisionSection =
+                      (order.status === 'paid' || order.status === 'completed') &&
+                      !order.smm_instance_id &&
+                      (stepsForOrder.length > 0 || hasFailedStep);
+                    const showRetryButton =
+                      (order.status === 'paid' || order.status === 'completed') &&
+                      !order.smm_instance_id &&
+                      hasFailedStep;
+
+                    return (
                     <div key={order.order_id} className="border border-gray-200 rounded-lg p-6">
                       <div className="flex justify-between items-start mb-2">
                         <div>
@@ -388,11 +400,11 @@ export default function CustomerDashboard() {
                           </div>
                         )}
                       </div>
-                      {(order.status === 'paid' || order.status === 'completed') && !order.smm_instance_id && (
+                      {showProvisionSection && (
                         <div className="mt-4 pt-4 border-t border-gray-200">
                           <p className="text-sm font-medium text-gray-700 mb-2">Provisioning steps</p>
                           <ul className="space-y-1 text-sm mb-3">
-                            {(provisioningSteps[order.order_id] || []).map((step) => (
+                            {stepsForOrder.map((step) => (
                               <li key={step.step_name} className="flex items-center gap-2">
                                 {step.status === 'success' && <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />}
                                 {step.status === 'failed' && <XCircle className="w-4 h-4 text-red-600 shrink-0" />}
@@ -404,31 +416,33 @@ export default function CustomerDashboard() {
                               </li>
                             ))}
                           </ul>
-                          <button
-                            onClick={async () => {
-                              if (!token || retryingOrderId) return;
-                              setRetryingOrderId(order.order_id);
-                              try {
-                                await retrySmmProvisioning(order.order_id, token);
-                                const res = await getSmmProvisioningSteps(order.order_id);
-                                setProvisioningSteps((prev) => ({ ...prev, [order.order_id]: res.steps }));
-                                await loadData(token);
-                              } catch (e) {
-                                console.error(e);
-                              } finally {
-                                setRetryingOrderId(null);
-                              }
-                            }}
-                            disabled={!!retryingOrderId}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                          >
-                            {retryingOrderId === order.order_id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                            Retry provisioning
-                          </button>
+                          {showRetryButton && (
+                            <button
+                              onClick={async () => {
+                                if (!token || retryingOrderId) return;
+                                setRetryingOrderId(order.order_id);
+                                try {
+                                  await retrySmmProvisioning(order.order_id, token);
+                                  const res = await getSmmProvisioningSteps(order.order_id);
+                                  setProvisioningSteps((prev) => ({ ...prev, [order.order_id]: res.steps }));
+                                  await loadData(token);
+                                } catch (e) {
+                                  console.error(e);
+                                } finally {
+                                  setRetryingOrderId(null);
+                                }
+                              }}
+                              disabled={!!retryingOrderId}
+                              className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {retryingOrderId === order.order_id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                              Retry provisioning
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
               {smmInstances.length === 0 && smmOrders.length === 0 && (
