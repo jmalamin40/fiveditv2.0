@@ -207,7 +207,9 @@ async function createSupabaseAuthUser(supabaseUrl, serviceRoleKey, options) {
 function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
   defaultLogger.log('SMM Supabase replace: replacing URL and anon key in', folderPath);
   if (!url) return;
-  const fullPath = path.isAbsolute(folderPath) ? folderPath : path.resolve(folderPath);
+  const domainPath = path.isAbsolute(folderPath) ? folderPath : path.resolve(folderPath);
+  const fullPath = domainPath + '/assets';
+  //in this folder we have 2 js file and those js file need to be replaced with the new url and anon key
   if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
     defaultLogger.warn('SMM Supabase replace: folder not found or not a directory', fullPath);
     return;
@@ -287,9 +289,10 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
     }
   };
   walk(fullPath);
+  // .env files live at domain root, not in assets
   const envLines = [`VITE_SUPABASE_URL=${url}`, `VITE_SUPABASE_ANON_KEY=${anonKey || ''}`];
   for (const name of ['.env', '.env.local', '.env.production']) {
-    const envPath = path.join(fullPath, name);
+    const envPath = path.join(domainPath, name);
     let envContent = '';
     if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, 'utf8');
     let updated = envContent;
