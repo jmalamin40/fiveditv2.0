@@ -767,8 +767,8 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
         }
       });
       await runStep('replace_config', async () => {
-        const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
-        replaceSupabaseConfigInCodebase(folderPathToStore, supabaseUrl, keys?.anonKey || '');
+        // const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+        // replaceSupabaseConfigInCodebase(folderPathToStore, supabaseUrl, keys?.anonKey || '');
       });
     } else {
       await recordStepEnd(pool, order.id, 'supabase_project', true, null, null);

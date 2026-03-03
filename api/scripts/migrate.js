@@ -458,6 +458,7 @@ async function migrate() {
         cancel_url VARCHAR(500),
         webhook_url VARCHAR(500),
         payment_gateway_response TEXT,
+        tenant_id INT NULL COMMENT 'ID from tenants API after register_tenant',
         smm_instance_id INT NULL,
         one_time_login_token VARCHAR(64) NULL,
         one_time_login_expires_at TIMESTAMP NULL,
@@ -536,8 +537,9 @@ async function migrate() {
       if (!e.message || !e.message.includes('Duplicate')) console.log('⚠️ smm_website_orders FK:', e.message);
     }
 
-    // Add optional columns to smm_website_orders for auto-login after purchase (existing DBs)
+    // Add optional columns to smm_website_orders (existing DBs)
     for (const col of [
+      'ADD COLUMN tenant_id INT NULL COMMENT \'ID from tenants API after register_tenant\'',
       'ADD COLUMN one_time_login_token VARCHAR(64) NULL',
       'ADD COLUMN one_time_login_expires_at TIMESTAMP NULL',
     ]) {
