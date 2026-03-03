@@ -11,6 +11,8 @@ const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fivedit.com';
 const SMM_SUBDOMAIN_BASE = process.env.SMM_SUBDOMAIN_BASE || 'fivedit.com';
+const SMM_TENANTS_API_URL = process.env.SMM_TENANTS_API_URL || 'https://api-social-ecom.fivedit.com/';
+const SMM_TENANTS_API_KEY = process.env.SMM_TENANTS_API_KEY || '33a055ccc2ce0285a2a32387bd756b3bf07abe51eda8a7d155986c1619ce65ab';
 const SMM_INSTANCES_DIR = process.env.SMM_INSTANCES_PATH || path.join(__dirname, '..', 'smm_instances');
 // Source of the SMM script (set SMM_SOURCE_PATH in env if api/ecomerce_dist is elsewhere, e.g. in production)
 const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..', 'ecomerce_dist');
@@ -475,34 +477,39 @@ router.post('/payments/webhook', async (req, res) => {
           /* schema is run inside setupSupabaseForInstance */
         });
 
-        await runStep('supabase_user', async () => {
-          const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
-          const serviceKey = keys?.serviceRoleKey;
-          const email = order.customer_email || 'admin@example.com';
-          if (serviceKey) {
-            const u = await createSupabaseAuthUser(supabaseUrl, serviceKey, {
-              email,
-              password: adminPassword,
-              email_confirm: true,
-            });
-            if (!u) throw new Error('Create auth user failed');
-            supabaseUserEmail = u.email || email;
-            // Send credentials email to customer (non-blocking: log only if SMTP not configured or send fails)
-            try {
-              const result = await sendSmmCredentialsEmail({
-                to: order.customer_email || email,
-                customerName: order.customer_name || null,
-                siteUrl,
-                loginEmail: supabaseUserEmail,
-                password: adminPassword,
-              });
-              if (result.skipped) {
-                defaultLogger.warn('SMM credentials email skipped:', result.reason || 'unknown');
-              }
-            } catch (emailErr) {
-              defaultLogger.error('SMM credentials email failed (user was created):', emailErr?.message || emailErr);
-            }
-          }
+        // await runStep('supabase_user', async () => {
+        //   const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
+        //   const serviceKey = keys?.serviceRoleKey;
+        //   const email = order.customer_email || 'admin@example.com';
+        //   if (serviceKey) {
+        //     const u = await createSupabaseAuthUser(supabaseUrl, serviceKey, {
+        //       email,
+        //       password: adminPassword,
+        //       email_confirm: true,
+        //     });
+        //     if (!u) throw new Error('Create auth user failed');
+        //     supabaseUserEmail = u.email || email;
+        //     // Send credentials email to customer (non-blocking: log only if SMTP not configured or send fails)
+        //     try {
+        //       const result = await sendSmmCredentialsEmail({
+        //         to: order.customer_email || email,
+        //         customerName: order.customer_name || null,
+        //         siteUrl,
+        //         loginEmail: supabaseUserEmail,
+        //         password: adminPassword,
+        //       });
+        //       if (result.skipped) {
+        //         defaultLogger.warn('SMM credentials email skipped:', result.reason || 'unknown');
+        //       }
+        //     } catch (emailErr) {
+        //       defaultLogger.error('SMM credentials email failed (user was created):', emailErr?.message || emailErr);
+        //     }
+        //   }
+        // });
+
+        //create tenant
+        await runStep('create_tenant', async () => {
+          const tenant = await createSmmTenant(order.domain, order.customer_email, adminPassword);
         });
 
         await runStep('replace_config', async () => {
@@ -565,6 +572,28 @@ router.post('/payments/webhook', async (req, res) => {
   }
 });
 
+//create tenant
+async function createSmmTenant(domain, customer_email, tenantPassword) {
+  const tablePrefix = (domain.replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 4)) || 'lcl';
+  const email = customer_email || 'admin@example.com';
+  try {
+  const tenant = await axios.post(`${SMM_TENANTS_API_URL}/api/tenants`, {
+    domain,
+    table_prefix: tablePrefix,
+    email,
+    password: tenantPassword,
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': SMM_TENANTS_API_KEY,
+    },
+  });
+    return tenant;
+  } catch (error) {
+    defaultLogger.error('SMM create tenant error:', error);
+    return null;
+  }
+}
 // Get order status by order_id (string) for success page
 router.get('/payments/orders/:order_id', async (req, res) => {
   try {
