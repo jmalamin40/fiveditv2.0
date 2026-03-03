@@ -383,6 +383,7 @@ async function sendSmmCredentialsEmail({
   siteUrl,
   loginEmail,
   password,
+  adminUrl,
 }) {
   try {
     if (!to || !siteUrl || !loginEmail || !password) {
@@ -441,6 +442,10 @@ async function sendSmmCredentialsEmail({
                 <div class="credential-item">
                   <span class="label">Store URL:</span><br>
                   <span class="value">${siteUrl}</span>
+                </div>
+                <div class="credential-item">
+                  <span class="label">Admin URL:</span><br>
+                  <span class="value">${adminUrl}</span>
                 </div>
                 <div class="credential-item">
                   <span class="label">Email:</span><br>
