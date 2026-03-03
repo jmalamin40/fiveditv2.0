@@ -11,7 +11,7 @@ const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fivedit.com';
 const SMM_SUBDOMAIN_BASE = process.env.SMM_SUBDOMAIN_BASE || 'fivedit.com';
-const SMM_TENANTS_API_URL = process.env.SMM_TENANTS_API_URL || 'https://api-social-ecom.fivedit.com/';
+const SMM_TENANTS_API_URL = process.env.SMM_TENANTS_API_URL || 'https://api-social-ecom.fivedit.com';
 const SMM_TENANTS_API_KEY = process.env.SMM_TENANTS_API_KEY || '33a055ccc2ce0285a2a32387bd756b3bf07abe51eda8a7d155986c1619ce65ab';
 const SMM_INSTANCES_DIR = process.env.SMM_INSTANCES_PATH || path.join(__dirname, '..', 'smm_instances');
 // Source of the SMM script (set SMM_SOURCE_PATH in env if api/ecomerce_dist is elsewhere, e.g. in production)
