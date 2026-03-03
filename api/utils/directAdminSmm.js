@@ -203,6 +203,26 @@ function getSmmFixedDocroot(config) {
   return config.home + '/' + SMM_DA_DOCROOT.replace(/\/+$/, '');
 }
 
+/**
+ * Add a domain pointer in DirectAdmin so the given domain uses the same document root
+ * as the account (e.g. social-smm.fivedit.com → /home/user/domains/social-smm.fivedit.com/public_html).
+ * Uses CMD_API_DOMAIN_POINTER with action=add. The DA user's main domain should be the one
+ * that has the fixed docroot (set via SMM_DA_DOCROOT).
+ */
+async function addSmmDomainPointer(config, pointerDomain) {
+  const name = pointerDomain.replace(/^https?:\/\//, '').split('/')[0].toLowerCase();
+  if (!name) {
+    defaultLogger.warn('SMM DA: skip domain pointer, empty domain');
+    return;
+  }
+  defaultLogger.log(`SMM DA: adding domain pointer: ${name} (docroot: ${getSmmFixedDocroot(config)})`);
+  await makeSmmDaRequest(config, 'CMD_API_DOMAIN_POINTER', {
+    action: 'add',
+    name: name,
+  }, 'POST');
+  defaultLogger.log(`SMM DA: domain pointer added: ${name}`);
+}
+
 module.exports = {
   getSmmDaConfig,
   makeSmmDaRequest,
@@ -210,4 +230,5 @@ module.exports = {
   createDomainInDirectAdmin,
   getDaDocroot,
   getSmmFixedDocroot,
+  addSmmDomainPointer,
 };

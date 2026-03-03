@@ -16,7 +16,7 @@ const SMM_TENANTS_API_URL = (process.env.SMM_TENANTS_API_URL || 'https://api-soc
 const SMM_TENANTS_API_KEY = process.env.SMM_TENANTS_API_KEY || '33a055ccc2ce0285a2a32387bd756b3bf07abe51eda8a7d155986c1619ce65ab';
 // Source of the SMM script (set SMM_SOURCE_PATH in env if api/ecomerce_dist is elsewhere, e.g. in production)
 const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..', 'ecomerce_dist');
-const { getSmmDaConfig, getSmmFixedDocroot } = require('../utils/directAdminSmm');
+const { getSmmDaConfig, getSmmFixedDocroot, addSmmDomainPointer } = require('../utils/directAdminSmm');
 const {
   ensureStepRows,
   clearStaleRunningSteps,
@@ -406,36 +406,31 @@ router.post('/payments/webhook', async (req, res) => {
         }
       };
 
-      // Step 1: DirectAdmin – always use fixed path domains/social-smm.fivedit.com/public_html (no subfolder)
+      // Step 1: DirectAdmin – create domain (pointer) so it uses fixed path domains/social-smm.fivedit.com/public_html
+      const domainToCreate = order.domain
+        ? order.domain.replace(/^https?:\/\//, '').split('/')[0]
+        : `${subdomainPart}.${baseHost}`;
       const daOk = await runStep('directadmin_domain', async () => {
         const daConfig = await getSmmDaConfig(pool);
         if (daConfig) {
           folderPathToStore = getSmmFixedDocroot(daConfig);
           usedDirectAdmin = true;
+          await addSmmDomainPointer(daConfig, domainToCreate);
         }
       });
       if (!daOk) {
         return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
       }
 
-      // Step 2: Copy files
+      // Step 2: Copy files – skip when using fixed DA path (folder already has complete code and .htaccess)
       const copyOk = await runStep('copy_files', async () => {
         if (usedDirectAdmin && folderPathToStore) {
-          try {
-            provisionSmmInstanceToPath(folderPathToStore);
-            writeHtaccess(folderPathToStore);
-          } catch (copyErr) {
-            defaultLogger.warn('SMM: copy to DA docroot failed, using smm_instances fallback:', copyErr.message);
-            if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
-            provisionSmmInstance(folderName);
-            folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
-            writeHtaccess(folderPathToStore);
-          }
-        } else {
-          if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
-          provisionSmmInstance(folderName);
-          writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
+          defaultLogger.log('SMM: using fixed DA docroot, skipping copy and .htaccess (already present)');
+          return;
         }
+        if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+        provisionSmmInstance(folderName);
+        writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
       });
       if (!copyOk) {
         return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
@@ -448,22 +443,33 @@ router.post('/payments/webhook', async (req, res) => {
       await runStep('register_tenant', async () => {
         tenantPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
         const email = order.customer_email || 'admin@example.com';
-        const res = await axios.post(
-          `${SMM_TENANTS_API_URL}/api/tenants`,
-          {
-            domain: tenantDomain,
-            table_prefix: 'lcl',
-            email,
-            password: tenantPassword,
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Key': SMM_TENANTS_API_KEY,
+        const tablePrefix = (tenantDomain.replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 4)) || 'lcl';
+        let res;
+        try {
+          res = await axios.post(
+            `${SMM_TENANTS_API_URL}/api/tenants`,
+            {
+              domain: tenantDomain,
+              table_prefix: tablePrefix,
+              email,
+              password: tenantPassword,
             },
-            timeout: 15000,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': SMM_TENANTS_API_KEY,
+              },
+              timeout: 15000,
+            }
+          );
+        } catch (err) {
+          if (err.response?.status === 409) {
+            defaultLogger.log('SMM: tenant already exists (409), continuing');
+            tenantPassword = null;
+            return;
           }
-        );
+          throw err.response?.data?.message || err.message || err;
+        }
         if (res.status >= 400) throw new Error(res.data?.message || `Tenants API ${res.status}`);
         try {
           const result = await sendSmmCredentialsEmail({
@@ -656,31 +662,27 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
       }
     };
 
+    const domainToCreate = order.domain
+      ? order.domain.replace(/^https?:\/\//, '').split('/')[0]
+      : `${subdomainPart}.${baseHost}`;
     const daOk = await runStep('directadmin_domain', async () => {
       const daConfig = await getSmmDaConfig(pool);
       if (daConfig) {
         folderPathToStore = getSmmFixedDocroot(daConfig);
         usedDirectAdmin = true;
+        await addSmmDomainPointer(daConfig, domainToCreate);
       }
     });
     if (!daOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
 
     const copyOk = await runStep('copy_files', async () => {
       if (usedDirectAdmin && folderPathToStore) {
-        try {
-          provisionSmmInstanceToPath(folderPathToStore);
-          writeHtaccess(folderPathToStore);
-        } catch (copyErr) {
-          if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
-          provisionSmmInstance(folderName);
-          folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
-          writeHtaccess(folderPathToStore);
-        }
-      } else {
-        if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
-        provisionSmmInstance(folderName);
-        writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
+        defaultLogger.log('SMM: using fixed DA docroot, skipping copy and .htaccess (already present)');
+        return;
       }
+      if (!fs.existsSync(SMM_INSTANCES_DIR)) fs.mkdirSync(SMM_INSTANCES_DIR, { recursive: true });
+      provisionSmmInstance(folderName);
+      writeHtaccess(path.join(SMM_INSTANCES_DIR, folderName));
     });
     if (!copyOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
 
@@ -690,14 +692,21 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     await runStep('register_tenant', async () => {
       tenantPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
       const email = order.customer_email || 'admin@example.com';
-      const res = await axios.post(
-        `${SMM_TENANTS_API_URL}/api/tenants`,
-        { domain: tenantDomain, table_prefix: 'lcl', email, password: tenantPassword },
-        {
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': SMM_TENANTS_API_KEY },
-          timeout: 15000,
+      let res;
+      try {
+        res = await axios.post(
+          `${SMM_TENANTS_API_URL}/api/tenants`,
+          { domain: tenantDomain, table_prefix: (tenantDomain.replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 4)) || 'lcl', email, password: tenantPassword },
+          { headers: { 'Content-Type': 'application/json', 'X-API-Key': SMM_TENANTS_API_KEY }, timeout: 15000 }
+        );
+      } catch (err) {
+        if (err.response?.status === 409) {
+          defaultLogger.log('SMM: tenant already exists (409), continuing');
+          tenantPassword = null;
+          return;
         }
-      );
+        throw err.response?.data?.message || err.message || err;
+      }
       if (res.status >= 400) throw new Error(res.data?.message || `Tenants API ${res.status}`);
       try {
         const result = await sendSmmCredentialsEmail({
