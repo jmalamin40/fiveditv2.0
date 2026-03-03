@@ -3,10 +3,7 @@ const { defaultLogger } = require('./logger');
 const STEP_ORDER = [
   'directadmin_domain',
   'copy_files',
-  'supabase_project',
-  'supabase_schema',
-  'supabase_user',
-  'replace_config',
+  'register_tenant',
   'insert_instance',
 ];
 
@@ -17,21 +14,25 @@ function stepIndex(name) {
 
 /**
  * Ensure provisioning step rows exist for an order (all pending).
+ * Inserts any step from STEP_ORDER that is missing for this order.
  */
 async function ensureStepRows(pool, orderId) {
   const [existing] = await pool.execute(
-    'SELECT id FROM smm_provisioning_steps WHERE order_id = ? LIMIT 1',
+    'SELECT step_name FROM smm_provisioning_steps WHERE order_id = ?',
     [orderId]
   );
-  if (existing.length > 0) return;
+  const existingNames = new Set((existing || []).map((r) => r.step_name));
   for (let i = 0; i < STEP_ORDER.length; i++) {
+    if (existingNames.has(STEP_ORDER[i])) continue;
     await pool.execute(
       `INSERT INTO smm_provisioning_steps (order_id, step_name, step_order, status)
        VALUES (?, ?, ?, 'pending')`,
       [orderId, STEP_ORDER[i], i]
     );
   }
-  defaultLogger.log('SMM provisioning: created step rows for order', orderId);
+  if (STEP_ORDER.length - existingNames.size > 0) {
+    defaultLogger.log('SMM provisioning: ensured step rows for order', orderId);
+  }
 }
 
 /**

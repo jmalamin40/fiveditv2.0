@@ -196,10 +196,18 @@ function getDaDocroot(config, domain, subdomain) {
   return `${config.home}/domains/${cleanDomain}/public_html`;
 }
 
+/** Fixed SMM docroot: always use domains/social-smm.fivedit.com/public_html (env SMM_DA_DOCROOT), no subfolder. */
+const SMM_DA_DOCROOT = process.env.SMM_DA_DOCROOT || 'domains/social-smm.fivedit.com/public_html';
+
+function getSmmFixedDocroot(config) {
+  return config.home + '/' + SMM_DA_DOCROOT.replace(/\/+$/, '');
+}
+
 module.exports = {
   getSmmDaConfig,
   makeSmmDaRequest,
   createSubdomainInDirectAdmin,
   createDomainInDirectAdmin,
   getDaDocroot,
+  getSmmFixedDocroot,
 };
