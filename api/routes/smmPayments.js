@@ -16,13 +16,7 @@ const SMM_TENANTS_API_KEY = process.env.SMM_TENANTS_API_KEY || '33a055ccc2ce0285
 const SMM_INSTANCES_DIR = process.env.SMM_INSTANCES_PATH || path.join(__dirname, '..', 'smm_instances');
 // Source of the SMM script (set SMM_SOURCE_PATH in env if api/ecomerce_dist is elsewhere, e.g. in production)
 const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..', 'ecomerce_dist');
-const {
-  getSmmDaConfig,
-  createSubdomainInDirectAdmin,
-  createDomainInDirectAdmin,
-  getSmmFixedDocroot,
-  addSmmDomainPointer,
-} = require('../utils/directAdminSmm');
+const { getSmmDaConfig, createDomainInDirectAdmin } = require('../utils/directAdminSmm');
 const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
 const {
   ensureStepRows,
@@ -414,14 +408,15 @@ router.post('/payments/webhook', async (req, res) => {
         }
       };
 
-      // Step 1: DirectAdmin – subdomain uses fixed docroot (no /test); custom domain creates its own docroot
+      // Step 1: DirectAdmin – subdomain creates domain demo.fivedit.com → .../domains/demo.fivedit.com/public_html; custom domain same
       const daOk = await runStep('directadmin_domain', async () => {
         const daConfig = await getSmmDaConfig(pool);
         if (daConfig) {
           if (order.subdomain_slug) {
-            folderPathToStore = getSmmFixedDocroot(daConfig);
+            const subdomainFull = `${subdomainPart}.${baseHost}`;
+            const docroot = await createDomainInDirectAdmin(daConfig, subdomainFull);
+            folderPathToStore = docroot;
             usedDirectAdmin = true;
-            await addSmmDomainPointer(daConfig, `${subdomainPart}.${baseHost}`);
           } else if (order.domain) {
             const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
             const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
@@ -434,12 +429,8 @@ router.post('/payments/webhook', async (req, res) => {
         return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
       }
 
-      // Step 2: Copy files – subdomain uses fixed path (code already there); custom domain gets copy + .htaccess
+      // Step 2: Copy files from ecomerce_dist to docroot and write .htaccess
       const copyOk = await runStep('copy_files', async () => {
-        if (usedDirectAdmin && order.subdomain_slug) {
-          defaultLogger.log('SMM: subdomain uses fixed docroot, skipping copy and .htaccess (code already in public_html)');
-          return;
-        }
         if (usedDirectAdmin && folderPathToStore) {
           try {
             provisionSmmInstanceToPath(folderPathToStore);
@@ -703,9 +694,10 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
       const daConfig = await getSmmDaConfig(pool);
       if (daConfig) {
         if (order.subdomain_slug) {
-          folderPathToStore = getSmmFixedDocroot(daConfig);
+          const subdomainFull = `${subdomainPart}.${baseHost}`;
+          const docroot = await createDomainInDirectAdmin(daConfig, subdomainFull);
+          folderPathToStore = docroot;
           usedDirectAdmin = true;
-          await addSmmDomainPointer(daConfig, `${subdomainPart}.${baseHost}`);
         } else if (order.domain) {
           const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
           const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
@@ -717,10 +709,6 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     if (!daOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
 
     const copyOk = await runStep('copy_files', async () => {
-      if (usedDirectAdmin && order.subdomain_slug) {
-        defaultLogger.log('SMM: subdomain uses fixed docroot, skipping copy and .htaccess');
-        return;
-      }
       if (usedDirectAdmin && folderPathToStore) {
         try {
           provisionSmmInstanceToPath(folderPathToStore);
