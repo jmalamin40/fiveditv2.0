@@ -20,6 +20,8 @@ const {
   getSmmDaConfig,
   createSubdomainInDirectAdmin,
   createDomainInDirectAdmin,
+  getSmmFixedDocroot,
+  addSmmDomainPointer,
 } = require('../utils/directAdminSmm');
 const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
 const {
@@ -412,14 +414,14 @@ router.post('/payments/webhook', async (req, res) => {
         }
       };
 
-      // Step 1: DirectAdmin domain/subdomain
+      // Step 1: DirectAdmin – subdomain uses fixed docroot (no /test); custom domain creates its own docroot
       const daOk = await runStep('directadmin_domain', async () => {
         const daConfig = await getSmmDaConfig(pool);
         if (daConfig) {
           if (order.subdomain_slug) {
-            const docroot = await createSubdomainInDirectAdmin(daConfig, baseHost, subdomainPart);
-            folderPathToStore = docroot;
+            folderPathToStore = getSmmFixedDocroot(daConfig);
             usedDirectAdmin = true;
+            await addSmmDomainPointer(daConfig, `${subdomainPart}.${baseHost}`);
           } else if (order.domain) {
             const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
             const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
@@ -432,8 +434,12 @@ router.post('/payments/webhook', async (req, res) => {
         return res.status(200).json({ success: true, message: 'Webhook processed; provisioning step failed', retry: true });
       }
 
-      // Step 2: Copy files
+      // Step 2: Copy files – subdomain uses fixed path (code already there); custom domain gets copy + .htaccess
       const copyOk = await runStep('copy_files', async () => {
+        if (usedDirectAdmin && order.subdomain_slug) {
+          defaultLogger.log('SMM: subdomain uses fixed docroot, skipping copy and .htaccess (code already in public_html)');
+          return;
+        }
         if (usedDirectAdmin && folderPathToStore) {
           try {
             provisionSmmInstanceToPath(folderPathToStore);
@@ -697,9 +703,9 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
       const daConfig = await getSmmDaConfig(pool);
       if (daConfig) {
         if (order.subdomain_slug) {
-          const docroot = await createSubdomainInDirectAdmin(daConfig, baseHost, subdomainPart);
-          folderPathToStore = docroot;
+          folderPathToStore = getSmmFixedDocroot(daConfig);
           usedDirectAdmin = true;
+          await addSmmDomainPointer(daConfig, `${subdomainPart}.${baseHost}`);
         } else if (order.domain) {
           const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
           const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
@@ -711,6 +717,10 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     if (!daOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
 
     const copyOk = await runStep('copy_files', async () => {
+      if (usedDirectAdmin && order.subdomain_slug) {
+        defaultLogger.log('SMM: subdomain uses fixed docroot, skipping copy and .htaccess');
+        return;
+      }
       if (usedDirectAdmin && folderPathToStore) {
         try {
           provisionSmmInstanceToPath(folderPathToStore);

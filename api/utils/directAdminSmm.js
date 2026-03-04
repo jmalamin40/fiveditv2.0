@@ -196,10 +196,37 @@ function getDaDocroot(config, domain, subdomain) {
   return `${config.home}/domains/${cleanDomain}/public_html`;
 }
 
+/** Fixed SMM docroot for subdomains: one folder for all (e.g. domains/fivedit.com/public_html). No subfolder. Env SMM_DA_DOCROOT. */
+const SMM_DA_DOCROOT = process.env.SMM_DA_DOCROOT || 'domains/fivedit.com/public_html';
+
+function getSmmFixedDocroot(config) {
+  return config.home + '/' + SMM_DA_DOCROOT.replace(/\/+$/, '');
+}
+
+/**
+ * Add a domain pointer in DirectAdmin so the given domain uses the same document root as the account.
+ * Uses CMD_API_DOMAIN_POINTER with action=add, name=<pointerDomain>.
+ */
+async function addSmmDomainPointer(config, pointerDomain) {
+  const name = (pointerDomain || '').replace(/^https?:\/\//, '').split('/')[0].toLowerCase();
+  if (!name) {
+    defaultLogger.warn('SMM DA: skip domain pointer, empty domain');
+    return;
+  }
+  defaultLogger.log(`SMM DA: adding domain pointer: ${name} (docroot: ${getSmmFixedDocroot(config)})`);
+  await makeSmmDaRequest(config, 'CMD_API_DOMAIN_POINTER', {
+    action: 'add',
+    name: name,
+  }, 'POST');
+  defaultLogger.log(`SMM DA: domain pointer added: ${name}`);
+}
+
 module.exports = {
   getSmmDaConfig,
   makeSmmDaRequest,
   createSubdomainInDirectAdmin,
   createDomainInDirectAdmin,
   getDaDocroot,
+  getSmmFixedDocroot,
+  addSmmDomainPointer,
 };
