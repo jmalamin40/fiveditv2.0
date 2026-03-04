@@ -660,11 +660,7 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     await clearStaleRunningSteps(pool, order.id);
     let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
     let usedDirectAdmin = false;
-    let supabaseUrl = null;
-    let supabaseRef = null;
-    let adminPassword = null;
-    let supabaseProjectResponse = null;
-    let supabaseUserEmail = null;
+    let tenantPassword = null;
     const steps = await getSteps(pool, order.id);
     const stepStatus = Object.fromEntries(steps.map((s) => [s.step_name, s.status]));
 
@@ -727,71 +723,50 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     });
     if (!copyOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
 
-    if (getSupabaseConfig()) {
-      const projectName = `smm-${order.id}-${folderName}`.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').substring(0, 50);
-      adminPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
-      const supabaseOk = await runStep('supabase_project', async () => {
-        const supabase = await setupSupabaseForInstance(projectName, adminPassword);
-        if (!supabase || !supabase.url) throw new Error('Supabase project creation failed');
-        supabaseUrl = supabase.url;
-        supabaseRef = supabase.url.replace('https://', '').split('.')[0];
-        supabaseProjectResponse = supabase.projectResponse || null;
-      });
-      if (!supabaseOk) return res.status(200).json({ success: false, message: 'Step failed', steps: await getSteps(pool, order.id) });
-      await runStep('supabase_schema', async () => {});
-      await runStep('supabase_user', async () => {
-        const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
-        const email = order.customer_email || 'admin@example.com';
-        if (keys?.serviceRoleKey) {
-          const u = await createSupabaseAuthUser(supabaseUrl, keys.serviceRoleKey, {
-            email,
-            password: adminPassword,
-            email_confirm: true,
+    // Register tenant again on retry (in case it failed before); send credentials email
+    const tenantDomain = order.domain
+      ? order.domain.replace(/^https?:\/\//, '').split('/')[0]
+      : `${subdomainPart}.${baseHost}`;
+    await runStep('register_tenant', async () => {
+      tenantPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'a') + 'A1!';
+      const email = order.customer_email || 'admin@example.com';
+      const tenantRes = await createSmmTenant(tenantDomain, email, tenantPassword);
+      if (tenantRes && tenantRes.id) {
+        await pool.execute('UPDATE smm_website_orders SET tenant_id = ? WHERE id = ?', [tenantRes.id, order.id]);
+      }
+      if (tenantRes) {
+        try {
+          const result = await sendSmmCredentialsEmail({
+            to: email,
+            customerName: order.customer_name || null,
+            siteUrl,
+            loginEmail: email,
+            password: tenantPassword,
+            adminUrl: `https://${tenantDomain}/admin`,
           });
-          if (!u) throw new Error('Create auth user failed');
-          supabaseUserEmail = u.email || email;
-          try {
-            const result = await sendSmmCredentialsEmail({
-              to: order.customer_email || email,
-              customerName: order.customer_name || null,
-              siteUrl,
-              loginEmail: supabaseUserEmail,
-              password: adminPassword,
-            });
-            if (result.skipped) defaultLogger.warn('SMM credentials email skipped:', result.reason || 'unknown');
-          } catch (emailErr) {
-            defaultLogger.error('SMM credentials email failed (user was created):', emailErr?.message || emailErr);
-          }
+          if (result && result.skipped) defaultLogger.warn('SMM credentials email skipped:', result.reason || 'unknown');
+        } catch (emailErr) {
+          defaultLogger.error('SMM credentials email failed (tenant registered):', emailErr?.message || emailErr);
         }
-      });
-      await runStep('replace_config', async () => {
-        // const keys = await getSupabaseApiKeys(supabaseRef, getSupabaseConfig().token);
-        // replaceSupabaseConfigInCodebase(folderPathToStore, supabaseUrl, keys?.anonKey || '');
-      });
-    } else {
-      await recordStepEnd(pool, order.id, 'supabase_project', true, null, null);
-      await recordStepEnd(pool, order.id, 'supabase_schema', true, null, null);
-      await recordStepEnd(pool, order.id, 'supabase_user', true, null, null);
-      await recordStepEnd(pool, order.id, 'replace_config', true, null, null);
-    }
+      }
+    });
 
     const insertOk = await runStep('insert_instance', async () => {
       const folderPathRelative = path.isAbsolute(folderPathToStore)
         ? folderPathToStore
         : path.relative(path.join(__dirname, '..', '..'), folderPathToStore);
       let adminEnc = null;
-      if (adminPassword && process.env.SMM_ENCRYPT_KEY) {
+      if (tenantPassword && process.env.SMM_ENCRYPT_KEY) {
         const key = Buffer.from(process.env.SMM_ENCRYPT_KEY.slice(0, 32).padEnd(32, '0'));
         const iv = crypto.randomBytes(16);
         const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-        const enc = Buffer.concat([cipher.update(adminPassword, 'utf8'), cipher.final()]);
+        const enc = Buffer.concat([cipher.update(tenantPassword, 'utf8'), cipher.final()]);
         adminEnc = iv.toString('hex') + ':' + cipher.getAuthTag().toString('hex') + ':' + enc.toString('hex');
       }
-      const projectResponseJson = supabaseProjectResponse ? JSON.stringify(supabaseProjectResponse) : null;
       const [ins] = await pool.execute(
         `INSERT INTO smm_instances (order_id, domain, folder_name, folder_path, site_url, customer_email, status, supabase_project_ref, supabase_project_response, supabase_user_email, admin_password_encrypted)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
-        [order.id, order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0], folderName, folderPathRelative, siteUrl, order.customer_email, supabaseRef, projectResponseJson, supabaseUserEmail, adminEnc]
+         VALUES (?, ?, ?, ?, ?, ?, 'active', NULL, NULL, NULL, ?)`,
+        [order.id, order.domain || siteUrl.replace(/^https?:\/\//, '').split('/')[0], folderName, folderPathRelative, siteUrl, order.customer_email, adminEnc]
       );
       await pool.execute('UPDATE smm_website_orders SET smm_instance_id = ?, status = ? WHERE id = ?', [ins.insertId, 'completed', order.id]);
     });
