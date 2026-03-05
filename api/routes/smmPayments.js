@@ -224,9 +224,12 @@ function requireFiveditApiKey(req, res, next) {
 // to FIVEDIT_UPDATE_TARGET_BASE/domains/{domain}/public_html (default: /home/fiveditc/domains/{domain}/public_html)
 router.post('/apps/update-frontend-version', requireFiveditApiKey, async (req, res) => {
   try {
-    const { domain } = req.body;
+    const domain = req.body?.domain ?? req.query?.domain;
     if (!domain || typeof domain !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid domain in body' });
+      return res.status(400).json({
+        error: 'Missing or invalid domain',
+        hint: 'Send domain in JSON body: { "domain": "example.fivedit.com" } or as query: ?domain=example.fivedit.com',
+      });
     }
     const safeDomain = domain.trim();
     if (!/^[a-z0-9][a-z0-9.-]*[a-z0-9]$|^[a-z0-9]+$/i.test(safeDomain) || safeDomain.includes('..')) {
