@@ -16,6 +16,9 @@ const SMM_TENANTS_API_KEY = process.env.SMM_TENANTS_API_KEY || '33a055ccc2ce0285
 const SMM_INSTANCES_DIR = process.env.SMM_INSTANCES_PATH || path.join(__dirname, '..', 'smm_instances');
 // Source of the SMM script (set SMM_SOURCE_PATH in env if api/ecomerce_dist is elsewhere, e.g. in production)
 const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..', 'ecomerce_dist');
+// Update frontend: source path to copy from; target = FIVEDIT_UPDATE_TARGET_BASE/domains/{domain}/public_html
+const UPDATE_FRONTEND_SOURCE = process.env.FIVEDIT_UPDATE_SOURCE_PATH || '/home/fiveditc/domains/fivedit.com/api/ecomerce_dist';
+const UPDATE_FRONTEND_TARGET_BASE = process.env.FIVEDIT_UPDATE_TARGET_BASE || '/home/fiveditc';
 const { getSmmDaConfig, createDomainInDirectAdmin } = require('../utils/directAdminSmm');
 const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
 const {
@@ -199,6 +202,61 @@ router.get('/products/:id', async (req, res) => {
   } catch (error) {
     defaultLogger.error('Error fetching SMM product:', error);
     res.status(500).json({ error: 'Failed to fetch product' });
+  }
+});
+
+// Require Bearer token matching FIVEDIT_API_KEY for update-frontend-version
+function requireFiveditApiKey(req, res, next) {
+  const apiKey = process.env.FIVEDIT_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({ error: 'FIVEDIT_API_KEY not configured' });
+  }
+  const auth = req.headers.authorization;
+  if (!auth || auth !== `Bearer ${apiKey}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
+// ----- Update frontend version (copy source to domain public_html) -----
+// POST /api/smm/apps/update-frontend-version  Body: { domain }  Header: Authorization: Bearer <FIVEDIT_API_KEY>
+// Copies from FIVEDIT_UPDATE_SOURCE_PATH (default: /home/fiveditc/domains/fivedit.com/api/ecomerce_dist)
+// to FIVEDIT_UPDATE_TARGET_BASE/domains/{domain}/public_html (default: /home/fiveditc/domains/{domain}/public_html)
+router.post('/apps/update-frontend-version', requireFiveditApiKey, async (req, res) => {
+  try {
+    const { domain } = req.body;
+    if (!domain || typeof domain !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid domain in body' });
+    }
+    const safeDomain = domain.trim();
+    if (!/^[a-z0-9][a-z0-9.-]*[a-z0-9]$|^[a-z0-9]+$/i.test(safeDomain) || safeDomain.includes('..')) {
+      return res.status(400).json({ error: 'Invalid domain format' });
+    }
+    const sourceDir = path.resolve(UPDATE_FRONTEND_SOURCE);
+    const targetDir = path.join(path.resolve(UPDATE_FRONTEND_TARGET_BASE), 'domains', safeDomain, 'public_html');
+    if (!targetDir.startsWith(path.resolve(UPDATE_FRONTEND_TARGET_BASE))) {
+      return res.status(400).json({ error: 'Invalid target path' });
+    }
+    if (!fs.existsSync(sourceDir)) {
+      defaultLogger.error(`Update frontend: source not found: ${sourceDir}`);
+      return res.status(500).json({ error: 'Source directory not found', path: sourceDir });
+    }
+    if (!fs.statSync(sourceDir).isDirectory()) {
+      return res.status(500).json({ error: 'Source path is not a directory', path: sourceDir });
+    }
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    copyDirSync(sourceDir, targetDir);
+    writeHtaccess(targetDir);
+    defaultLogger.log(`SMM update frontend: copied ${sourceDir} -> ${targetDir}`);
+    res.json({ success: true, domain: safeDomain, target: targetDir });
+  } catch (error) {
+    defaultLogger.error('SMM update-frontend-version error:', error);
+    res.status(500).json({
+      error: 'Update failed',
+      message: error.message || String(error),
+    });
   }
 });
 
