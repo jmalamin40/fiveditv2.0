@@ -6,6 +6,7 @@ import ScriptsManager from './ScriptsManager';
 import ChatManager from './ChatManager';
 import HostingManager from './HostingManager';
 import SmmPackagesManager from './SmmPackagesManager';
+import SmmPackageEditPage from './SmmPackageEditPage';
 import ProfileManager from './ProfileManager';
 import InvoiceManager from './InvoiceManager';
 import { fetchAdminProfile } from '../api';
@@ -84,7 +85,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
               key={tab.id}
               to={`/admin/${tab.id}`}
               className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-              end={tab.id !== 'hosting'}
+              end={tab.id !== 'hosting' && tab.id !== 'smm-packages'}
             >
               <span className="nav-icon">{tab.icon}</span>
               <span className="nav-label">{tab.label}</span>
@@ -107,6 +108,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
           <Route path="scripts" element={<ScriptsManager token={token} />} />
           <Route path="hosting/*" element={<HostingManager token={token} toast={toast} />} />
           <Route path="smm-packages" element={<SmmPackagesManager token={token} toast={toast} />} />
+          <Route path="smm-packages/edit/:id" element={<SmmPackageEditPage token={token} toast={toast} />} />
           <Route path="invoices" element={<InvoiceManager token={token} toast={toast} />} />
           <Route path="chat" element={<ChatManager token={token} />} />
           <Route path="profile" element={<ProfileManager token={token} />} />
