@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -848,4 +849,79 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
   }
 });
 
+// ----- Admin: SMM products (list, get, update) -----
+const adminRouter = express.Router();
+adminRouter.use(authenticate, requireAdmin);
+
+adminRouter.get('/products', async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, name, display_name, description, price, currency, billing_interval, package_tier, features, sort_order, is_active, created_at, updated_at
+       FROM smm_website_products ORDER BY sort_order ASC, id ASC`
+    );
+    res.json({ products: rows });
+  } catch (error) {
+    defaultLogger.error('SMM admin list products error:', error);
+    res.status(500).json({ error: 'Failed to fetch SMM products' });
+  }
+});
+
+adminRouter.get('/products/:id', async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM smm_website_products WHERE id = ?',
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    res.json({ product: rows[0] });
+  } catch (error) {
+    defaultLogger.error('SMM admin get product error:', error);
+    res.status(500).json({ error: 'Failed to fetch SMM product' });
+  }
+});
+
+adminRouter.put('/products/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'Invalid product id' });
+    const {
+      display_name,
+      description,
+      price,
+      currency,
+      billing_interval,
+      package_tier,
+      features,
+      sort_order,
+      is_active,
+    } = req.body;
+    const updates = [];
+    const values = [];
+    if (display_name !== undefined) { updates.push('display_name = ?'); values.push(display_name); }
+    if (description !== undefined) { updates.push('description = ?'); values.push(description); }
+    if (price !== undefined) { updates.push('price = ?'); values.push(parseFloat(price)); }
+    if (currency !== undefined) { updates.push('currency = ?'); values.push(currency); }
+    if (billing_interval !== undefined) { updates.push('billing_interval = ?'); values.push(billing_interval); }
+    if (package_tier !== undefined) { updates.push('package_tier = ?'); values.push(package_tier); }
+    if (features !== undefined) {
+      updates.push('features = ?');
+      values.push(typeof features === 'string' ? features : JSON.stringify(features));
+    }
+    if (sort_order !== undefined) { updates.push('sort_order = ?'); values.push(parseInt(sort_order, 10)); }
+    if (is_active !== undefined) { updates.push('is_active = ?'); values.push(!!is_active); }
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    values.push(id);
+    await pool.execute(
+      `UPDATE smm_website_products SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+    const [rows] = await pool.execute('SELECT * FROM smm_website_products WHERE id = ?', [id]);
+    res.json({ product: rows[0] });
+  } catch (error) {
+    defaultLogger.error('SMM admin update product error:', error);
+    res.status(500).json({ error: 'Failed to update SMM product' });
+  }
+});
+
 module.exports = router;
+router.adminRouter = adminRouter;

@@ -40,7 +40,9 @@ const hostingPackages = require('./routes/hostingPackages');
 app.use('/api/hosting/payments', require('./routes/hostingPayments'));
 app.use('/api/hosting', hostingPackages.public);
 app.use('/api/admin/hosting', hostingPackages.admin);
-app.use('/api/smm', require('./routes/smmPayments'));
+const smmPayments = require('./routes/smmPayments');
+app.use('/api/smm', smmPayments);
+app.use('/api/admin/smm', smmPayments.adminRouter);
 app.use('/api/admin', require('./routes/adminProfile'));
 
 // Invoice routes

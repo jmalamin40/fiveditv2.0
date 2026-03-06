@@ -473,6 +473,10 @@ export interface SmmProduct {
   description: string | null;
   price: number;
   currency: string;
+  billing_interval?: 'monthly' | 'yearly' | null;
+  package_tier?: 'starter' | 'standard' | 'premium' | null;
+  features?: string[] | null;
+  sort_order?: number;
   is_active?: boolean;
 }
 
