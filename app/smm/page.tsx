@@ -190,7 +190,7 @@ export default function SmmPage() {
                       )}
 
                       <div className="space-y-3">
-                        {(features.length ? features.slice(0, 8) : [
+                        {(features.length ? features : [
                           'Backend Node.js & Frontend React.js',
                           'Complete Ecommerce & AI supported',
                           'Real-time push notification',
