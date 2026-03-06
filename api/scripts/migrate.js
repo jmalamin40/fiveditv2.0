@@ -430,10 +430,16 @@ async function migrate() {
         description TEXT,
         price DECIMAL(10, 2) NOT NULL,
         currency VARCHAR(10) DEFAULT 'BDT',
+        billing_interval VARCHAR(20) NULL COMMENT 'monthly | yearly',
+        package_tier VARCHAR(50) NULL COMMENT 'starter | standard | premium',
+        features JSON NULL COMMENT 'Array of feature strings for display',
         is_active BOOLEAN DEFAULT TRUE,
+        sort_order INT DEFAULT 0 COMMENT 'Display order: starter=1, standard=2, premium=3; monthly before yearly',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_is_active (is_active)
+        INDEX idx_is_active (is_active),
+        INDEX idx_package_tier (package_tier),
+        INDEX idx_billing_interval (billing_interval)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ SMM website products table created');
@@ -566,15 +572,24 @@ async function migrate() {
       }
     }
 
-    // Seed default SMM product if none exists
-    const [existing] = await connection.execute('SELECT id FROM smm_website_products LIMIT 1');
-    if (existing.length === 0) {
-      await connection.execute(`
-        INSERT INTO smm_website_products (name, display_name, description, price, currency, is_active)
-        VALUES ('smm-website', 'Social Media Marketing Website', 'One-time setup: install our social media marketing script on your custom domain or on our subdomain.', 99.00, 'BDT', TRUE)
-      `);
-      console.log('✅ Seeded default SMM website product');
+    // Add optional columns to smm_website_products for packages (existing DBs)
+    for (const col of [
+      'ADD COLUMN billing_interval VARCHAR(20) NULL COMMENT \'monthly | yearly\'',
+      'ADD COLUMN package_tier VARCHAR(50) NULL COMMENT \'starter | standard | premium\'',
+      'ADD COLUMN features JSON NULL',
+      'ADD COLUMN sort_order INT DEFAULT 0',
+    ]) {
+      try {
+        await connection.execute(`ALTER TABLE smm_website_products ${col}`);
+        console.log('✅ smm_website_products: added', col.split(' ')[2]);
+      } catch (e) {
+        if (!e.message || !e.message.includes('Duplicate column')) console.log('⚠️ smm_website_products alter:', e.message);
+      }
     }
+
+    // Seed SMM packages: Starter, Standard, Premium (each monthly + yearly)
+    const { seedSmmPackages } = require('./seedSmmPackages');
+    await seedSmmPackages(connection);
 
     console.log('\n🎉 Database migration completed successfully!');
     

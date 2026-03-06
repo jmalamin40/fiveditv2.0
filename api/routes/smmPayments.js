@@ -182,9 +182,14 @@ function provisionSmmInstance(folderName) {
 router.get('/products', async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT id, name, display_name, description, price, currency, is_active FROM smm_website_products WHERE is_active = TRUE'
+      `SELECT id, name, display_name, description, price, currency, billing_interval, package_tier, features, sort_order, is_active
+       FROM smm_website_products WHERE is_active = TRUE ORDER BY sort_order ASC, id ASC`
     );
-    res.json({ products: rows });
+    const products = rows.map((r) => ({
+      ...r,
+      features: typeof r.features === 'string' ? (r.features ? JSON.parse(r.features) : null) : r.features,
+    }));
+    res.json({ products });
   } catch (error) {
     defaultLogger.error('Error fetching SMM products:', error);
     res.status(500).json({ error: 'Failed to fetch products' });
@@ -194,11 +199,14 @@ router.get('/products', async (req, res) => {
 router.get('/products/:id', async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT id, name, display_name, description, price, currency FROM smm_website_products WHERE id = ? AND is_active = TRUE',
+      `SELECT id, name, display_name, description, price, currency, billing_interval, package_tier, features, sort_order
+       FROM smm_website_products WHERE id = ? AND is_active = TRUE`,
       [req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
-    res.json({ product: rows[0] });
+    const product = rows[0];
+    product.features = typeof product.features === 'string' ? (product.features ? JSON.parse(product.features) : null) : product.features;
+    res.json({ product });
   } catch (error) {
     defaultLogger.error('Error fetching SMM product:', error);
     res.status(500).json({ error: 'Failed to fetch product' });
