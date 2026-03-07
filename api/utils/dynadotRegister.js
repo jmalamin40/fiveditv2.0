@@ -18,6 +18,9 @@ async function registerDomainAtDynadot(domainName, durationYears = 1, options = 
   if (!domain || !domain.includes('.')) {
     return { success: false, error: 'Invalid domain name' };
   }
+  //logger
+  defaultLogger.log(`Domain: ${domain}`);
+  defaultLogger.log(`Duration years: ${durationYears}`);
   const duration = Math.max(1, Math.min(10, Math.floor(Number(durationYears) || 1)));
   let apiKey = options.apiKey;
   let apiUrl = options.apiUrl;
@@ -30,6 +33,10 @@ async function registerDomainAtDynadot(domainName, durationYears = 1, options = 
     apiKey = apiKey || config.api_key;
     apiUrl = apiUrl || config.api_url || 'https://api.dynadot.com';
   }
+  //logger
+  defaultLogger.log(`API key: ${apiKey}`);
+  defaultLogger.log(`API URL: ${apiUrl}`);
+  defaultLogger.log(`Currency: ${currency}`);
   let base = (apiUrl || 'https://api.dynadot.com').trim().replace(/\/restful.*$/i, '').replace(/\/?$/, '');
   if (!base.startsWith('http')) base = 'https://' + base;
   const params = new URLSearchParams({
@@ -40,23 +47,34 @@ async function registerDomainAtDynadot(domainName, durationYears = 1, options = 
     currency: 'USD',
   });
   const url = `${base}/api3.json?${params.toString()}`;
-
+  //logger
+  defaultLogger.log(`URL: ${url}`);
   try {
     const res = await axios.get(url, { timeout: 20000, validateStatus: () => true });
+    //logger
+    defaultLogger.log(`Response: ${JSON.stringify(res)}`);
     const data = res.data;
+    //logger
+    defaultLogger.log(`Data: ${JSON.stringify(data)}`);
     if (res.status !== 200 || !data) {
       return { success: false, error: 'Dynadot API request failed' };
     }
     const resp = data.RegisterResponse || data.registerResponse;
+    //logger
+    defaultLogger.log(`Response: ${JSON.stringify(resp)}`);
     if (!resp) {
       const err = data.error || data.ErrorMessage || data.message;
       return { success: false, error: err ? String(err) : 'Dynadot returned unexpected format' };
     }
     const code = resp.ResponseCode != null ? Number(resp.ResponseCode) : null;
+    //logger
+    defaultLogger.log(`Code: ${code}`);
     if (code !== 0) {
       const err = resp.ErrorMessage || resp.Error || (resp.Status && resp.Status !== 'success' ? resp.Status : null);
       return { success: false, error: err ? String(err) : `Dynadot register failed (code ${code})` };
     }
+    //logger
+    defaultLogger.log(`Success: true`);
     return {
       success: true,
       domain: resp.DomainName || domain,
@@ -74,10 +92,15 @@ async function registerDomainAtDynadot(domainName, durationYears = 1, options = 
  * @returns {Promise<{ success: boolean, domain?: string, error?: string }>}
  */
 async function registerDomain(domainName, durationYears = 1) {
+  //logger
+  defaultLogger.log(`Registering domain: ${domainName}`);
+  defaultLogger.log(`Duration years: ${durationYears}`);
   const config = await getDomainResellerConfig();
+  defaultLogger.log(`Config: ${JSON.stringify(config)}`);
   if (!config || (config.provider || '').toLowerCase() !== 'dynadot') {
     return { success: false, error: 'No domain provider configured for registration (Dynadot required).' };
   }
+  defaultLogger.log(`Dynadot provider configured`);
   return registerDomainAtDynadot(domainName, durationYears, {
     apiKey: config.api_key,
     apiUrl: config.api_url,
