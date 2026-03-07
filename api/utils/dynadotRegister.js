@@ -5,6 +5,7 @@
 
 const axios = require('axios');
 const { getDomainResellerConfig } = require('./domainConfig');
+const { defaultLogger } = require('./logger');
 
 /**
  * Register a domain at Dynadot (Legacy API).
