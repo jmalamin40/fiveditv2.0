@@ -468,7 +468,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
         if (cancelled || !data.enabled || !data.config || !data.vapidKey) return;
         if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
         const swUrl = `${window.location.origin}/firebase-messaging-sw.js?api=${encodeURIComponent(apiBase)}`;
-        return navigator.serviceWorker.register(swUrl).then((reg) => reg.ready).then(() => {
+        return navigator.serviceWorker.register(swUrl).then((reg) => (reg as unknown as { ready: Promise<ServiceWorkerRegistration> }).ready).then(() => {
           if (cancelled) return;
           // Give SW time to fetch config and init Firebase
           return new Promise<void>((resolve) => setTimeout(resolve, 1500));
