@@ -625,6 +625,82 @@ async function migrate() {
       }
     }
 
+    // Domain reseller / domain sales
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS domain_reseller_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        is_enabled BOOLEAN DEFAULT FALSE,
+        provider VARCHAR(50) NULL COMMENT 'e.g. resellerclub, namecheap, enom',
+        api_url VARCHAR(500) NULL,
+        api_key VARCHAR(255) NULL,
+        api_secret VARCHAR(255) NULL,
+        reseller_customer_id VARCHAR(100) NULL,
+        default_currency VARCHAR(10) DEFAULT 'BDT',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ domain_reseller_config table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS domain_tld_pricing (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tld VARCHAR(32) NOT NULL UNIQUE COMMENT 'e.g. com, net, org',
+        register_price DECIMAL(10, 2) NOT NULL,
+        renew_price DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        is_active BOOLEAN DEFAULT TRUE,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_is_active (is_active)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ domain_tld_pricing table created');
+
+    for (const col of [
+      'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
+      'ADD COLUMN domain_price DECIMAL(10, 2) NULL',
+      'ADD COLUMN domain_currency VARCHAR(10) NULL',
+    ]) {
+      try {
+        await connection.execute(`ALTER TABLE smm_website_orders ${col}`);
+        console.log('✅ smm_website_orders: added', col.split(' ')[2]);
+      } catch (e) {
+        if (!e.message || !e.message.includes('Duplicate column')) console.log('⚠️ smm_website_orders alter:', e.message);
+      }
+    }
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS domain_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id VARCHAR(50) NOT NULL UNIQUE,
+        domain_name VARCHAR(255) NOT NULL,
+        tld VARCHAR(32) NOT NULL,
+        register_price DECIMAL(10, 2) NOT NULL,
+        renew_price DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        customer_id INT NULL,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(50) NULL,
+        amount DECIMAL(10, 2) NOT NULL,
+        status ENUM('pending', 'paid', 'failed', 'cancelled', 'completed', 'registered') DEFAULT 'pending',
+        transaction_id VARCHAR(100) NULL,
+        payment_url VARCHAR(500) NULL,
+        return_url VARCHAR(500) NULL,
+        cancel_url VARCHAR(500) NULL,
+        payment_gateway_response TEXT NULL,
+        paid_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customer_users(id) ON DELETE SET NULL,
+        INDEX idx_status (status),
+        INDEX idx_customer_email (customer_email),
+        INDEX idx_order_id (order_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ domain_orders table created');
+
     // Add optional columns to smm_website_products for packages (existing DBs)
     for (const col of [
       'ADD COLUMN billing_interval VARCHAR(20) NULL COMMENT \'monthly | yearly\'',

@@ -32,6 +32,7 @@ const {
 } = require('../utils/smmProvisioning');
 const { sendSmmCredentialsEmail } = require('../utils/email');
 const crypto = require('crypto');
+const { getDomainPrice } = require('../utils/domainPricing');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -283,13 +284,14 @@ router.post('/payments/orders', optionalCustomerAuth, async (req, res) => {
       customer_phone,
       domain,
       subdomain_slug,
+      new_domain_name,
     } = req.body;
 
     if (!product_id || !customer_name || !customer_email) {
       return res.status(400).json({ error: 'Missing required fields: product_id, customer_name, customer_email' });
     }
-    if (!domain && !subdomain_slug) {
-      return res.status(400).json({ error: 'Provide either domain (custom domain) or subdomain_slug (for our subdomain)' });
+    if (!domain && !subdomain_slug && !new_domain_name) {
+      return res.status(400).json({ error: 'Provide either domain (custom domain), subdomain_slug (our subdomain), or new_domain_name (purchase new domain)' });
     }
 
     let customer_id = null;
@@ -307,7 +309,27 @@ router.post('/payments/orders', optionalCustomerAuth, async (req, res) => {
     );
     if (products.length === 0) return res.status(404).json({ error: 'Product not found' });
     const product = products[0];
-    const amount = Number(product.price);
+    let amount = Number(product.price);
+    let domain_price = null;
+    let domain_currency = null;
+    let effectiveDomain = domain || null;
+    let newDomainName = null;
+
+    if (new_domain_name && new_domain_name.trim()) {
+      const name = new_domain_name.trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0];
+      if (!name || !name.includes('.')) {
+        return res.status(400).json({ error: 'Invalid new_domain_name' });
+      }
+      const priceInfo = await getDomainPrice(name);
+      if (!priceInfo) {
+        return res.status(400).json({ error: 'This TLD is not available for registration' });
+      }
+      domain_price = priceInfo.register_price;
+      domain_currency = priceInfo.currency;
+      amount += domain_price;
+      effectiveDomain = name;
+      newDomainName = name;
+    }
 
     const orderId = `SMM-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
@@ -325,12 +347,20 @@ router.post('/payments/orders', optionalCustomerAuth, async (req, res) => {
     const [insertResult] = await pool.execute(
       `INSERT INTO smm_website_orders (
         order_id, product_id, customer_id, customer_name, customer_email, customer_phone,
-        domain, subdomain_slug, amount, currency, status, return_url, cancel_url, webhook_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        domain, subdomain_slug, new_domain_name, domain_price, domain_currency, amount, currency, status, return_url, cancel_url, webhook_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
       [
         orderId, product_id, customer_id, customer_name, customer_email, customer_phone || null,
-        domain || null, subdomain_slug ? String(subdomain_slug).trim().toLowerCase() : null,
-        amount, product.currency, returnUrl, cancelUrl, webhookUrl,
+        effectiveDomain,
+        subdomain_slug ? String(subdomain_slug).trim().toLowerCase() : null,
+        newDomainName,
+        domain_price,
+        domain_currency,
+        amount,
+        product.currency,
+        returnUrl,
+        cancelUrl,
+        webhookUrl,
       ]
     );
     const dbOrderId = insertResult.insertId;

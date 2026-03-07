@@ -5,7 +5,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
-const { syncLogger, directAdminLogger } = require('../utils/logger');
+const { defaultLogger, syncLogger, directAdminLogger } = require('../utils/logger');
 
 router.use(authenticate, requireAdmin);
 

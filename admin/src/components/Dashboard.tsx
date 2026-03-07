@@ -8,6 +8,7 @@ import HostingManager from './HostingManager';
 import SmmPackagesManager from './SmmPackagesManager';
 import SmmPackageEditPage from './SmmPackageEditPage';
 import CloudflareConfigManager from './CloudflareConfigManager';
+import DomainResellerManager from './DomainResellerManager';
 import ProfileManager from './ProfileManager';
 import InvoiceManager from './InvoiceManager';
 import { fetchAdminProfile } from '../api';
@@ -32,6 +33,7 @@ const tabs = [
   { id: 'hosting', label: 'Hosting', icon: '🖥️' },
   { id: 'smm-packages', label: 'SMM Packages', icon: '📦' },
   { id: 'cloudflare', label: 'Cloudflare DNS', icon: '☁️' },
+  { id: 'domain', label: 'Domain sales', icon: '🌐' },
   { id: 'invoices', label: 'Invoices', icon: '🧾' },
   { id: 'chat', label: 'Support Chat', icon: '💬' },
   { id: 'profile', label: 'Profile', icon: '👤' },
@@ -112,6 +114,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
           <Route path="smm-packages" element={<SmmPackagesManager token={token} toast={toast} />} />
           <Route path="smm-packages/edit/:id" element={<SmmPackageEditPage token={token} toast={toast} />} />
           <Route path="cloudflare" element={<CloudflareConfigManager token={token} toast={toast} />} />
+          <Route path="domain" element={<DomainResellerManager token={token} toast={toast} />} />
           <Route path="invoices" element={<InvoiceManager token={token} toast={toast} />} />
           <Route path="chat" element={<ChatManager token={token} />} />
           <Route path="profile" element={<ProfileManager token={token} />} />

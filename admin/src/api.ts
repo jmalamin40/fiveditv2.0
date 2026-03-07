@@ -306,6 +306,60 @@ export async function updateCloudflareConfig(token: string, payload: CloudflareC
   return data;
 }
 
+// Domain reseller config & TLD pricing
+export interface DomainResellerConfig {
+  id: number;
+  is_enabled: boolean;
+  provider: string | null;
+  api_url: string | null;
+  api_key: string | null;
+  api_secret: string | null;
+  reseller_customer_id: string | null;
+  default_currency: string;
+  updated_at: string | null;
+}
+
+export interface DomainTldPricingRow {
+  id: number;
+  tld: string;
+  register_price: number;
+  renew_price: number;
+  currency: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getDomainResellerConfig(token: string) {
+  const { data } = await client.get<DomainResellerConfig>('/admin/domain/config', authHeaders(token));
+  return data;
+}
+
+export async function updateDomainResellerConfig(token: string, payload: Partial<DomainResellerConfig>) {
+  const { data } = await client.put<{ success: boolean }>('/admin/domain/config', payload, authHeaders(token));
+  return data;
+}
+
+export async function fetchDomainTldPricing(token: string) {
+  const { data } = await client.get<{ tlds: DomainTldPricingRow[] }>('/admin/domain/tld-pricing', authHeaders(token));
+  return data;
+}
+
+export async function createDomainTld(token: string, payload: { tld: string; register_price: number; renew_price: number; currency?: string; is_active?: boolean; sort_order?: number }) {
+  const { data } = await client.post<{ success: boolean; id: number }>('/admin/domain/tld-pricing', payload, authHeaders(token));
+  return data;
+}
+
+export async function updateDomainTld(token: string, id: number, payload: Partial<{ tld: string; register_price: number; renew_price: number; currency: string; is_active: boolean; sort_order: number }>) {
+  const { data } = await client.put<{ success: boolean }>(`/admin/domain/tld-pricing/${id}`, payload, authHeaders(token));
+  return data;
+}
+
+export async function deleteDomainTld(token: string, id: number) {
+  await client.delete(`/admin/domain/tld-pricing/${id}`, authHeaders(token));
+}
+
 // Admin Profile interfaces
 export interface AdminProfile {
   id: number;

@@ -45,6 +45,8 @@ app.use('/api/smm', smmPayments);
 app.use('/api/admin/smm', smmPayments.adminRouter);
 app.use('/api/admin', require('./routes/adminProfile'));
 app.use('/api/admin/cloudflare-config', require('./routes/cloudflareConfig'));
+app.use('/api/domain', require('./routes/domain'));
+app.use('/api/admin/domain', require('./routes/domainAdmin'));
 
 // Invoice routes
 const invoices = require('./routes/invoices');

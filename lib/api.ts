@@ -529,6 +529,7 @@ export async function createSmmOrder(data: {
   customer_phone?: string;
   domain?: string;
   subdomain_slug?: string;
+  new_domain_name?: string;
 }): Promise<{ order_id: string; payment_url: string; amount: number; currency: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('customer_token') : null;
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -594,6 +595,47 @@ export async function retrySmmProvisioning(orderId: string, token?: string | nul
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Retry failed');
   return data;
+}
+
+// Domain TLD pricing and domain-only orders
+export interface DomainTldPrice {
+  tld: string;
+  register_price: number;
+  renew_price: number;
+  currency: string;
+}
+
+export async function getDomainTldPricing(): Promise<{ tlds: DomainTldPrice[] }> {
+  const response = await fetch(`${API_BASE_URL}/domain/tld-pricing`);
+  if (!response.ok) throw new Error('Failed to fetch domain pricing');
+  return response.json();
+}
+
+export async function getDomainPrice(domainName: string): Promise<DomainTldPrice & { tld: string }> {
+  const response = await fetch(`${API_BASE_URL}/domain/price?domain=${encodeURIComponent(domainName)}`);
+  if (!response.ok) {
+    const d = await response.json().catch(() => ({}));
+    throw new Error(d.error || 'Domain price not available');
+  }
+  return response.json();
+}
+
+export async function createDomainOrder(data: {
+  domain_name: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string;
+}): Promise<{ order_id: string; payment_url: string; amount: number; currency: string; domain_name: string }> {
+  const response = await fetch(`${API_BASE_URL}/domain/orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Failed to create domain order');
+  }
+  return response.json();
 }
 
 export async function getSmmGuestSession(orderId: string): Promise<{ token: string; expires_at: string }> {
