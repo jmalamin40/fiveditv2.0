@@ -47,8 +47,8 @@ router.get('/availability', async (req, res) => {
     }
     res.json(result);
   } catch (e) {
-    defaultLogger.error('Domain availability error', e);
-    res.status(500).json({ error: e.message || 'Failed to check availability' });
+    defaultLogger.error('Domain availability error', e?.message || e, e?.stack);
+    res.status(500).json({ error: e?.message || 'Failed to check availability' });
   }
 });
 

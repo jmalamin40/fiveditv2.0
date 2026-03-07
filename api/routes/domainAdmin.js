@@ -97,17 +97,72 @@ router.get('/dynadot-tld-prices', async (req, res) => {
     }
     let base = (config.api_url || 'https://api.dynadot.com').trim().replace(/\/restful.*$/i, '').replace(/\/?$/, '');
     if (!base.startsWith('http')) base = 'https://' + base;
-    const currency = (req.query.currency || 'USD').toString().toUpperCase();
-    const url = `${base}/api3.json?key=${encodeURIComponent(config.api_key)}&command=tld_price&currency=${encodeURIComponent(currency)}`;
-    const axRes = await axios.get(url, { timeout: 15000, validateStatus: () => true });
-    const data = axRes.data;
-    if (axRes.status !== 200 || !data) {
-      return res.status(502).json({ error: 'Dynadot API request failed' });
+    // Dynadot docs: currency should be "usd", "eur", or "cny" (lowercase)
+    const currencyParam = (req.query.currency || 'usd').toString().toLowerCase();
+    const currencyDisplay = currencyParam.toUpperCase();
+    const url = `${base}/api3.json?key=${encodeURIComponent(config.api_key)}&command=tld_price&currency=${encodeURIComponent(currencyParam)}`;
+    const axRes = await axios.get(url, {
+      timeout: 15000,
+      validateStatus: () => true,
+      headers: { Accept: 'application/json' },
+    });
+    let data = axRes.data;
+    // If Dynadot returns XML (e.g. api3.json still returns XML on error), parse error from it
+    if (typeof data === 'string') {
+      const raw = data.trim();
+      if (raw.startsWith('<')) {
+        const tag = raw.match(/<ErrorMessage[^>]*>([^<]*)<\/ErrorMessage>/i) || raw.match(/<Error[^>]*>([^<]*)<\/Error>/i);
+        const errText = tag ? tag[1].trim() : null;
+        if (errText) return res.status(400).json({ error: errText });
+        if (/not recognized|deprecated|invalid|unknown command/i.test(raw)) {
+          return res.status(400).json({
+            error: 'Legacy API (api3) command not allowed for this key. In Dynadot: Tools → API → unlock Legacy API, or use a Sandbox key with API URL https://api-sandbox.dynadot.com',
+          });
+        }
+        return res.status(400).json({
+          error: 'Dynadot returned XML. Use Legacy API key (dynadot.com → Tools → API) or try Sandbox: API URL https://api-sandbox.dynadot.com with a Sandbox key.',
+        });
+      }
+      try { data = JSON.parse(data); } catch (_) {
+        return res.status(502).json({ error: 'Dynadot returned invalid response' });
+      }
     }
-    const resp = data.TldPriceResponse;
-    if (!resp || (resp.ResponseCode != null && Number(resp.ResponseCode) !== 0)) {
-      const errMsg = (resp && (resp.ErrorMessage || resp.Status)) || data.error || data.message;
-      return res.status(400).json({ error: errMsg ? String(errMsg) : 'Dynadot tld_price error' });
+    if (axRes.status !== 200) {
+      return res.status(502).json({ error: `Dynadot API returned HTTP ${axRes.status}` });
+    }
+    if (!data || typeof data !== 'object') {
+      defaultLogger.error('Dynadot tld_price: non-JSON or empty response', { status: axRes.status });
+      return res.status(502).json({ error: 'Dynadot API returned empty or invalid response' });
+    }
+    // Top-level error (e.g. invalid key, or from XML transform)
+    const topError = data.error || data.ErrorMessage || data.Message || data.message;
+    if (topError) {
+      return res.status(400).json({ error: String(topError) });
+    }
+    if (data.ResponseCode != null && Number(data.ResponseCode) !== 0 && data.ErrorMessage) {
+      return res.status(400).json({ error: String(data.ErrorMessage) });
+    }
+    // TldPriceResponse may be under different casing or single root key
+    let resp = data.TldPriceResponse || data.tldPriceResponse;
+    if (!resp && typeof data === 'object') {
+      const keys = Object.keys(data);
+      if (keys.length === 1 && data[keys[0]] && typeof data[keys[0]] === 'object') resp = data[keys[0]];
+    }
+    if (!resp) {
+      const hint = base.includes('sandbox') ? 'Sandbox key must be from api-sandbox.dynadot.com.' : 'Use Legacy API key from dynadot.com → Tools → API (unlock Legacy/API 3), or try Sandbox: set API URL to https://api-sandbox.dynadot.com and use a Sandbox key.';
+      defaultLogger.error('Dynadot tld_price: unexpected format', { keys: data ? Object.keys(data) : [], sample: JSON.stringify(data).slice(0, 300) });
+      return res.status(400).json({
+        error: `Dynadot returned unexpected format. ${hint}`,
+      });
+    }
+    const code = resp.ResponseCode != null ? Number(resp.ResponseCode) : null;
+    const success = code === 0;
+    if (!success) {
+      const errMsg = resp.ErrorMessage || resp.Error || (resp.Status && resp.Status !== 'success' ? resp.Status : null) || data.error || data.message;
+      defaultLogger.warn('Dynadot tld_price error response', { ResponseCode: resp.ResponseCode, Status: resp.Status, ErrorMessage: resp.ErrorMessage });
+      return res.status(400).json({
+        error: errMsg ? String(errMsg) : `Dynadot tld_price failed (code ${code}). Check API key has Legacy API access and try Sandbox (api-sandbox.dynadot.com) for testing.`,
+      });
     }
     const list = resp.TldPrice || [];
     const tlds = (Array.isArray(list) ? list : [list]).map((t) => {
@@ -120,7 +175,7 @@ router.get('/dynadot-tld-prices', async (req, res) => {
       };
     }).filter((t) => t.tld);
     res.json({
-      currency: resp.Currency || currency,
+      currency: resp.Currency || currencyDisplay,
       priceLevel: resp.PriceLevel || null,
       tlds,
     });
