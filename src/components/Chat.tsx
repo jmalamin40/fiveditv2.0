@@ -312,7 +312,13 @@ const Chat: React.FC = () => {
       const { getMessaging, getToken } = await import('firebase/messaging');
       const app = initializeApp(data.config);
       const messaging = getMessaging(app);
-      const fcmToken = await getToken(messaging, { vapidKey: data.vapidKey });
+      const vapidKey = (data.vapidKey || '').trim().replace(/\s+/g, '');
+      if (!vapidKey) {
+        setPushMessage('VAPID key not configured. Contact support.');
+        setPushLoading(false);
+        return;
+      }
+      const fcmToken = await getToken(messaging, { vapidKey });
       if (!fcmToken) {
         setPushMessage('Could not get token. Reload and try again.');
         setPushLoading(false);

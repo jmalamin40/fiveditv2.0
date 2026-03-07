@@ -485,7 +485,8 @@ router.get('/firebase-client-config', async (req, res) => {
       return res.json({ enabled: false });
     }
     const config = JSON.parse(rows[0].client_config_json || '{}');
-    res.json({ enabled: true, config, vapidKey: rows[0].vapid_key || null });
+    const vapidKey = (rows[0].vapid_key || '').trim().replace(/\s+/g, '') || null;
+    res.json({ enabled: true, config, vapidKey });
   } catch (error) {
     res.json({ enabled: false });
   }
@@ -501,11 +502,12 @@ router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res
       return res.json({ is_enabled: false, service_account_json: '', client_config_json: '', vapid_key: '' });
     }
     const r = rows[0];
+    const vapidKey = (r.vapid_key || '').trim().replace(/\s+/g, '');
     res.json({
       is_enabled: !!r.is_enabled,
       service_account_json: r.service_account_json || '',
       client_config_json: r.client_config_json || '',
-      vapid_key: r.vapid_key || '',
+      vapid_key: vapidKey,
     });
   } catch (error) {
     console.error('Error fetching Firebase config:', error);
@@ -517,6 +519,7 @@ router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res
 router.put('/admin/firebase-config', authenticate, requireAdmin, async (req, res) => {
   try {
     const { is_enabled, service_account_json, client_config_json, vapid_key } = req.body;
+    const vapidKeyClean = typeof vapid_key === 'string' ? vapid_key.trim().replace(/\s+/g, '') : '';
     await pool.execute(
       `INSERT INTO firebase_config (id, is_enabled, service_account_json, client_config_json, vapid_key)
        VALUES (1, ?, ?, ?, ?)
@@ -525,7 +528,7 @@ router.put('/admin/firebase-config', authenticate, requireAdmin, async (req, res
          service_account_json = VALUES(service_account_json),
          client_config_json = VALUES(client_config_json),
          vapid_key = VALUES(vapid_key)`,
-      [!!is_enabled, service_account_json || null, client_config_json || null, vapid_key || null]
+      [!!is_enabled, service_account_json || null, client_config_json || null, vapidKeyClean || null]
     );
     res.json({ success: true });
   } catch (error) {

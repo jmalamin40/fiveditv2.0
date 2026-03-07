@@ -484,7 +484,8 @@ export default function ChatManager({ token }: ChatManagerProps) {
             return import('firebase/messaging').then(({ getMessaging, getToken }) => {
               const app = initializeApp(data.config!);
               const messaging = getMessaging(app);
-              return getToken(messaging, { vapidKey: data.vapidKey! });
+              const vapidKey = (data.vapidKey || '').trim().replace(/\s+/g, '');
+              return vapidKey ? getToken(messaging, { vapidKey }) : null;
             });
           });
         }).then((fcmToken) => {
@@ -543,7 +544,13 @@ export default function ChatManager({ token }: ChatManagerProps) {
       const { getMessaging, getToken } = await import('firebase/messaging');
       const app = initializeApp(data.config);
       const messaging = getMessaging(app);
-      const fcmToken = await getToken(messaging, { vapidKey: data.vapidKey! });
+      const vapidKey = (data.vapidKey || '').trim().replace(/\s+/g, '');
+      if (!vapidKey) {
+        setEnablePushMessage({ type: 'error', text: 'VAPID key is missing. Paste the Key pair from Firebase Console → Cloud Messaging → Web Push certificates.' });
+        setEnablePushLoading(false);
+        return;
+      }
+      const fcmToken = await getToken(messaging, { vapidKey });
       if (!fcmToken) {
         setEnablePushMessage({ type: 'error', text: 'Could not get push token. Reload the page and try again.' });
         setEnablePushLoading(false);
@@ -611,13 +618,13 @@ export default function ChatManager({ token }: ChatManagerProps) {
               placeholder='Paste Firebase web app config: { "apiKey": "...", "projectId": "...", ... }'
               rows={3}
             />
-            <label className="firebase-config-label">VAPID key (Web Push certificate from Firebase Console → Project settings → Cloud Messaging)</label>
+            <label className="firebase-config-label">VAPID key (Web Push – must be the exact Key pair from Firebase)</label>
             <input
               type="text"
               className="firebase-config-textarea"
               value={firebaseConfig.vapid_key ?? ''}
-              onChange={(e) => setFirebaseConfig(c => ({ ...c, vapid_key: e.target.value }))}
-              placeholder="e.g. Bxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              onChange={(e) => setFirebaseConfig(c => ({ ...c, vapid_key: e.target.value.trim().replace(/\s+/g, '') }))}
+              placeholder="Paste only the Key pair value (starts with B…, ~88 chars). Firebase Console → Project settings → Cloud Messaging → Web Push certificates → Key pair"
             />
             {firebaseConfigSaveMessage && (
               <p className={`firebase-config-msg ${firebaseConfigSaveMessage.type}`}>
