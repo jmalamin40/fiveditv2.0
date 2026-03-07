@@ -21,6 +21,7 @@ const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..',
 const UPDATE_FRONTEND_SOURCE = process.env.FIVEDIT_UPDATE_SOURCE_PATH || '/home/fiveditc/domains/fivedit.com/api/ecomerce_dist';
 const UPDATE_FRONTEND_TARGET_BASE = process.env.FIVEDIT_UPDATE_TARGET_BASE || '/home/fiveditc';
 const { getSmmDaConfig, createDomainInDirectAdmin } = require('../utils/directAdminSmm');
+const { createDnsRecord } = require('../utils/cloudflareDns');
 const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
 const {
   ensureStepRows,
@@ -450,6 +451,7 @@ router.post('/payments/webhook', async (req, res) => {
       await clearStaleRunningSteps(pool, order.id);
 
       let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+      const subdomainFullForDns = order.subdomain_slug ? `${subdomainPart}.${baseHost}` : null;
       let usedDirectAdmin = false;
       let tenantPassword = null;
       let tenantIdFromApi = null;
@@ -478,6 +480,11 @@ router.post('/payments/webhook', async (req, res) => {
         }
       };
 
+      // Step 0: Cloudflare DNS – create record for subdomain (optional; failure does not block provisioning)
+      await runStep('cloudflare_dns', async () => {
+        if (!subdomainFullForDns) return;
+        await createDnsRecord(pool, subdomainFullForDns);
+      });
       // Step 1: DirectAdmin – subdomain creates domain demo.fivedit.com → .../domains/demo.fivedit.com/public_html; custom domain same
       const daOk = await runStep('directadmin_domain', async () => {
         const daConfig = await getSmmDaConfig(pool);
@@ -729,6 +736,7 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
     ensureStepRows(pool, order.id);
     await clearStaleRunningSteps(pool, order.id);
     let folderPathToStore = path.join(SMM_INSTANCES_DIR, folderName);
+    const subdomainFullForDns = order.subdomain_slug ? `${subdomainPart}.${baseHost}` : null;
     let usedDirectAdmin = false;
     let tenantPassword = null;
     const steps = await getSteps(pool, order.id);
@@ -756,6 +764,10 @@ router.post('/payments/provision-retry', optionalCustomerAuth, async (req, res) 
       }
     };
 
+    await runStep('cloudflare_dns', async () => {
+      if (!subdomainFullForDns) return;
+      await createDnsRecord(pool, subdomainFullForDns);
+    });
     const daOk = await runStep('directadmin_domain', async () => {
       const daConfig = await getSmmDaConfig(pool);
       if (daConfig) {

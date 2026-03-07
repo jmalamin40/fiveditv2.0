@@ -285,6 +285,27 @@ export async function registerAdminFcmToken(token: string, fcmToken: string) {
   return data;
 }
 
+// Cloudflare config (SMM subdomain DNS)
+export interface CloudflareConfig {
+  is_enabled: boolean;
+  api_token: string;
+  zone_id: string;
+  base_domain: string;
+  record_type: 'A' | 'CNAME';
+  target_value: string;
+  proxied: boolean;
+}
+
+export async function getCloudflareConfig(token: string) {
+  const { data } = await client.get<CloudflareConfig>('/admin/cloudflare-config', authHeaders(token));
+  return data;
+}
+
+export async function updateCloudflareConfig(token: string, payload: CloudflareConfig) {
+  const { data } = await client.put<{ success: boolean }>('/admin/cloudflare-config', payload, authHeaders(token));
+  return data;
+}
+
 // Admin Profile interfaces
 export interface AdminProfile {
   id: number;

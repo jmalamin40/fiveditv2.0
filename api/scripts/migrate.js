@@ -268,6 +268,22 @@ async function migrate() {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
 
+    // Cloudflare config for SMM subdomain DNS (create DNS record when user selects subdomain)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS cloudflare_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        is_enabled BOOLEAN DEFAULT FALSE,
+        api_token VARCHAR(500) NULL COMMENT 'Cloudflare API Token (recommended) or Global API Key',
+        zone_id VARCHAR(100) NULL COMMENT 'Zone ID for the domain (e.g. fivedit.com)',
+        base_domain VARCHAR(255) NULL COMMENT 'Root domain e.g. fivedit.com',
+        record_type ENUM('A','CNAME') DEFAULT 'CNAME',
+        target_value VARCHAR(255) NULL COMMENT 'A: IP address; CNAME: hostname e.g. fivedit.com',
+        proxied BOOLEAN DEFAULT TRUE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Cloudflare config table created');
+
     // Create hosting_accounts table
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS hosting_accounts (

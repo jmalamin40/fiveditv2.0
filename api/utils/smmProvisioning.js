@@ -1,6 +1,7 @@
 const { defaultLogger } = require('./logger');
 
 const STEP_ORDER = [
+  'cloudflare_dns',
   'directadmin_domain',
   'copy_files',
   'register_tenant',
