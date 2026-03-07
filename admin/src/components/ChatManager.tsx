@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Bell } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
-import { fetchChatSessions, getFirebaseConfig, updateFirebaseConfig, type ChatSessionsFilters, type FirebaseConfig } from '../api';
+import { fetchChatSessions, getFirebaseConfig, updateFirebaseConfig, getFirebaseClientConfig, registerAdminFcmToken, type ChatSessionsFilters, type FirebaseConfig } from '../api';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
@@ -74,7 +74,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [firebaseConfigOpen, setFirebaseConfigOpen] = useState(false);
-  const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfig>({ is_enabled: false, service_account_json: '', client_config_json: '' });
+  const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfig>({ is_enabled: false, service_account_json: '', client_config_json: '', vapid_key: '' });
   const [firebaseConfigSaving, setFirebaseConfigSaving] = useState(false);
   const [firebaseConfigSaveMessage, setFirebaseConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -458,6 +458,39 @@ export default function ChatManager({ token }: ChatManagerProps) {
     getFirebaseConfig(token).then(setFirebaseConfig).catch(() => {});
   }, [token]);
 
+  // Register FCM token for admin push notifications (when Firebase is enabled)
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://api.fivedit.com/api';
+    getFirebaseClientConfig()
+      .then((data) => {
+        if (cancelled || !data.enabled || !data.config || !data.vapidKey) return;
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+        const swUrl = `${window.location.origin}/firebase-messaging-sw.js?api=${encodeURIComponent(apiBase)}`;
+        return navigator.serviceWorker.register(swUrl).then((reg) => reg.ready).then(() => {
+          if (cancelled) return;
+          // Give SW time to fetch config and init Firebase
+          return new Promise<void>((resolve) => setTimeout(resolve, 1500));
+        }).then(() => {
+          if (cancelled) return;
+          return import('firebase/app').then(({ initializeApp }) => {
+            return import('firebase/messaging').then(({ getMessaging, getToken }) => {
+              const app = initializeApp(data.config!);
+              const messaging = getMessaging(app);
+              return getToken(messaging, { vapidKey: data.vapidKey! });
+            });
+          });
+        }).then((fcmToken) => {
+          if (cancelled || !fcmToken) return;
+          return registerAdminFcmToken(token, fcmToken);
+        });
+      })
+      .then(() => { if (!cancelled) { /* registered */ } })
+      .catch((err) => { if (!cancelled) console.error('FCM token registration failed:', err); });
+    return () => { cancelled = true; };
+  }, [token]);
+
   const handleSaveFirebaseConfig = async () => {
     if (!token) return;
     setFirebaseConfigSaveMessage(null);
@@ -523,6 +556,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
               onChange={(e) => setFirebaseConfig(c => ({ ...c, client_config_json: e.target.value }))}
               placeholder='Paste Firebase web app config: { "apiKey": "...", "projectId": "...", ... }'
               rows={3}
+            />
+            <label className="firebase-config-label">VAPID key (Web Push certificate from Firebase Console → Project settings → Cloud Messaging)</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={firebaseConfig.vapid_key ?? ''}
+              onChange={(e) => setFirebaseConfig(c => ({ ...c, vapid_key: e.target.value }))}
+              placeholder="e.g. Bxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
             />
             {firebaseConfigSaveMessage && (
               <p className={`firebase-config-msg ${firebaseConfigSaveMessage.type}`}>

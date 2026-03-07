@@ -261,6 +261,13 @@ async function migrate() {
     `);
     console.log('✅ Firebase config table created');
 
+    try {
+      await connection.execute(`ALTER TABLE firebase_config ADD COLUMN vapid_key VARCHAR(255) NULL AFTER client_config_json`);
+      console.log('✅ firebase_config.vapid_key column added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+
     // Create hosting_accounts table
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS hosting_accounts (

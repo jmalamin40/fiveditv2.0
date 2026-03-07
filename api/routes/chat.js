@@ -477,13 +477,13 @@ router.post('/admin/fcm-token', authenticate, requireAdmin, async (req, res) => 
 router.get('/firebase-client-config', async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT is_enabled, client_config_json FROM firebase_config WHERE id = 1'
+      'SELECT is_enabled, client_config_json, vapid_key FROM firebase_config WHERE id = 1'
     );
     if (!rows.length || !rows[0].is_enabled || !rows[0].client_config_json) {
       return res.json({ enabled: false });
     }
     const config = JSON.parse(rows[0].client_config_json || '{}');
-    res.json({ enabled: true, config });
+    res.json({ enabled: true, config, vapidKey: rows[0].vapid_key || null });
   } catch (error) {
     res.json({ enabled: false });
   }
@@ -493,16 +493,17 @@ router.get('/firebase-client-config', async (req, res) => {
 router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT is_enabled, service_account_json, client_config_json FROM firebase_config WHERE id = 1'
+      'SELECT is_enabled, service_account_json, client_config_json, vapid_key FROM firebase_config WHERE id = 1'
     );
     if (!rows.length) {
-      return res.json({ is_enabled: false, service_account_json: '', client_config_json: '' });
+      return res.json({ is_enabled: false, service_account_json: '', client_config_json: '', vapid_key: '' });
     }
     const r = rows[0];
     res.json({
       is_enabled: !!r.is_enabled,
       service_account_json: r.service_account_json || '',
       client_config_json: r.client_config_json || '',
+      vapid_key: r.vapid_key || '',
     });
   } catch (error) {
     console.error('Error fetching Firebase config:', error);
@@ -513,15 +514,16 @@ router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res
 // Admin: Update Firebase config
 router.put('/admin/firebase-config', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { is_enabled, service_account_json, client_config_json } = req.body;
+    const { is_enabled, service_account_json, client_config_json, vapid_key } = req.body;
     await pool.execute(
-      `INSERT INTO firebase_config (id, is_enabled, service_account_json, client_config_json)
-       VALUES (1, ?, ?, ?)
+      `INSERT INTO firebase_config (id, is_enabled, service_account_json, client_config_json, vapid_key)
+       VALUES (1, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          is_enabled = VALUES(is_enabled),
          service_account_json = VALUES(service_account_json),
-         client_config_json = VALUES(client_config_json)`,
-      [!!is_enabled, service_account_json || null, client_config_json || null]
+         client_config_json = VALUES(client_config_json),
+         vapid_key = VALUES(vapid_key)`,
+      [!!is_enabled, service_account_json || null, client_config_json || null, vapid_key || null]
     );
     res.json({ success: true });
   } catch (error) {

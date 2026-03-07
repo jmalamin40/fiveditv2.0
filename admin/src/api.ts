@@ -255,6 +255,19 @@ export interface FirebaseConfig {
   is_enabled: boolean;
   service_account_json: string;
   client_config_json: string;
+  vapid_key?: string;
+}
+
+export interface FirebaseClientConfig {
+  enabled: boolean;
+  config?: Record<string, unknown>;
+  vapidKey?: string | null;
+}
+
+/** Public endpoint - no auth. Used to init FCM and get token. */
+export async function getFirebaseClientConfig() {
+  const { data } = await client.get<FirebaseClientConfig>('/chat/firebase-client-config');
+  return data;
 }
 
 export async function getFirebaseConfig(token: string) {
