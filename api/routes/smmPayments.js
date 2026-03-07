@@ -34,6 +34,7 @@ const { sendSmmCredentialsEmail } = require('../utils/email');
 const crypto = require('crypto');
 const { getDomainPrice } = require('../utils/domainPricing');
 const { checkDomainAvailability } = require('../utils/domainAvailability');
+const { registerDomain } = require('../utils/dynadotRegister');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -474,6 +475,19 @@ router.post('/payments/webhook', async (req, res) => {
     }
 
     const alreadyHasInstance = order.smm_instance_id != null;
+
+    if (isPaid && order.new_domain_name) {
+      try {
+        const reg = await registerDomain(order.new_domain_name.trim(), 1);
+        if (reg.success) {
+          defaultLogger.log(`SMM: domain registered with provider: ${order.new_domain_name}`);
+        } else {
+          defaultLogger.error('SMM: domain registration failed', { domain: order.new_domain_name, error: reg.error });
+        }
+      } catch (regErr) {
+        defaultLogger.error('SMM: domain registration error', regErr?.message || regErr);
+      }
+    }
 
     if (isPaid && !alreadyHasInstance) {
       const folderName = order.subdomain_slug

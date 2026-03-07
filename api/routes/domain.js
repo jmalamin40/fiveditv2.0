@@ -10,11 +10,13 @@ const { getDomainPrice, listTldPricing } = require('../utils/domainPricing');
 const { checkDomainAvailability } = require('../utils/domainAvailability');
 const { checkDynadotAvailability } = require('../utils/dynadotAvailability');
 const { getDomainResellerConfig } = require('../utils/domainConfig');
+const { registerDomain } = require('../utils/dynadotRegister');
 const { defaultLogger } = require('../utils/logger');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://fivedit.com';
+const API_BASE_URL = process.env.API_BASE_URL || process.env.API_URL || 'http://localhost:3004';
 
 // GET /api/domain/tld-pricing – list active TLDs with register/renew prices (for UI)
 router.get('/tld-pricing', async (req, res) => {
@@ -103,6 +105,7 @@ router.post('/orders', async (req, res) => {
     };
     const returnUrl = validateUrl(`${FRONTEND_URL}/domain/order/success?order_id=${encodeURIComponent(orderId)}`);
     const cancelUrl = validateUrl(`${FRONTEND_URL}/domain?cancelled=1`);
+    const webhookUrl = validateUrl(`${API_BASE_URL}/api/domain/payments/webhook`);
 
     await pool.execute(
       `INSERT INTO domain_orders (
@@ -125,6 +128,7 @@ router.post('/orders', async (req, res) => {
       return_url: returnUrl,
       cancel_url: cancelUrl,
       api_key: PAYMENT_API_KEY,
+      webhook_url: webhookUrl,
       metadata: JSON.stringify({ type: 'domain', domain_name: name }),
     };
 
@@ -158,6 +162,65 @@ router.post('/orders', async (req, res) => {
       });
     }
     res.status(500).json({ error: error.message || 'Failed to create domain order' });
+  }
+});
+
+// POST /api/domain/payments/webhook – payment gateway calls this when payment is completed
+router.post('/payments/webhook', async (req, res) => {
+  try {
+    const { order_id, status, transaction_id, tnx_id } = req.body || {};
+    if (!status) {
+      return res.status(400).json({ error: 'Missing status' });
+    }
+    const isPaid = status === 'completed' || status === 'paid';
+
+    let rows = [];
+    if (order_id) {
+      const [r] = await pool.execute('SELECT * FROM domain_orders WHERE order_id = ? LIMIT 1', [String(order_id)]);
+      rows = r;
+    }
+    if (rows.length === 0 && (transaction_id || tnx_id)) {
+      const tid = transaction_id || tnx_id;
+      const [r] = await pool.execute('SELECT * FROM domain_orders WHERE transaction_id = ? LIMIT 1', [tid]);
+      rows = r;
+    }
+
+    if (rows.length === 0) {
+      defaultLogger.warn('Domain webhook: order not found', { order_id, transaction_id, tnx_id });
+      return res.status(200).json({ success: false, message: 'Order not found' });
+    }
+
+    const order = rows[0];
+    if (order.status === 'paid' || order.status === 'registered' || order.status === 'completed') {
+      return res.status(200).json({ success: true, message: 'Already processed' });
+    }
+
+    if (isPaid) {
+      await pool.execute(
+        'UPDATE domain_orders SET status = ?, paid_at = CURRENT_TIMESTAMP, payment_gateway_response = ? WHERE order_id = ?',
+        ['paid', JSON.stringify(req.body), order.order_id]
+      );
+      const reg = await registerDomain(order.domain_name, 1);
+      if (reg.success) {
+        await pool.execute(
+          'UPDATE domain_orders SET status = ? WHERE order_id = ?',
+          ['registered', order.order_id]
+        );
+        defaultLogger.log(`Domain registered: ${order.domain_name} (order ${order.order_id})`);
+      } else {
+        defaultLogger.error('Domain registration failed after payment', { order_id: order.order_id, domain: order.domain_name, error: reg.error });
+      }
+    } else {
+      await pool.execute(
+        'UPDATE domain_orders SET status = ?, payment_gateway_response = ? WHERE order_id = ?',
+        [status, JSON.stringify(req.body), order.order_id]
+      );
+    }
+
+    return res.status(200).json({ success: true, message: 'Webhook processed' });
+  } catch (e) {
+    defaultLogger.error('Domain payments webhook error', e);
+    return res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 
