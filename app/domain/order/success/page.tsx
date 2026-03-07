@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Chat from '@/components/Chat';
