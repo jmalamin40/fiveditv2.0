@@ -24,7 +24,7 @@ interface SmmProduct {
   updated_at?: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3004/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.fivedit.com/api';
 
 function TierBadge({ tier }: { tier: string | null }) {
   if (!tier) return <span style={{ color: '#6b7280' }}>–</span>;

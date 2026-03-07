@@ -22,7 +22,7 @@ interface SmmProduct {
   is_active: boolean;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3004/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.fivedit.com/api';
 
 export default function SmmPackageEditPage({ token, toast }: Props) {
   const { id } = useParams<{ id: string }>();
