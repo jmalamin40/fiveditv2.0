@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Chat from '@/components/Chat';
-import { getDomainTldPricing, getDomainPrice, createDomainOrder, getCustomerProfile } from '@/lib/api';
+import { getDomainTldPricing, getDomainPrice, getDomainAvailability, createDomainOrder, getCustomerProfile } from '@/lib/api';
 import type { DomainTldPrice } from '@/lib/api';
-import { Loader2, Globe, Search, ShoppingCart, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, Globe, Search, ShoppingCart, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DomainsPage() {
@@ -17,6 +17,7 @@ export default function DomainsPage() {
   const [priceInfo, setPriceInfo] = useState<DomainTldPrice | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [domainAvailable, setDomainAvailable] = useState<boolean | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
   const [formData, setFormData] = useState({ customer_name: '', customer_email: '', customer_phone: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -45,23 +46,29 @@ export default function DomainsPage() {
   const normalizedSearch = search.trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0];
   const hasTld = normalizedSearch.includes('.');
 
-  const handleCheckPrice = () => {
+  const handleCheckPrice = async () => {
     if (!normalizedSearch || !hasTld) return;
     setPriceLoading(true);
     setPriceError(null);
     setPriceInfo(null);
+    setDomainAvailable(null);
     setDomainToBuy(normalizedSearch);
-    getDomainPrice(normalizedSearch)
-      .then((p) => {
-        setPriceInfo(p);
-        setShowCheckout(true);
-      })
-      .catch((e) => {
-        setPriceError(e instanceof Error ? e.message : 'Price not available');
-        setPriceInfo(null);
-        setShowCheckout(false);
-      })
-      .finally(() => setPriceLoading(false));
+    setShowCheckout(false);
+    try {
+      const [p, avail] = await Promise.all([
+        getDomainPrice(normalizedSearch).catch((e) => {
+          setPriceError(e instanceof Error ? e.message : 'Price not available');
+          return null;
+        }),
+        getDomainAvailability(normalizedSearch).catch(() => null),
+      ]);
+      if (avail !== null) setDomainAvailable(avail.available);
+      if (p) setPriceInfo(p);
+      if (p && avail?.available) setShowCheckout(true);
+      else if (p && avail && !avail.available) setShowCheckout(false);
+    } finally {
+      setPriceLoading(false);
+    }
   };
 
   const handleBuyDomain = async (e: React.FormEvent) => {
@@ -139,12 +146,15 @@ export default function DomainsPage() {
               </div>
             )}
             {priceInfo && domainToBuy && (
-              <div className="mt-4 p-4 rounded-lg bg-indigo-50 border border-indigo-100">
+              <div className={`mt-4 p-4 rounded-lg border ${domainAvailable === false ? 'bg-red-50 border-red-200' : 'bg-indigo-50 border-indigo-100'}`}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-indigo-600" />
+                  {domainAvailable === true && <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />}
+                  {domainAvailable === false && <XCircle className="w-5 h-5 text-red-600 shrink-0" />}
                   <span className="font-medium text-gray-900">{domainToBuy}</span>
                   <span className="text-gray-600">— {priceInfo.currency} {priceInfo.register_price.toFixed(2)} / year (register)</span>
                   <span className="text-gray-500 text-sm">Renew: {priceInfo.currency} {priceInfo.renew_price.toFixed(2)}</span>
+                  {domainAvailable === true && <span className="text-green-600 text-sm font-medium">Available</span>}
+                  {domainAvailable === false && <span className="text-red-600 text-sm font-medium">Already registered</span>}
                 </div>
               </div>
             )}

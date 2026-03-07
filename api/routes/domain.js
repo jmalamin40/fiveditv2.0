@@ -7,6 +7,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const axios = require('axios');
 const { getDomainPrice, listTldPricing } = require('../utils/domainPricing');
+const { checkDomainAvailability } = require('../utils/domainAvailability');
 const { defaultLogger } = require('../utils/logger');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
@@ -21,6 +22,19 @@ router.get('/tld-pricing', async (req, res) => {
   } catch (e) {
     defaultLogger.error('Domain tld-pricing error', e);
     res.status(500).json({ error: 'Failed to load pricing' });
+  }
+});
+
+// GET /api/domain/availability?domain=example.com – check if domain is available (WHOIS)
+router.get('/availability', async (req, res) => {
+  try {
+    const domain = req.query.domain;
+    if (!domain || !domain.trim()) return res.status(400).json({ error: 'domain query required' });
+    const result = await checkDomainAvailability(domain.trim());
+    res.json(result);
+  } catch (e) {
+    defaultLogger.error('Domain availability error', e);
+    res.status(500).json({ error: e.message || 'Failed to check availability' });
   }
 });
 
@@ -52,6 +66,15 @@ router.post('/orders', async (req, res) => {
     const priceInfo = await getDomainPrice(name);
     if (!priceInfo) {
       return res.status(400).json({ error: 'This TLD is not available for registration' });
+    }
+    try {
+      const avail = await checkDomainAvailability(name);
+      if (!avail.available) {
+        return res.status(400).json({ error: 'This domain is already registered and not available' });
+      }
+    } catch (availErr) {
+      defaultLogger.error('Availability check before domain order', availErr);
+      return res.status(400).json({ error: 'Could not verify domain availability. Please try again.' });
     }
     const amount = priceInfo.register_price;
     const currency = priceInfo.currency;

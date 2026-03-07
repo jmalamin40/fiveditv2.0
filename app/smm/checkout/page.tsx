@@ -5,8 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Chat from '@/components/Chat';
-import { fetchSmmProduct, createSmmOrder, getCustomerProfile, getDomainPrice, SmmProduct } from '@/lib/api';
-import { Loader2, AlertCircle, Globe, AtSign, ShoppingCart } from 'lucide-react';
+import { fetchSmmProduct, createSmmOrder, getCustomerProfile, getDomainPrice, getDomainAvailability, SmmProduct } from '@/lib/api';
+import { Loader2, AlertCircle, Globe, AtSign, ShoppingCart, CheckCircle, XCircle } from 'lucide-react';
 import Link from 'next/link';
 
 function CheckoutContent() {
@@ -30,36 +30,44 @@ function CheckoutContent() {
   const [domainPrice, setDomainPrice] = useState<{ register_price: number; currency: string } | null>(null);
   const [domainPriceLoading, setDomainPriceLoading] = useState(false);
   const [domainPriceError, setDomainPriceError] = useState<string | null>(null);
+  const [domainAvailable, setDomainAvailable] = useState<boolean | null>(null);
+  const [domainAvailabilityLoading, setDomainAvailabilityLoading] = useState(false);
 
   useEffect(() => {
     if (productId) loadProduct();
     checkCustomerLogin();
   }, [productId]);
 
-  // Debounced domain price lookup when user selects "Purchase new domain"
+  // Debounced domain price + availability when user selects "Purchase new domain"
   useEffect(() => {
     if (installType !== 'new_domain' || !formData.new_domain_name?.trim()) {
       setDomainPrice(null);
       setDomainPriceError(null);
+      setDomainAvailable(null);
       return;
     }
     const name = formData.new_domain_name.trim().toLowerCase();
     if (!name.includes('.')) {
       setDomainPrice(null);
       setDomainPriceError(null);
+      setDomainAvailable(null);
       return;
     }
     const t = setTimeout(async () => {
       setDomainPriceLoading(true);
+      setDomainAvailabilityLoading(true);
       setDomainPriceError(null);
+      setDomainAvailable(null);
       try {
-        const p = await getDomainPrice(name);
-        setDomainPrice({ register_price: p.register_price, currency: p.currency });
-      } catch (e) {
-        setDomainPrice(null);
-        setDomainPriceError(e instanceof Error ? e.message : 'Price not available');
+        const [p, avail] = await Promise.all([
+          getDomainPrice(name).catch((e) => { setDomainPriceError(e instanceof Error ? e.message : 'Price not available'); return null; }),
+          getDomainAvailability(name).catch(() => null),
+        ]);
+        if (p) setDomainPrice({ register_price: p.register_price, currency: p.currency });
+        if (avail) setDomainAvailable(avail.available);
       } finally {
         setDomainPriceLoading(false);
+        setDomainAvailabilityLoading(false);
       }
     }, 500);
     return () => clearTimeout(t);
@@ -107,6 +115,7 @@ function CheckoutContent() {
       if (installType === 'new_domain') {
         if (!formData.new_domain_name?.trim()) throw new Error('Please enter the domain you want to purchase');
         if (!domainPrice) throw new Error('Please wait for domain price or choose a supported TLD');
+        if (domainAvailable === false) throw new Error('This domain is already registered. Please choose another.');
       }
       const result = await createSmmOrder({
         product_id: product.id,
@@ -224,10 +233,16 @@ function CheckoutContent() {
                 <div className="mt-4">
                   <label className="block text-sm font-medium text-gray-700">Domain to purchase</label>
                   <input type="text" placeholder="example.com" value={formData.new_domain_name} onChange={(e) => setFormData({ ...formData, new_domain_name: e.target.value })} className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2" />
-                  {domainPriceLoading && <p className="mt-1 text-sm text-gray-500">Checking price…</p>}
+                  {(domainPriceLoading || domainAvailabilityLoading) && <p className="mt-1 text-sm text-gray-500">Checking price and availability…</p>}
                   {domainPriceError && <p className="mt-1 text-sm text-red-600">{domainPriceError}</p>}
                   {domainPrice && !domainPriceError && (
                     <p className="mt-1 text-sm text-gray-600">Domain: {domainPrice.currency} {domainPrice.register_price.toFixed(2)} (1 year)</p>
+                  )}
+                  {!domainAvailabilityLoading && domainAvailable === true && (
+                    <p className="mt-1 text-sm text-green-600 flex items-center gap-1"><CheckCircle className="w-4 h-4 shrink-0" /> Available</p>
+                  )}
+                  {!domainAvailabilityLoading && domainAvailable === false && (
+                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1"><XCircle className="w-4 h-4 shrink-0" /> Already registered – choose another domain</p>
                   )}
                 </div>
               )}
@@ -239,7 +254,7 @@ function CheckoutContent() {
               </div>
             )}
             <div className="flex gap-3 pt-4">
-              <button type="submit" disabled={submitting || (installType === 'new_domain' && !domainPrice)} className="flex-1 flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+              <button type="submit" disabled={submitting || (installType === 'new_domain' && (!domainPrice || domainAvailable !== true))} className="flex-1 flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
                 {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
                 Pay {currency} {totalAmount.toFixed(2)}
               </button>

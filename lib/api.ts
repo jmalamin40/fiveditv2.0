@@ -620,6 +620,15 @@ export async function getDomainPrice(domainName: string): Promise<DomainTldPrice
   return response.json();
 }
 
+export async function getDomainAvailability(domainName: string): Promise<{ available: boolean; domain: string }> {
+  const response = await fetch(`${API_BASE_URL}/domain/availability?domain=${encodeURIComponent(domainName)}`);
+  if (!response.ok) {
+    const d = await response.json().catch(() => ({}));
+    throw new Error(d.error || 'Failed to check availability');
+  }
+  return response.json();
+}
+
 export async function createDomainOrder(data: {
   domain_name: string;
   customer_name: string;

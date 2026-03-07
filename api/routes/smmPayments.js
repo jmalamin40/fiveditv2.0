@@ -33,6 +33,7 @@ const {
 const { sendSmmCredentialsEmail } = require('../utils/email');
 const crypto = require('crypto');
 const { getDomainPrice } = require('../utils/domainPricing');
+const { checkDomainAvailability } = require('../utils/domainAvailability');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -323,6 +324,15 @@ router.post('/payments/orders', optionalCustomerAuth, async (req, res) => {
       const priceInfo = await getDomainPrice(name);
       if (!priceInfo) {
         return res.status(400).json({ error: 'This TLD is not available for registration' });
+      }
+      try {
+        const avail = await checkDomainAvailability(name);
+        if (!avail.available) {
+          return res.status(400).json({ error: 'This domain is already registered and not available' });
+        }
+      } catch (availErr) {
+        defaultLogger.error('Availability check before SMM order', availErr);
+        return res.status(400).json({ error: 'Could not verify domain availability. Please try again.' });
       }
       domain_price = priceInfo.register_price;
       domain_currency = priceInfo.currency;
