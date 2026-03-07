@@ -9,26 +9,25 @@ const { promisify } = require('util');
 const whoisLookup = promisify(whois.lookup);
 
 const AVAILABLE_PATTERNS = [
-  /no match for/i,
-  /not found/i,
-  /no entries found/i,
-  /status:\s*available/i,
-  /is free/i,
+  /no match for\s+/i,
+  /status:\s*available\b/i,
+  /is free\b/i,
   /available for registration/i,
-  /domain not found/i,
-  /no object found/i,
-  /nothing found/i,
-  /no data found/i,
-  /(^|\s)available(\s|$)/i,  // word "available" (avoids "not available")
+  /domain not found\b/i,
+  /no (?:entries|object|data) found/i,
+  /nothing found\b/i,
 ];
 
 const TAKEN_PATTERNS = [
-  /domain name:\s*\S+/i,  // "Domain Name: EXAMPLE.COM"
+  /domain name:\s*\S+/i,   // "Domain Name: EXAMPLE.COM"
+  /domain\s*name:\s*\S+/i, // alternate spacing
   /name server:/i,
   /creation date:/i,
   /updated date:/i,
   /registrar:/i,
   /registration date:/i,
+  /registry domain id:/i,
+  /expir(y|es)?\s*date:/i,
 ];
 
 /**
@@ -48,22 +47,24 @@ async function checkDomainAvailability(domainName) {
   const raw = await whoisLookup(domain, { timeout: 10000 });
   const text = (raw || '').toString();
 
-  for (const p of AVAILABLE_PATTERNS) {
-    if (p.test(text)) {
-      return { available: true, domain };
-    }
-  }
+  // Check TAKEN first: if the response looks like a registered domain, it's not available.
   for (const p of TAKEN_PATTERNS) {
     if (p.test(text)) {
       return { available: false, domain };
     }
   }
-  // Default: if we see "No match" style in first 500 chars, treat as available
-  const head = text.slice(0, 500);
-  if (/no match|not found|no entries|available/i.test(head)) {
+  // Then check explicit "available" indicators (registrar-specific messages).
+  for (const p of AVAILABLE_PATTERNS) {
+    if (p.test(text)) {
+      return { available: true, domain };
+    }
+  }
+  // Only treat as available for very specific registrar "no match" phrases (avoid "available" - can match "available for renewal").
+  const head = text.slice(0, 600);
+  if (/no match for\s+["']?\S+\./i.test(head) || /\bno entries found\b/i.test(head) || /domain not found\s*$/im.test(head)) {
     return { available: true, domain };
   }
-  // Otherwise assume taken (we got a WHOIS record)
+  // When in doubt, assume taken so we don't sell already-registered domains.
   return { available: false, domain };
 }
 
