@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Bell } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
-import { fetchChatSessions, type ChatSessionsFilters } from '../api';
+import { fetchChatSessions, getFirebaseConfig, updateFirebaseConfig, type ChatSessionsFilters, type FirebaseConfig } from '../api';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
@@ -69,9 +69,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [onlineFilter, setOnlineFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [trafficFilter, setTrafficFilter] = useState<'all' | 'new'>('all');
+  const [unreadFilter, setUnreadFilter] = useState<'all' | 'unread'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [firebaseConfigOpen, setFirebaseConfigOpen] = useState(false);
+  const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfig>({ is_enabled: false, service_account_json: '', client_config_json: '' });
+  const [firebaseConfigSaving, setFirebaseConfigSaving] = useState(false);
+  const [firebaseConfigSaveMessage, setFirebaseConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -396,7 +401,8 @@ export default function ChatManager({ token }: ChatManagerProps) {
         page,
         limit: 20,
         online_status: onlineFilter !== 'all' ? onlineFilter : undefined,
-        is_new_traffic: trafficFilter === 'new' ? true : undefined
+        is_new_traffic: trafficFilter === 'new' ? true : undefined,
+        has_unread: unreadFilter === 'unread' ? true : undefined
       };
       
       const response = await fetchChatSessions(token, filters);
@@ -415,7 +421,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setIsLoadingMore(false);
       setIsLoadingSessions(false);
     }
-  }, [token, onlineFilter, trafficFilter]);
+  }, [token, onlineFilter, trafficFilter, unreadFilter]);
 
   // Load initial sessions and reload when filters change
   useEffect(() => {
@@ -423,7 +429,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
     setHasMore(true);
     setIsLoadingSessions(true);
     loadSessions(1, false);
-  }, [onlineFilter, trafficFilter, loadSessions]);
+  }, [onlineFilter, trafficFilter, unreadFilter, loadSessions]);
 
   // Infinite scroll handler
   const handleScroll = useCallback(() => {
@@ -446,16 +452,93 @@ export default function ChatManager({ token }: ChatManagerProps) {
     }
   }, [handleScroll]);
 
+  // Load Firebase config
+  useEffect(() => {
+    if (!token) return;
+    getFirebaseConfig(token).then(setFirebaseConfig).catch(() => {});
+  }, [token]);
+
+  const handleSaveFirebaseConfig = async () => {
+    if (!token) return;
+    setFirebaseConfigSaveMessage(null);
+    setFirebaseConfigSaving(true);
+    try {
+      await updateFirebaseConfig(token, firebaseConfig);
+      setFirebaseConfigSaveMessage({ type: 'success', text: 'Push notification settings saved.' });
+    } catch {
+      setFirebaseConfigSaveMessage({ type: 'error', text: 'Failed to save. Check service account and try again.' });
+    } finally {
+      setFirebaseConfigSaving(false);
+    }
+  };
+
   return (
     <div className="chat-manager">
       <div className="chat-header">
-        <div className="flex items-center space-x-2">
-          <MessageCircle size={24} />
-          <h1>Support Chat</h1>
-          {unreadCount > 0 && (
-            <span className="badge badge-error">{unreadCount}</span>
-          )}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center space-x-2">
+            <MessageCircle size={26} className="chat-header-icon" />
+            <h1>Support Chat</h1>
+            {unreadCount > 0 && (
+              <span className="badge badge-error">{unreadCount}</span>
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* Push notifications (Firebase) config - collapsible */}
+      <div className="firebase-config-card">
+        <button
+          type="button"
+          className="firebase-config-toggle"
+          onClick={() => setFirebaseConfigOpen(!firebaseConfigOpen)}
+        >
+          <Bell size={20} />
+          <span>Push notifications (Firebase)</span>
+          {firebaseConfig.is_enabled && <span className="firebase-enabled-badge">On</span>}
+          {firebaseConfigOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        </button>
+        {firebaseConfigOpen && (
+          <div className="firebase-config-body">
+            <label className="firebase-config-label">
+              <input
+                type="checkbox"
+                checked={firebaseConfig.is_enabled}
+                onChange={(e) => setFirebaseConfig(c => ({ ...c, is_enabled: e.target.checked }))}
+              />
+              Enable push notifications
+            </label>
+            <label className="firebase-config-label">Service account JSON (backend)</label>
+            <textarea
+              className="firebase-config-textarea"
+              value={firebaseConfig.service_account_json}
+              onChange={(e) => setFirebaseConfig(c => ({ ...c, service_account_json: e.target.value }))}
+              placeholder='Paste Firebase service account JSON (from Project settings → Service accounts)'
+              rows={4}
+            />
+            <label className="firebase-config-label">Client config JSON (for chat widget)</label>
+            <textarea
+              className="firebase-config-textarea"
+              value={firebaseConfig.client_config_json}
+              onChange={(e) => setFirebaseConfig(c => ({ ...c, client_config_json: e.target.value }))}
+              placeholder='Paste Firebase web app config: { "apiKey": "...", "projectId": "...", ... }'
+              rows={3}
+            />
+            {firebaseConfigSaveMessage && (
+              <p className={`firebase-config-msg ${firebaseConfigSaveMessage.type}`}>
+                {firebaseConfigSaveMessage.text}
+              </p>
+            )}
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleSaveFirebaseConfig}
+              disabled={firebaseConfigSaving}
+            >
+              {firebaseConfigSaving ? 'Saving...' : 'Save settings'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="chat-layout">
@@ -498,6 +581,17 @@ export default function ChatManager({ token }: ChatManagerProps) {
               >
                 <option value="all">All</option>
                 <option value="new">New Traffic</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <label className="filter-label">Unread:</label>
+              <select 
+                value={unreadFilter} 
+                onChange={(e) => setUnreadFilter(e.target.value as 'all' | 'unread')}
+                className="filter-select"
+              >
+                <option value="all">All</option>
+                <option value="unread">Unread only</option>
               </select>
             </div>
           </div>
@@ -707,23 +801,110 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
       <style>{`
         .chat-manager {
-          padding: 2rem;
+          padding: 1.5rem 2rem;
           height: calc(100vh - 4rem);
           display: flex;
           flex-direction: column;
+          background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
         }
 
         .chat-header {
-          margin-bottom: 1.5rem;
+          margin-bottom: 1rem;
         }
 
         .chat-header h1 {
-          font-size: 1.5rem;
-          font-weight: 600;
+          font-size: 1.625rem;
+          font-weight: 700;
           display: flex;
           align-items: center;
           gap: 0.5rem;
+          color: #0f172a;
         }
+
+        .chat-header-icon {
+          color: #3b82f6;
+        }
+
+        .firebase-config-card {
+          background: white;
+          border-radius: 0.75rem;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+          margin-bottom: 1rem;
+          overflow: hidden;
+        }
+
+        .firebase-config-toggle {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.875rem 1.25rem;
+          background: #f8fafc;
+          border: none;
+          cursor: pointer;
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #334155;
+          transition: background 0.2s;
+        }
+
+        .firebase-config-toggle:hover {
+          background: #f1f5f9;
+        }
+
+        .firebase-enabled-badge {
+          margin-left: auto;
+          margin-right: 0.5rem;
+          padding: 0.2rem 0.5rem;
+          background: #22c55e;
+          color: white;
+          border-radius: 9999px;
+          font-size: 0.7rem;
+          font-weight: 600;
+        }
+
+        .firebase-config-body {
+          padding: 1.25rem 1.5rem;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        .firebase-config-label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #475569;
+        }
+
+        .firebase-config-label input[type="checkbox"] {
+          margin-right: 0.5rem;
+        }
+
+        .firebase-config-textarea {
+          width: 100%;
+          padding: 0.625rem 0.75rem;
+          border: 1px solid #cbd5e1;
+          border-radius: 0.5rem;
+          font-size: 0.8125rem;
+          font-family: ui-monospace, monospace;
+          resize: vertical;
+        }
+
+        .firebase-config-textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        .firebase-config-msg {
+          font-size: 0.875rem;
+          margin: 0;
+        }
+
+        .firebase-config-msg.success { color: #16a34a; }
+        .firebase-config-msg.error { color: #dc2626; }
 
         .badge {
           display: inline-flex;
@@ -742,38 +923,41 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .chat-layout {
           display: grid;
-          grid-template-columns: 300px 1fr;
-          gap: 1.5rem;
+          grid-template-columns: 320px 1fr;
+          gap: 1.25rem;
           flex: 1;
           min-height: 0;
         }
 
         .sessions-panel {
           background: white;
-          border-radius: 0.5rem;
-          border: 1px solid #e5e7eb;
+          border-radius: 0.75rem;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
           display: flex;
           flex-direction: column;
           overflow: hidden;
         }
 
         .sessions-header {
-          padding: 1rem;
-          border-bottom: 1px solid #e5e7eb;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid #e2e8f0;
           display: flex;
           justify-content: space-between;
           align-items: center;
+          background: #fafbfc;
         }
 
         .sessions-header h2 {
           font-size: 1rem;
           font-weight: 600;
+          color: #1e293b;
         }
 
         .filter-section {
-          padding: 1rem;
-          border-bottom: 1px solid #e5e7eb;
-          background-color: #f9fafb;
+          padding: 0.875rem 1.25rem;
+          border-bottom: 1px solid #e2e8f0;
+          background-color: #f8fafc;
           display: flex;
           gap: 1rem;
           flex-wrap: wrap;
@@ -832,23 +1016,23 @@ export default function ChatManager({ token }: ChatManagerProps) {
         }
 
         .session-item {
-          padding: 1rem;
-          border-bottom: 1px solid #e5e7eb;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid #f1f5f9;
           cursor: pointer;
-          transition: background-color 0.2s;
+          transition: background-color 0.15s, border-color 0.15s;
         }
 
         .session-item:hover {
-          background-color: #f9fafb;
+          background-color: #f8fafc;
         }
 
         .session-item.active {
           background-color: #eff6ff;
-          border-left: 3px solid #3b82f6;
+          border-left: 4px solid #3b82f6;
         }
 
         .session-item.has-unread {
-          background-color: #fef3c7;
+          background-color: #fffbeb;
           font-weight: 500;
         }
 
@@ -857,13 +1041,13 @@ export default function ChatManager({ token }: ChatManagerProps) {
         }
 
         .session-item.new-traffic {
-          background-color: #fef3c7;
-          border-left: 3px solid #f59e0b;
+          background-color: #fffbeb;
+          border-left: 4px solid #f59e0b;
         }
 
         .session-item.new-traffic.active {
-          background-color: #fef3c7;
-          border-left: 3px solid #f59e0b;
+          background-color: #fffbeb;
+          border-left: 4px solid #f59e0b;
         }
 
         .new-traffic-badge {
@@ -965,39 +1149,44 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .chat-area {
           background: white;
-          border-radius: 0.5rem;
-          border: 1px solid #e5e7eb;
+          border-radius: 0.75rem;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
           display: flex;
           flex-direction: column;
           overflow: hidden;
         }
 
         .chat-header-bar {
-          padding: 1rem;
-          border-bottom: 1px solid #e5e7eb;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid #e2e8f0;
           display: flex;
           justify-content: space-between;
           align-items: center;
+          background: #fafbfc;
         }
 
         .chat-header-bar h3 {
           font-size: 1rem;
           font-weight: 600;
+          color: #1e293b;
         }
 
         .messages-container {
           flex: 1;
           overflow-y: auto;
-          padding: 1rem;
+          padding: 1.25rem;
           display: flex;
           flex-direction: column;
           gap: 1rem;
+          background: #fafbfc;
         }
 
         .message {
           display: flex;
           gap: 0.75rem;
-          max-width: 70%;
+          max-width: 75%;
+          align-items: flex-end;
         }
 
         .message-admin {
@@ -1010,8 +1199,8 @@ export default function ChatManager({ token }: ChatManagerProps) {
         }
 
         .message-icon {
-          width: 2rem;
-          height: 2rem;
+          width: 2.25rem;
+          height: 2.25rem;
           border-radius: 9999px;
           display: flex;
           align-items: center;
@@ -1020,74 +1209,83 @@ export default function ChatManager({ token }: ChatManagerProps) {
         }
 
         .message-admin .message-icon {
-          background-color: #3b82f6;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
           color: white;
+          box-shadow: 0 1px 2px rgba(37, 99, 235, 0.3);
         }
 
         .message-user .message-icon {
-          background-color: #e5e7eb;
-          color: #374151;
+          background: #e2e8f0;
+          color: #64748b;
         }
 
         .message-content {
-          background: #f3f4f6;
-          padding: 0.75rem;
-          border-radius: 0.5rem;
+          background: #f1f5f9;
+          padding: 0.75rem 1rem;
+          border-radius: 1rem 1rem 1rem 0.25rem;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.04);
         }
 
         .message-admin .message-content {
-          background: #3b82f6;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
           color: white;
+          border-radius: 1rem 1rem 0.25rem 1rem;
+          box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
         }
 
         .message-content p {
           margin: 0;
-          font-size: 0.875rem;
+          font-size: 0.9375rem;
+          line-height: 1.45;
         }
 
         .message-time {
-          font-size: 0.75rem;
-          opacity: 0.7;
-          margin-top: 0.25rem;
+          font-size: 0.7rem;
+          opacity: 0.85;
+          margin-top: 0.35rem;
           display: block;
         }
 
         .chat-input-area {
-          padding: 1rem;
-          border-top: 1px solid #e5e7eb;
+          padding: 1rem 1.25rem;
+          border-top: 1px solid #e2e8f0;
           display: flex;
-          gap: 0.5rem;
+          gap: 0.75rem;
+          background: white;
         }
 
         .chat-input {
           flex: 1;
-          padding: 0.75rem;
-          border: 1px solid #d1d5db;
-          border-radius: 0.5rem;
-          font-size: 0.875rem;
+          padding: 0.75rem 1rem;
+          border: 1px solid #cbd5e1;
+          border-radius: 0.75rem;
+          font-size: 0.9375rem;
+          transition: border-color 0.2s, box-shadow 0.2s;
         }
 
         .chat-input:focus {
           outline: none;
           border-color: #3b82f6;
-          ring: 2px;
-          ring-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
         }
 
         .btn-primary {
-          padding: 0.75rem 1rem;
-          background-color: #3b82f6;
+          padding: 0.75rem 1.25rem;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
           color: white;
           border: none;
-          border-radius: 0.5rem;
+          border-radius: 0.75rem;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          font-weight: 600;
+          font-size: 0.875rem;
+          box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
         }
 
         .btn-primary:hover:not(:disabled) {
-          background-color: #2563eb;
+          filter: brightness(1.05);
         }
 
         .btn-primary:disabled {
@@ -1096,16 +1294,18 @@ export default function ChatManager({ token }: ChatManagerProps) {
         }
 
         .btn-sm {
-          padding: 0.5rem 0.75rem;
-          background-color: #f3f4f6;
-          border: 1px solid #d1d5db;
-          border-radius: 0.375rem;
+          padding: 0.5rem 0.875rem;
+          background: #f1f5f9;
+          border: 1px solid #e2e8f0;
+          border-radius: 0.5rem;
           font-size: 0.875rem;
+          font-weight: 500;
+          color: #475569;
           cursor: pointer;
         }
 
         .btn-sm:hover {
-          background-color: #e5e7eb;
+          background: #e2e8f0;
         }
 
         .select-sm {
@@ -1140,7 +1340,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
           align-items: center;
           justify-content: center;
           height: 100%;
-          color: #6b7280;
+          color: #64748b;
+          background: #f8fafc;
+          gap: 0.75rem;
+        }
+
+        .empty-chat-state p {
+          font-size: 0.9375rem;
+          font-weight: 500;
         }
 
         .loading-dots {

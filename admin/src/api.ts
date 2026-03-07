@@ -174,6 +174,7 @@ export interface ChatSessionsFilters {
   status?: 'active' | 'closed' | 'pending';
   online_status?: 'all' | 'online' | 'offline';
   is_new_traffic?: boolean;
+  has_unread?: boolean;
   page?: number;
   limit?: number;
 }
@@ -190,6 +191,9 @@ export async function fetchChatSessions(
   }
   if (filters?.is_new_traffic === true) {
     params.append('is_new_traffic', 'true');
+  }
+  if (filters?.has_unread === true) {
+    params.append('has_unread', 'true');
   }
   if (filters?.page) params.append('page', filters.page.toString());
   if (filters?.limit) params.append('limit', filters.limit.toString());
@@ -243,6 +247,28 @@ export async function updateAdminOnlineStatus(token: string) {
 
 export async function fetchUserOnlineStatus(token: string, sessionId: string) {
   const { data } = await client.get<OnlineStatus>(`/chat/admin/sessions/${sessionId}/online-status`, authHeaders(token));
+  return data;
+}
+
+// Firebase push notifications config
+export interface FirebaseConfig {
+  is_enabled: boolean;
+  service_account_json: string;
+  client_config_json: string;
+}
+
+export async function getFirebaseConfig(token: string) {
+  const { data } = await client.get<FirebaseConfig>('/chat/admin/firebase-config', authHeaders(token));
+  return data;
+}
+
+export async function updateFirebaseConfig(token: string, payload: FirebaseConfig) {
+  const { data } = await client.put<{ success: boolean }>('/chat/admin/firebase-config', payload, authHeaders(token));
+  return data;
+}
+
+export async function registerAdminFcmToken(token: string, fcmToken: string) {
+  const { data } = await client.post<{ success: boolean }>('/chat/admin/fcm-token', { token: fcmToken }, authHeaders(token));
   return data;
 }
 

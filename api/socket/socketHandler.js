@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
+const { sendPushToRecipient } = require('../utils/firebasePush');
 
 // Store active connections
 const activeUsers = new Map(); // sessionId -> socketId
@@ -320,6 +321,9 @@ function setupSocketHandlers(io) {
         // Send to all admins
         io.to('admins').emit('message:new', newMessage);
 
+        // Push notification to admins
+        sendPushToRecipient('admin', null, 'New chat message', message.trim().substring(0, 100)).catch(() => {});
+
         // Update sessions list for admins
         const [sessions] = await pool.execute(
           `SELECT 
@@ -399,7 +403,10 @@ function setupSocketHandlers(io) {
 
         // Send to user in that session
         io.to(`session:${sessionId}`).emit('message:new', newMessage);
-        
+
+        // Push notification to user
+        sendPushToRecipient('user', sessionId, 'Support replied', message.trim().substring(0, 100)).catch(() => {});
+
         // Update unread count for user (admin messages are unread until user opens chat)
         const [userUnreadResult] = await pool.execute(
           `SELECT COUNT(*) as count 

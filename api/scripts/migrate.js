@@ -231,6 +231,36 @@ async function migrate() {
     `);
     console.log('✅ User online status table created');
 
+    // FCM tokens for push notifications (user = per session, admin = per admin)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS fcm_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(36) NULL,
+        admin_id INT NULL,
+        token VARCHAR(500) NOT NULL,
+        user_type ENUM('user', 'admin') NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_token (token(255)),
+        INDEX idx_session (session_id),
+        INDEX idx_admin (admin_id),
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ FCM tokens table created');
+
+    // Firebase config for push (service account for backend, client config for frontend)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS firebase_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        is_enabled BOOLEAN DEFAULT FALSE,
+        service_account_json TEXT NULL,
+        client_config_json TEXT NULL COMMENT 'Firebase web app config for FCM getToken',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Firebase config table created');
+
     // Create hosting_accounts table
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS hosting_accounts (

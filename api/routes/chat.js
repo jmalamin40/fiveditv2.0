@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { sendPushToRecipient } = require('../utils/firebasePush');
 
 // Generate UUID for session IDs
 const generateUUID = () => {
@@ -142,6 +143,7 @@ router.get('/admin/sessions', authenticate, requireAdmin, async (req, res) => {
       status, 
       online_status, 
       is_new_traffic, 
+      has_unread,
       page = 1, 
       limit = 20 
     } = req.query;
@@ -190,20 +192,24 @@ router.get('/admin/sessions', authenticate, requireAdmin, async (req, res) => {
     baseQuery += ' GROUP BY cs.id';
     
     // Apply online status filter after grouping
+    const havingParts = [];
     if (online_status === 'online') {
-      baseQuery += ' HAVING is_online = TRUE';
+      havingParts.push('is_online = TRUE');
     } else if (online_status === 'offline') {
-      baseQuery += ' HAVING is_online = FALSE';
+      havingParts.push('is_online = FALSE');
+    }
+    if (has_unread === 'true') {
+      havingParts.push('unread_count > 0');
+    }
+    if (havingParts.length > 0) {
+      baseQuery += ' HAVING ' + havingParts.join(' AND ');
     }
     
     // Order by
     baseQuery += ' ORDER BY cs.is_new_traffic DESC, cs.last_message_at DESC';
     
-    // Get total count for pagination
-    const countQuery = baseQuery.replace(
-      'SELECT cs.*, COUNT(cm.id) as message_count, MAX(cm.created_at) as last_message_time, SUM(CASE WHEN cm.sender_type = \'user\' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count, CASE WHEN EXISTS (SELECT 1 FROM user_online_status uos WHERE uos.session_id = cs.id AND uos.user_type = \'user\' AND TIMESTAMPDIFF(SECOND, uos.last_seen, NOW()) <= 30) THEN TRUE ELSE FALSE END as is_online',
-      'SELECT COUNT(DISTINCT cs.id) as total'
-    ).replace(' GROUP BY cs.id', '').replace(/HAVING.*/, '').replace(/ORDER BY.*/, '');
+    // Get total count for pagination (same filters including HAVING)
+    const countQuery = 'SELECT COUNT(*) as total FROM (' + baseQuery.replace(/\s+LIMIT\s+\?\s+OFFSET\s+\?/, '').replace(/\s+ORDER BY[\s\S]*$/, '') + ') _count';
     
     const [countResult] = await pool.execute(countQuery, params);
     const total = countResult[0]?.total || 0;
@@ -423,6 +429,104 @@ router.post('/admin/online-status', authenticate, requireAdmin, async (req, res)
   } catch (error) {
     console.error('Error updating admin online status:', error);
     res.status(500).json({ error: 'Failed to update online status' });
+  }
+});
+
+// Public: Register FCM token for a chat session (user/customer)
+router.post('/fcm-token', async (req, res) => {
+  try {
+    const { sessionId, token } = req.body;
+    if (!sessionId || !token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'sessionId and token are required' });
+    }
+    const [sessions] = await pool.execute('SELECT id FROM chat_sessions WHERE id = ?', [sessionId]);
+    if (sessions.length === 0) return res.status(404).json({ error: 'Session not found' });
+    await pool.execute(
+      `INSERT INTO fcm_tokens (session_id, user_type, token) VALUES (?, 'user', ?)
+       ON DUPLICATE KEY UPDATE session_id = VALUES(session_id)`,
+      [sessionId, token.substring(0, 500)]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error registering FCM token:', error);
+    res.status(500).json({ error: 'Failed to register token' });
+  }
+});
+
+// Admin: Register FCM token for admin push
+router.post('/admin/fcm-token', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const adminId = req.user.id;
+    const { token } = req.body;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token is required' });
+    }
+    await pool.execute(
+      `INSERT INTO fcm_tokens (admin_id, user_type, token) VALUES (?, 'admin', ?)
+       ON DUPLICATE KEY UPDATE admin_id = VALUES(admin_id), session_id = NULL, user_type = 'admin'`,
+      [adminId, token.substring(0, 500)]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error registering admin FCM token:', error);
+    res.status(500).json({ error: 'Failed to register token' });
+  }
+});
+
+// Public: Get Firebase client config for FCM (if enabled) - used by chat widget to request permission and get token
+router.get('/firebase-client-config', async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT is_enabled, client_config_json FROM firebase_config WHERE id = 1'
+    );
+    if (!rows.length || !rows[0].is_enabled || !rows[0].client_config_json) {
+      return res.json({ enabled: false });
+    }
+    const config = JSON.parse(rows[0].client_config_json || '{}');
+    res.json({ enabled: true, config });
+  } catch (error) {
+    res.json({ enabled: false });
+  }
+});
+
+// Admin: Get Firebase config (for editing)
+router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT is_enabled, service_account_json, client_config_json FROM firebase_config WHERE id = 1'
+    );
+    if (!rows.length) {
+      return res.json({ is_enabled: false, service_account_json: '', client_config_json: '' });
+    }
+    const r = rows[0];
+    res.json({
+      is_enabled: !!r.is_enabled,
+      service_account_json: r.service_account_json || '',
+      client_config_json: r.client_config_json || '',
+    });
+  } catch (error) {
+    console.error('Error fetching Firebase config:', error);
+    res.status(500).json({ error: 'Failed to fetch config' });
+  }
+});
+
+// Admin: Update Firebase config
+router.put('/admin/firebase-config', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { is_enabled, service_account_json, client_config_json } = req.body;
+    await pool.execute(
+      `INSERT INTO firebase_config (id, is_enabled, service_account_json, client_config_json)
+       VALUES (1, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         is_enabled = VALUES(is_enabled),
+         service_account_json = VALUES(service_account_json),
+         client_config_json = VALUES(client_config_json)`,
+      [!!is_enabled, service_account_json || null, client_config_json || null]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating Firebase config:', error);
+    res.status(500).json({ error: 'Failed to update config' });
   }
 });
 

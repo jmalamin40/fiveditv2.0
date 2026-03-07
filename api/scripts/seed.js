@@ -27,21 +27,12 @@ async function seed() {
     console.log('✅ Connected to database');
     console.log('🌱 Starting database seeding...\n');
 
-    // Clear existing data
-    await connection.execute('SET FOREIGN_KEY_CHECKS = 0');
-    await connection.execute('TRUNCATE TABLE plan_features');
-    await connection.execute('TRUNCATE TABLE service_plans');
-    await connection.execute('TRUNCATE TABLE script_plans');
-    await connection.execute('TRUNCATE TABLE reviews');
-    await connection.execute('TRUNCATE TABLE services');
-    await connection.execute('TRUNCATE TABLE codecanyon_scripts');
-    await connection.execute('TRUNCATE TABLE categories');
-    await connection.execute('TRUNCATE TABLE users');
-    await connection.execute('SET FOREIGN_KEY_CHECKS = 1');
-    console.log('✅ Cleared existing data\n');
-
-    // Seed categories
-    for (const category of categories) {
+    // Seed categories (skip if already have data)
+    const [catRows] = await connection.execute('SELECT COUNT(*) as n FROM categories');
+    if (catRows[0].n > 0) {
+      console.log('⏭️  Categories already exist, skipping\n');
+    } else {
+      for (const category of categories) {
       await connection.execute(
         `INSERT INTO categories (id, name, slug, description)
          VALUES (?, ?, ?, ?)`,
@@ -52,12 +43,17 @@ async function seed() {
           category.description || null
         ]
       );
+      }
+      console.log(`✅ Seeded ${categories.length} categories\n`);
     }
-    console.log(`✅ Seeded ${categories.length} categories\n`);
 
-    // Seed services
-    for (const service of services) {
-      await connection.execute(
+    // Seed services (skip if already have data)
+    const [svcRows] = await connection.execute('SELECT COUNT(*) as n FROM services');
+    if (svcRows[0].n > 0) {
+      console.log('⏭️  Services already exist, skipping\n');
+    } else {
+      for (const service of services) {
+        await connection.execute(
         `INSERT INTO services (id, icon, title, short, description, features, color, category, category_id, link)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -72,45 +68,50 @@ async function seed() {
           service.categoryId || null,
           service.link || null
         ]
-      );
+        );
 
-      if (service.plans && Array.isArray(service.plans)) {
-        for (const plan of service.plans) {
+        if (service.plans && Array.isArray(service.plans)) {
+          for (const plan of service.plans) {
           const [planResult] = await connection.execute(
-            `INSERT INTO service_plans (service_id, plan_id, name, price, currency, description, delivery_time, popular)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              service.id,
-              plan.id,
-              plan.name,
-              plan.price,
-              plan.currency || 'USD',
-              plan.description || '',
-              plan.deliveryTime || '',
-              plan.popular || false
-            ]
-          );
+              `INSERT INTO service_plans (service_id, plan_id, name, price, currency, description, delivery_time, popular)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                service.id,
+                plan.id,
+                plan.name,
+                plan.price,
+                plan.currency || 'USD',
+                plan.description || '',
+                plan.deliveryTime || '',
+                plan.popular || false
+              ]
+            );
 
-          const planId = planResult.insertId;
+            const planId = planResult.insertId;
 
-          if (plan.features && Array.isArray(plan.features)) {
-            for (const feature of plan.features) {
-              await connection.execute(
-                `INSERT INTO plan_features (plan_id, plan_type, name, included)
-                 VALUES (?, 'service', ?, ?)`,
-                [planId, feature.name, feature.included !== false]
-              );
+            if (plan.features && Array.isArray(plan.features)) {
+              for (const feature of plan.features) {
+                await connection.execute(
+                  `INSERT INTO plan_features (plan_id, plan_type, name, included)
+                   VALUES (?, 'service', ?, ?)`,
+                  [planId, feature.name, feature.included !== false]
+                );
+              }
             }
           }
         }
       }
+      console.log(`✅ Seeded ${services.length} services\n`);
     }
-    console.log(`✅ Seeded ${services.length} services\n`);
 
-    // Seed CodeCanyon scripts
-    for (const script of scripts) {
-      await connection.execute(
-        `INSERT INTO codecanyon_scripts (id, name, category, short_description, description, codecanyon_url, image_url, use_default_plans)
+    // Seed CodeCanyon scripts (skip if already have data)
+    const [scriptRows] = await connection.execute('SELECT COUNT(*) as n FROM codecanyon_scripts');
+    if (scriptRows[0].n > 0) {
+      console.log('⏭️  CodeCanyon scripts already exist, skipping\n');
+    } else {
+      for (const script of scripts) {
+        await connection.execute(
+          `INSERT INTO codecanyon_scripts (id, name, category, short_description, description, codecanyon_url, image_url, use_default_plans)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           script.id,
@@ -122,44 +123,49 @@ async function seed() {
           script.imageUrl || '',
           script.useDefaultPlans !== false
         ]
-      );
+        );
 
-      if (script.plans && Array.isArray(script.plans)) {
-        for (const plan of script.plans) {
-          const [planResult] = await connection.execute(
-            `INSERT INTO script_plans (script_id, plan_id, name, price, currency, description, delivery_time, popular)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              script.id,
-              plan.id,
-              plan.name,
-              plan.price,
-              plan.currency || 'USD',
-              plan.description || '',
-              plan.deliveryTime || '',
-              plan.popular || false
-            ]
-          );
+        if (script.plans && Array.isArray(script.plans)) {
+          for (const plan of script.plans) {
+            const [planResult] = await connection.execute(
+              `INSERT INTO script_plans (script_id, plan_id, name, price, currency, description, delivery_time, popular)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                script.id,
+                plan.id,
+                plan.name,
+                plan.price,
+                plan.currency || 'USD',
+                plan.description || '',
+                plan.deliveryTime || '',
+                plan.popular || false
+              ]
+            );
 
-          const planId = planResult.insertId;
+            const planId = planResult.insertId;
 
-          if (plan.features && Array.isArray(plan.features)) {
-            for (const feature of plan.features) {
-              await connection.execute(
-                `INSERT INTO plan_features (plan_id, plan_type, name, included)
-                 VALUES (?, 'script', ?, ?)`,
-                [planId, feature.name, feature.included !== false]
-              );
+            if (plan.features && Array.isArray(plan.features)) {
+              for (const feature of plan.features) {
+                await connection.execute(
+                  `INSERT INTO plan_features (plan_id, plan_type, name, included)
+                   VALUES (?, 'script', ?, ?)`,
+                  [planId, feature.name, feature.included !== false]
+                );
+              }
             }
           }
         }
       }
+      console.log(`✅ Seeded ${scripts.length} CodeCanyon scripts\n`);
     }
-    console.log(`✅ Seeded ${scripts.length} CodeCanyon scripts\n`);
 
-    // Seed reviews
-    for (const review of reviews) {
-      await connection.execute(
+    // Seed reviews (skip if already have data)
+    const [reviewRows] = await connection.execute('SELECT COUNT(*) as n FROM reviews');
+    if (reviewRows[0].n > 0) {
+      console.log('⏭️  Reviews already exist, skipping\n');
+    } else {
+      for (const review of reviews) {
+        await connection.execute(
         `INSERT INTO reviews (reviewer_name, reviewer_initial, location, country_code, is_repeat_client, rating, time_posted, review_text, price_range, duration, helpful_count)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -175,18 +181,24 @@ async function seed() {
           review.duration,
           review.helpfulCount || 0
         ]
-      );
+        );
+      }
+      console.log(`✅ Seeded ${reviews.length} reviews\n`);
     }
-    console.log(`✅ Seeded ${reviews.length} reviews\n`);
 
-    // Seed default admin user
-    const passwordHash = await bcrypt.hash(adminUser.password, 10);
-    await connection.execute(
-      `INSERT INTO users (name, email, password_hash, role)
-       VALUES (?, ?, ?, ?)`,
-      [adminUser.name, adminUser.email, passwordHash, 'admin']
-    );
-    console.log(`✅ Created default admin user (${adminUser.email})\n`);
+    // Seed default admin user (skip if email already exists)
+    const [adminRows] = await connection.execute('SELECT COUNT(*) as n FROM users WHERE email = ?', [adminUser.email]);
+    if (adminRows[0].n > 0) {
+      console.log(`⏭️  Admin user (${adminUser.email}) already exists, skipping\n`);
+    } else {
+      const passwordHash = await bcrypt.hash(adminUser.password, 10);
+      await connection.execute(
+        `INSERT INTO users (name, email, password_hash, role)
+         VALUES (?, ?, ?, ?)`,
+        [adminUser.name, adminUser.email, passwordHash, 'admin']
+      );
+      console.log(`✅ Created default admin user (${adminUser.email})\n`);
+    }
 
     console.log('🎉 Database seeding completed successfully!');
     
