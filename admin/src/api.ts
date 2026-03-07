@@ -316,6 +316,7 @@ export interface DomainResellerConfig {
   api_secret: string | null;
   reseller_customer_id: string | null;
   default_currency: string;
+  use_sandbox?: boolean;
   updated_at: string | null;
 }
 

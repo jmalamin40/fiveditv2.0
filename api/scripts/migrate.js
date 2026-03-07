@@ -641,6 +641,13 @@ async function migrate() {
     `);
     console.log('✅ domain_reseller_config table created');
 
+    try {
+      await connection.execute(`ALTER TABLE domain_reseller_config ADD COLUMN use_sandbox BOOLEAN DEFAULT FALSE COMMENT 'Use Dynadot Sandbox (api-sandbox.dynadot.com) for testing'`);
+      console.log('✅ domain_reseller_config.use_sandbox added');
+    } catch (e) {
+      if (!e.message || !e.message.includes('Duplicate column')) console.log('⚠️ domain_reseller_config use_sandbox:', e.message);
+    }
+
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS domain_tld_pricing (
         id INT AUTO_INCREMENT PRIMARY KEY,

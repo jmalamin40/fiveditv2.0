@@ -27,6 +27,7 @@ router.get('/config', async (req, res) => {
         api_secret: null,
         reseller_customer_id: null,
         default_currency: 'BDT',
+        use_sandbox: false,
         updated_at: null,
       });
     }
@@ -39,6 +40,7 @@ router.get('/config', async (req, res) => {
       api_secret: row.api_secret,
       reseller_customer_id: row.reseller_customer_id,
       default_currency: row.default_currency || 'BDT',
+      use_sandbox: Boolean(row.use_sandbox),
       updated_at: row.updated_at,
     });
   } catch (e) {
@@ -58,10 +60,11 @@ router.put('/config', async (req, res) => {
       api_secret,
       reseller_customer_id,
       default_currency,
+      use_sandbox,
     } = req.body;
     await pool.execute(
-      `INSERT INTO domain_reseller_config (id, is_enabled, provider, api_url, api_key, api_secret, reseller_customer_id, default_currency)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO domain_reseller_config (id, is_enabled, provider, api_url, api_key, api_secret, reseller_customer_id, default_currency, use_sandbox)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          is_enabled = VALUES(is_enabled),
          provider = VALUES(provider),
@@ -70,6 +73,7 @@ router.put('/config', async (req, res) => {
          api_secret = VALUES(api_secret),
          reseller_customer_id = VALUES(reseller_customer_id),
          default_currency = VALUES(default_currency),
+         use_sandbox = VALUES(use_sandbox),
          updated_at = CURRENT_TIMESTAMP`,
       [
         is_enabled !== undefined ? Boolean(is_enabled) : false,
@@ -79,6 +83,7 @@ router.put('/config', async (req, res) => {
         api_secret || null,
         reseller_customer_id || null,
         default_currency || 'BDT',
+        use_sandbox !== undefined ? Boolean(use_sandbox) : false,
       ]
     );
     res.json({ success: true });

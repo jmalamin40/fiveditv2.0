@@ -148,6 +148,7 @@ export default function DomainResellerManager({ token, toast }: Props) {
     api_secret: null,
     reseller_customer_id: null,
     default_currency: 'BDT',
+    use_sandbox: false,
     updated_at: null,
   };
 
@@ -203,9 +204,19 @@ export default function DomainResellerManager({ token, toast }: Props) {
             </>
           )}
           {cfg.provider === 'dynadot' && (
-            <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: '-0.25rem 0 0', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }}>
-              <strong>Dynadot:</strong> Sign in at dynadot.com → <strong>Tools → API</strong>. Unlock the API and copy your <strong>Production</strong> key (or Sandbox for testing). API docs: <a href="https://www.dynadot.com/domain/api.html" target="_blank" rel="noopener noreferrer" style={{ color: '#4f46e5' }}>dynadot.com/domain/api</a>
-            </p>
+            <>
+              <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: '-0.25rem 0 0', padding: '0.5rem 0.75rem', background: '#f8fafc', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }}>
+                <strong>Dynadot:</strong> Sign in at dynadot.com → <strong>Tools → API</strong>. Unlock the API and copy your <strong>Production</strong> key (or Sandbox for testing). API docs: <a href="https://www.dynadot.com/domain/api.html" target="_blank" rel="noopener noreferrer" style={{ color: '#4f46e5' }}>dynadot.com/domain/api</a>
+              </p>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontWeight: 500 }}>
+                <input
+                  type="checkbox"
+                  checked={cfg.use_sandbox ?? false}
+                  onChange={(e) => setConfig((c) => (c ? { ...c, use_sandbox: e.target.checked } : c))}
+                />
+                Use Sandbox (testing) — uses api-sandbox.dynadot.com; paste your <strong>Sandbox</strong> API key below when enabled
+              </label>
+            </>
           )}
           <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>API URL</label>
           <input
