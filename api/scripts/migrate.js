@@ -625,8 +625,8 @@ async function migrate() {
     }
 
     // Seed SMM packages: Starter, Standard, Premium (each monthly + yearly)
-    const { seedSmmPackages } = require('./seedSmmPackages');
-    await seedSmmPackages(connection);
+    // const { seedSmmPackages } = require('./seedSmmPackages');
+    // await seedSmmPackages(connection);
 
     console.log('\n🎉 Database migration completed successfully!');
     

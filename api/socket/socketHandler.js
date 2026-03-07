@@ -322,7 +322,8 @@ function setupSocketHandlers(io) {
         io.to('admins').emit('message:new', newMessage);
 
         // Push notification to admins
-        sendPushToRecipient('admin', null, 'New chat message', message.trim().substring(0, 100)).catch(() => {});
+        const msgPreview = message.trim().substring(0, 150) || 'New message';
+        sendPushToRecipient('admin', null, 'Support Chat: New message', msgPreview).catch(() => {});
 
         // Update sessions list for admins
         const [sessions] = await pool.execute(
@@ -405,7 +406,8 @@ function setupSocketHandlers(io) {
         io.to(`session:${sessionId}`).emit('message:new', newMessage);
 
         // Push notification to user
-        sendPushToRecipient('user', sessionId, 'Support replied', message.trim().substring(0, 100)).catch(() => {});
+        const msgPreview = message.trim().substring(0, 150) || 'Support replied';
+        sendPushToRecipient('user', sessionId, 'Support Chat: Reply', msgPreview).catch(() => {});
 
         // Update unread count for user (admin messages are unread until user opens chat)
         const [userUnreadResult] = await pool.execute(

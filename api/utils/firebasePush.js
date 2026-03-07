@@ -88,8 +88,11 @@ async function sendPushToRecipient(recipientType, sessionId, title, body) {
       messaging = admin.messaging();
     }
     const message = {
-      notification: { title, body },
-      data: sessionId ? { sessionId } : {},
+      notification: {
+        title: title || 'Support Chat',
+        body: body || 'New message',
+      },
+      data: sessionId ? { sessionId, body: (body || '').substring(0, 100) } : { body: (body || '').substring(0, 100) },
       tokens,
       android: { priority: 'high' },
       apns: { payload: { aps: { sound: 'default' } } },

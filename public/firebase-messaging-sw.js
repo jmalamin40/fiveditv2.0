@@ -24,15 +24,27 @@ if (apiBase) {
         firebase.initializeApp(data.config);
         const messaging = firebase.messaging();
         messaging.onBackgroundMessage(function (payload) {
-          if (payload.notification) {
-            self.registration.showNotification(
-              payload.notification.title || 'Notification',
-              {
-                body: payload.notification.body,
-                icon: payload.notification.icon || '/favicon.ico'
+          var title = (payload.notification && payload.notification.title) || 'Support Chat';
+          var body = (payload.notification && payload.notification.body) || (payload.data && payload.data.body) || 'New message';
+          self.registration.showNotification(title, {
+            body: body,
+            icon: (payload.notification && payload.notification.icon) || '/favicon.ico',
+            tag: 'support-chat',
+            data: { url: self.location.origin + '/' }
+          });
+        });
+        self.addEventListener('notificationclick', function (event) {
+          event.notification.close();
+          var url = (event.notification.data && event.notification.data.url) || self.location.origin + '/';
+          event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
+            for (var i = 0; i < clientList.length; i++) {
+              if (clientList[i].url.indexOf(self.location.origin) === 0 && 'focus' in clientList[i]) {
+                clientList[i].navigate(url);
+                return clientList[i].focus();
               }
-            );
-          }
+            }
+            if (self.clients.openWindow) return self.clients.openWindow(url);
+          }));
         });
       } catch (e) {
         console.error('[firebase-messaging-sw] init error', e);
