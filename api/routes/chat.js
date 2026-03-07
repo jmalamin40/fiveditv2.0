@@ -446,6 +446,7 @@ router.post('/fcm-token', async (req, res) => {
        ON DUPLICATE KEY UPDATE session_id = VALUES(session_id)`,
       [sessionId, token.substring(0, 500)]
     );
+    console.log('User FCM token registered for session', sessionId);
     res.json({ success: true });
   } catch (error) {
     console.error('Error registering FCM token:', error);
@@ -466,6 +467,7 @@ router.post('/admin/fcm-token', authenticate, requireAdmin, async (req, res) => 
        ON DUPLICATE KEY UPDATE admin_id = VALUES(admin_id), session_id = NULL, user_type = 'admin'`,
       [adminId, token.substring(0, 500)]
     );
+    console.log('Admin FCM token registered for admin_id', adminId);
     res.json({ success: true });
   } catch (error) {
     console.error('Error registering admin FCM token:', error);

@@ -77,6 +77,8 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfig>({ is_enabled: false, service_account_json: '', client_config_json: '', vapid_key: '' });
   const [firebaseConfigSaving, setFirebaseConfigSaving] = useState(false);
   const [firebaseConfigSaveMessage, setFirebaseConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [enablePushLoading, setEnablePushLoading] = useState(false);
+  const [enablePushMessage, setEnablePushMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -509,6 +511,54 @@ export default function ChatManager({ token }: ChatManagerProps) {
     }
   };
 
+  // Explicit "Enable push" – requests permission (browser will show prompt) then registers token
+  const handleEnablePushNotifications = async () => {
+    if (!token) return;
+    setEnablePushMessage(null);
+    setEnablePushLoading(true);
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://api.fivedit.com/api';
+    try {
+      const data = await getFirebaseClientConfig();
+      if (!data.enabled || !data.config || !data.vapidKey) {
+        setEnablePushMessage({ type: 'error', text: 'Save Firebase config above (enable, client config, VAPID key) and click Save, then try again.' });
+        setEnablePushLoading(false);
+        return;
+      }
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        setEnablePushMessage({ type: 'error', text: 'This browser does not support push notifications.' });
+        setEnablePushLoading(false);
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setEnablePushMessage({ type: 'error', text: 'Notifications blocked. Enable them in your browser: click the lock/info icon in the address bar → Site settings → Notifications → Allow.' });
+        setEnablePushLoading(false);
+        return;
+      }
+      const swUrl = `${window.location.origin}/firebase-messaging-sw.js?api=${encodeURIComponent(apiBase)}`;
+      const reg = await navigator.serviceWorker.register(swUrl);
+      await (reg as unknown as { ready: Promise<ServiceWorkerRegistration> }).ready;
+      await new Promise<void>((r) => setTimeout(r, 2500));
+      const { initializeApp } = await import('firebase/app');
+      const { getMessaging, getToken } = await import('firebase/messaging');
+      const app = initializeApp(data.config);
+      const messaging = getMessaging(app);
+      const fcmToken = await getToken(messaging, { vapidKey: data.vapidKey! });
+      if (!fcmToken) {
+        setEnablePushMessage({ type: 'error', text: 'Could not get push token. Reload the page and try again.' });
+        setEnablePushLoading(false);
+        return;
+      }
+      await registerAdminFcmToken(token, fcmToken);
+      setEnablePushMessage({ type: 'success', text: 'Push notifications enabled. Token saved.' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setEnablePushMessage({ type: 'error', text: `Failed: ${msg}. Check Firebase config and try again, or reload the page.` });
+    } finally {
+      setEnablePushLoading(false);
+    }
+  };
+
   return (
     <div className="chat-manager">
       <div className="chat-header">
@@ -582,7 +632,20 @@ export default function ChatManager({ token }: ChatManagerProps) {
             >
               {firebaseConfigSaving ? 'Saving...' : 'Save settings'}
             </button>
-            <p className="firebase-config-hint">Allow browser notifications when prompted. If you don’t receive push, reload the Support Chat page after saving.</p>
+            <p className="firebase-config-hint">Click below so the browser asks for notification permission and your device is registered for push.</p>
+            <button
+              type="button"
+              className="btn-primary firebase-enable-btn"
+              onClick={handleEnablePushNotifications}
+              disabled={enablePushLoading || !firebaseConfig.is_enabled}
+            >
+              {enablePushLoading ? 'Enabling...' : 'Enable push notifications (this device)'}
+            </button>
+            {enablePushMessage && (
+              <p className={`firebase-config-msg ${enablePushMessage.type}`}>
+                {enablePushMessage.text}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -956,6 +1019,10 @@ export default function ChatManager({ token }: ChatManagerProps) {
           font-size: 0.8125rem;
           color: #64748b;
           margin: 0.75rem 0 0;
+        }
+
+        .firebase-enable-btn {
+          margin-top: 0.5rem;
         }
 
         .badge {

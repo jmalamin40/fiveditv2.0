@@ -69,6 +69,9 @@ const Chat: React.FC = () => {
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isOpenRef = useRef(false);
@@ -278,6 +281,58 @@ const Chat: React.FC = () => {
     }
   };
 
+  const handleEnablePush = async () => {
+    if (!sessionId || pushLoading || pushEnabled) return;
+    setPushMessage(null);
+    setPushLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/chat/firebase-client-config`);
+      const data = await res.json();
+      if (!data.enabled || !data.config || !data.vapidKey) {
+        setPushMessage('Push not configured.');
+        setPushLoading(false);
+        return;
+      }
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        setPushMessage('Browser does not support notifications.');
+        setPushLoading(false);
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setPushMessage('Notifications blocked. Allow in browser settings (lock icon → Site settings).');
+        setPushLoading(false);
+        return;
+      }
+      const swUrl = `${window.location.origin}/firebase-messaging-sw.js?api=${encodeURIComponent(API_BASE_URL)}`;
+      const reg = await navigator.serviceWorker.register(swUrl);
+      await (reg as unknown as { ready: Promise<ServiceWorkerRegistration> }).ready;
+      await new Promise<void>(r => setTimeout(r, 2500));
+      const { initializeApp } = await import('firebase/app');
+      const { getMessaging, getToken } = await import('firebase/messaging');
+      const app = initializeApp(data.config);
+      const messaging = getMessaging(app);
+      const fcmToken = await getToken(messaging, { vapidKey: data.vapidKey });
+      if (!fcmToken) {
+        setPushMessage('Could not get token. Reload and try again.');
+        setPushLoading(false);
+        return;
+      }
+      const postRes = await fetch(`${API_BASE_URL}/chat/fcm-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, token: fcmToken })
+      });
+      if (!postRes.ok) throw new Error('Failed to register token');
+      setPushEnabled(true);
+      setPushMessage('Notifications enabled. You\'ll get push when support replies.');
+    } catch (err) {
+      setPushMessage(err instanceof Error ? err.message : 'Failed to enable. Try again.');
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   return (
     <>
       {/* Chat Button */}
@@ -361,6 +416,21 @@ const Chat: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Enable push notifications (user/customer site) */}
+          {!pushEnabled && sessionId && (
+            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={handleEnablePush}
+                disabled={pushLoading}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+              >
+                {pushLoading ? 'Enabling...' : '🔔 Enable notifications when support replies'}
+              </button>
+              {pushMessage && <p className="text-xs text-gray-600">{pushMessage}</p>}
+            </div>
+          )}
 
           {/* Messages Container */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
