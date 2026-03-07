@@ -67,13 +67,26 @@ async function getTokensForRecipient(recipientType, sessionId = null) {
  */
 async function sendPushToRecipient(recipientType, sessionId, title, body) {
   const config = await getFirebaseConfig();
-  if (!config) return;
+  if (!config) {
+    defaultLogger.warn('Firebase push: skipped (not configured or disabled)');
+    return;
+  }
   const app = await initFirebase();
   if (!app) return;
   const tokens = await getTokensForRecipient(recipientType, sessionId);
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) {
+    defaultLogger.warn('Firebase push: no tokens for', recipientType, sessionId || '');
+    return;
+  }
   try {
-    const messaging = app.messaging();
+    let messaging;
+    try {
+      const { getMessaging } = require('firebase-admin/messaging');
+      messaging = getMessaging(app);
+    } catch (_) {
+      const admin = require('firebase-admin');
+      messaging = admin.messaging();
+    }
     const message = {
       notification: { title, body },
       data: sessionId ? { sessionId } : {},

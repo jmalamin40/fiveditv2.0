@@ -467,11 +467,15 @@ export default function ChatManager({ token }: ChatManagerProps) {
       .then((data) => {
         if (cancelled || !data.enabled || !data.config || !data.vapidKey) return;
         if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-        const swUrl = `${window.location.origin}/firebase-messaging-sw.js?api=${encodeURIComponent(apiBase)}`;
-        return navigator.serviceWorker.register(swUrl).then((reg) => (reg as unknown as { ready: Promise<ServiceWorkerRegistration> }).ready).then(() => {
+        // Request permission first so the user sees the browser prompt
+        return Notification.requestPermission().then((permission) => {
+          if (cancelled || permission !== 'granted') return;
+          const swUrl = `${window.location.origin}/firebase-messaging-sw.js?api=${encodeURIComponent(apiBase)}`;
+          return navigator.serviceWorker.register(swUrl).then((reg) => (reg as unknown as { ready: Promise<ServiceWorkerRegistration> }).ready);
+        }).then(() => {
           if (cancelled) return;
-          // Give SW time to fetch config and init Firebase
-          return new Promise<void>((resolve) => setTimeout(resolve, 1500));
+          // Give SW time to become controller and init Firebase (skipWaiting/claim in SW)
+          return new Promise<void>((r) => setTimeout(r, 2500));
         }).then(() => {
           if (cancelled) return;
           return import('firebase/app').then(({ initializeApp }) => {
@@ -578,6 +582,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
             >
               {firebaseConfigSaving ? 'Saving...' : 'Save settings'}
             </button>
+            <p className="firebase-config-hint">Allow browser notifications when prompted. If you don’t receive push, reload the Support Chat page after saving.</p>
           </div>
         )}
       </div>
@@ -946,6 +951,12 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .firebase-config-msg.success { color: #16a34a; }
         .firebase-config-msg.error { color: #dc2626; }
+
+        .firebase-config-hint {
+          font-size: 0.8125rem;
+          color: #64748b;
+          margin: 0.75rem 0 0;
+        }
 
         .badge {
           display: inline-flex;

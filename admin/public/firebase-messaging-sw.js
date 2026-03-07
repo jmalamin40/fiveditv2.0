@@ -1,5 +1,13 @@
 // Firebase Cloud Messaging service worker – receives push when app is in background.
 // Config is loaded from API (api base passed as ?api= in registration URL).
+// skipWaiting + claim so this SW controls the page immediately and getToken() works on first load.
+self.addEventListener('install', function () {
+  self.skipWaiting();
+});
+self.addEventListener('activate', function (event) {
+  event.waitUntil(self.clients.claim());
+});
+
 const url = new URL(self.location.href);
 const apiBase = url.searchParams.get('api') || '';
 
