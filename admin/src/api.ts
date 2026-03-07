@@ -360,6 +360,23 @@ export async function deleteDomainTld(token: string, id: number) {
   await client.delete(`/admin/domain/tld-pricing/${id}`, authHeaders(token));
 }
 
+/** Dynadot cost prices (what Dynadot charges the reseller) from Legacy tld_price API */
+export interface DynadotTldCost {
+  tld: string;
+  register: number;
+  renew: number;
+  transfer: number;
+}
+
+export async function fetchDynadotTldPrices(token: string, currency?: string) {
+  const params = currency ? { currency } : {};
+  const { data } = await client.get<{ currency: string; priceLevel?: string; tlds: DynadotTldCost[] }>(
+    '/admin/domain/dynadot-tld-prices',
+    { ...authHeaders(token), params }
+  );
+  return data;
+}
+
 // Admin Profile interfaces
 export interface AdminProfile {
   id: number;

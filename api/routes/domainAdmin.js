@@ -5,7 +5,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const axios = require('axios');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { getDomainResellerConfig } = require('../utils/domainConfig');
 const { defaultLogger } = require('../utils/logger');
 
 router.use(authenticate, requireAdmin);
@@ -83,6 +85,48 @@ router.put('/config', async (req, res) => {
   } catch (e) {
     defaultLogger.error('Domain admin config put', e);
     res.status(500).json({ error: 'Failed to save config' });
+  }
+});
+
+// GET /api/admin/domain/dynadot-tld-prices – fetch actual cost prices from Dynadot (Legacy tld_price API)
+router.get('/dynadot-tld-prices', async (req, res) => {
+  try {
+    const config = await getDomainResellerConfig();
+    if (!config || (config.provider || '').toLowerCase() !== 'dynadot' || !config.api_key) {
+      return res.status(400).json({ error: 'Dynadot is not configured. Set provider to Dynadot and save your API key in Domain sales config.' });
+    }
+    let base = (config.api_url || 'https://api.dynadot.com').trim().replace(/\/restful.*$/i, '').replace(/\/?$/, '');
+    if (!base.startsWith('http')) base = 'https://' + base;
+    const currency = (req.query.currency || 'USD').toString().toUpperCase();
+    const url = `${base}/api3.json?key=${encodeURIComponent(config.api_key)}&command=tld_price&currency=${encodeURIComponent(currency)}`;
+    const axRes = await axios.get(url, { timeout: 15000, validateStatus: () => true });
+    const data = axRes.data;
+    if (axRes.status !== 200 || !data) {
+      return res.status(502).json({ error: 'Dynadot API request failed' });
+    }
+    const resp = data.TldPriceResponse;
+    if (!resp || (resp.ResponseCode != null && Number(resp.ResponseCode) !== 0)) {
+      const errMsg = (resp && (resp.ErrorMessage || resp.Status)) || data.error || data.message;
+      return res.status(400).json({ error: errMsg ? String(errMsg) : 'Dynadot tld_price error' });
+    }
+    const list = resp.TldPrice || [];
+    const tlds = (Array.isArray(list) ? list : [list]).map((t) => {
+      const price = t.Price || t.price || {};
+      return {
+        tld: (t.Tld || t.tld || '').toLowerCase().replace(/^\./, ''),
+        register: parseFloat(price.Register || price.register || 0) || 0,
+        renew: parseFloat(price.Renew || price.renew || 0) || 0,
+        transfer: parseFloat(price.Transfer || price.transfer || 0) || 0,
+      };
+    }).filter((t) => t.tld);
+    res.json({
+      currency: resp.Currency || currency,
+      priceLevel: resp.PriceLevel || null,
+      tlds,
+    });
+  } catch (e) {
+    defaultLogger.error('Dynadot tld_price fetch', e);
+    res.status(500).json({ error: e.message || 'Failed to fetch Dynadot prices' });
   }
 });
 

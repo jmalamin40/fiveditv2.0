@@ -175,7 +175,7 @@ function CheckoutContent() {
       <main className="bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mx-auto">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Checkout – SMM Website</h1>
-          <p className="text-gray-600 mb-6">{product.display_name} – {product.currency} {Number(product.price || 0).toFixed(2)} (one-time)</p>
+          <p className="text-gray-600 mb-6">{product.display_name} – {product.currency} {Number(product.price || 0).toFixed(2)} </p>
           <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-6">
             {error && (
               <div className="flex items-center gap-2 rounded-lg bg-red-50 text-red-700 p-3">

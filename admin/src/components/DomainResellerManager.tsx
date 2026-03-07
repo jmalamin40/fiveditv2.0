@@ -7,8 +7,10 @@ import {
   createDomainTld,
   updateDomainTld,
   deleteDomainTld,
+  fetchDynadotTldPrices,
   type DomainResellerConfig,
   type DomainTldPricingRow,
+  type DynadotTldCost,
 } from '../api';
 
 interface Props {
@@ -25,6 +27,9 @@ export default function DomainResellerManager({ token, toast }: Props) {
   const [addingTld, setAddingTld] = useState(false);
   const [newTld, setNewTld] = useState({ tld: '', register_price: 0, renew_price: 0, currency: 'BDT', is_active: true, sort_order: 0 });
   const [editTldForm, setEditTldForm] = useState<Partial<DomainTldPricingRow>>({});
+  const [dynadotPrices, setDynadotPrices] = useState<{ currency: string; tlds: DynadotTldCost[] } | null>(null);
+  const [dynadotPricesLoading, setDynadotPricesLoading] = useState(false);
+  const [dynadotPricesError, setDynadotPricesError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -101,6 +106,29 @@ export default function DomainResellerManager({ token, toast }: Props) {
     } catch {
       toast?.error('Failed to delete TLD');
     }
+  };
+
+  const handleFetchDynadotCosts = async () => {
+    setDynadotPricesError(null);
+    setDynadotPricesLoading(true);
+    try {
+      const data = await fetchDynadotTldPrices(token, 'USD');
+      setDynadotPrices({ currency: data.currency, tlds: data.tlds });
+      toast?.success(`Loaded Dynadot cost prices for ${data.tlds?.length ?? 0} TLDs (${data.currency}).`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to fetch Dynadot prices';
+      setDynadotPricesError(msg);
+      setDynadotPrices(null);
+      toast?.error(msg);
+    } finally {
+      setDynadotPricesLoading(false);
+    }
+  };
+
+  const getDynadotCost = (tld: string): DynadotTldCost | undefined => {
+    if (!dynadotPrices?.tlds?.length) return undefined;
+    const key = (tld || '').toLowerCase().replace(/^\./, '');
+    return dynadotPrices.tlds.find((t) => (t.tld || '').toLowerCase().replace(/^\./, '') === key);
   };
 
   if (loading) {
@@ -236,11 +264,23 @@ export default function DomainResellerManager({ token, toast }: Props) {
       <div className="card-panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>TLD pricing (sell prices)</h2>
-          {!addingTld ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {cfg.provider === 'dynadot' && (
+              <button
+                type="button"
+                onClick={handleFetchDynadotCosts}
+                disabled={dynadotPricesLoading}
+                className="btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #e2e8f0', background: '#f8fafc' }}
+              >
+                {dynadotPricesLoading ? 'Loading…' : 'Fetch Dynadot cost prices'}
+              </button>
+            )}
+            {!addingTld ? (
             <button type="button" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }} onClick={() => setAddingTld(true)}>
-              <Plus size={18} /> Add TLD
-            </button>
-          ) : (
+                <Plus size={18} /> Add TLD
+              </button>
+            ) : (
             <form onSubmit={handleAddTld} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'flex-end' }}>
               <input type="text" placeholder="com" value={newTld.tld} onChange={(e) => setNewTld((t) => ({ ...t, tld: e.target.value }))} style={{ width: '5rem', padding: '0.4rem 0.5rem', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }} />
               <input type="number" step="0.01" min="0" placeholder="Register" value={newTld.register_price || ''} onChange={(e) => setNewTld((t) => ({ ...t, register_price: Number(e.target.value) || 0 }))} style={{ width: '6rem', padding: '0.4rem 0.5rem', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }} />
@@ -249,8 +289,17 @@ export default function DomainResellerManager({ token, toast }: Props) {
               <button type="submit" className="btn-primary">Add</button>
               <button type="button" onClick={() => { setAddingTld(false); setNewTld({ tld: '', register_price: 0, renew_price: 0, currency: 'BDT', is_active: true, sort_order: 0 }); }}>Cancel</button>
             </form>
-          )}
+            )}
+          </div>
         </div>
+        {dynadotPricesError && (
+          <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{dynadotPricesError}</p>
+        )}
+        {dynadotPrices && (
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+            Dynadot cost prices loaded ({dynadotPrices.currency}) — shown in the &quot;Dynadot cost&quot; column below.
+          </p>
+        )}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -259,6 +308,7 @@ export default function DomainResellerManager({ token, toast }: Props) {
                 <th style={{ padding: '0.5rem 0.75rem' }}>Register</th>
                 <th style={{ padding: '0.5rem 0.75rem' }}>Renew</th>
                 <th style={{ padding: '0.5rem 0.75rem' }}>Currency</th>
+                {dynadotPrices && <th style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontWeight: 500 }}>Dynadot cost (reg / renew)</th>}
                 <th style={{ padding: '0.5rem 0.75rem' }}>Active</th>
                 <th style={{ padding: '0.5rem 0.75rem' }}>Order</th>
                 <th style={{ padding: '0.5rem 0.75rem' }}>Actions</th>
@@ -301,6 +351,14 @@ export default function DomainResellerManager({ token, toast }: Props) {
                           style={{ width: '4rem', padding: '0.25rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.25rem' }}
                         />
                       </td>
+                      {dynadotPrices && (
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.875rem' }}>
+                          {(() => {
+                            const cost = getDynadotCost(row.tld);
+                            return cost ? `${dynadotPrices.currency} ${cost.register.toFixed(2)} / ${cost.renew.toFixed(2)}` : '—';
+                          })()}
+                        </td>
+                      )}
                       <td style={{ padding: '0.5rem 0.75rem' }}>
                         <input type="checkbox" checked={editTldForm.is_active ?? row.is_active} onChange={(e) => setEditTldForm((f) => ({ ...f, is_active: e.target.checked }))} />
                       </td>
@@ -318,6 +376,14 @@ export default function DomainResellerManager({ token, toast }: Props) {
                       <td style={{ padding: '0.5rem 0.75rem' }}>{row.currency} {Number(row.register_price).toFixed(2)}</td>
                       <td style={{ padding: '0.5rem 0.75rem' }}>{row.currency} {Number(row.renew_price).toFixed(2)}</td>
                       <td style={{ padding: '0.5rem 0.75rem' }}>{row.currency}</td>
+                      {dynadotPrices && (
+                        <td style={{ padding: '0.5rem 0.75rem', color: '#64748b', fontSize: '0.875rem' }}>
+                          {(() => {
+                            const cost = getDynadotCost(row.tld);
+                            return cost ? `${dynadotPrices.currency} ${cost.register.toFixed(2)} / ${cost.renew.toFixed(2)}` : '—';
+                          })()}
+                        </td>
+                      )}
                       <td style={{ padding: '0.5rem 0.75rem' }}>{row.is_active ? 'Yes' : 'No'}</td>
                       <td style={{ padding: '0.5rem 0.75rem' }}>{row.sort_order}</td>
                       <td style={{ padding: '0.5rem 0.75rem' }}>

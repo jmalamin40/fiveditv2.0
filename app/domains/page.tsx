@@ -62,10 +62,11 @@ export default function DomainsPage() {
         }),
         getDomainAvailability(normalizedSearch).catch(() => null),
       ]);
-      if (avail !== null) setDomainAvailable(avail.available);
+      if (avail != null && typeof avail.available === 'boolean') setDomainAvailable(avail.available);
+      else setDomainAvailable(null);
       if (p) setPriceInfo(p);
-      if (p && avail?.available) setShowCheckout(true);
-      else if (p && avail && !avail.available) setShowCheckout(false);
+      if (p && avail != null && avail.available) setShowCheckout(true);
+      else if (p && avail != null && !avail.available) setShowCheckout(false);
     } finally {
       setPriceLoading(false);
     }
@@ -146,15 +147,20 @@ export default function DomainsPage() {
               </div>
             )}
             {priceInfo && domainToBuy && (
-              <div className={`mt-4 p-4 rounded-lg border ${domainAvailable === false ? 'bg-red-50 border-red-200' : 'bg-indigo-50 border-indigo-100'}`}>
+              <div className={`mt-4 p-4 rounded-lg border ${
+                domainAvailable === false ? 'bg-red-50 border-red-200' :
+                domainAvailable === true ? 'bg-indigo-50 border-indigo-100' : 'bg-amber-50 border-amber-200'
+              }`}>
                 <div className="flex flex-wrap items-center gap-2">
                   {domainAvailable === true && <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />}
                   {domainAvailable === false && <XCircle className="w-5 h-5 text-red-600 shrink-0" />}
+                  {domainAvailable === null && <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />}
                   <span className="font-medium text-gray-900">{domainToBuy}</span>
                   <span className="text-gray-600">— {priceInfo.currency} {priceInfo.register_price.toFixed(2)} / year (register)</span>
                   <span className="text-gray-500 text-sm">Renew: {priceInfo.currency} {priceInfo.renew_price.toFixed(2)}</span>
                   {domainAvailable === true && <span className="text-green-600 text-sm font-medium">Available</span>}
                   {domainAvailable === false && <span className="text-red-600 text-sm font-medium">Already registered</span>}
+                  {domainAvailable === null && <span className="text-amber-700 text-sm font-medium">Could not verify availability — try again or contact support</span>}
                 </div>
               </div>
             )}

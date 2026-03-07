@@ -1,12 +1,22 @@
 /**
  * Domain availability check via WHOIS.
+ * Uses dynamic import('whois') so the ESM whois package works from CommonJS (avoids "Cannot use import statement outside a module" on live server).
  * Returns { available: boolean, domain: string } or throws.
  */
 
-const whois = require('whois');
 const { promisify } = require('util');
 
-const whoisLookup = promisify(whois.lookup);
+let whoisLookupCached = null;
+
+async function getWhoisLookup() {
+  if (whoisLookupCached) return whoisLookupCached;
+  const whois = await import('whois');
+  const mod = whois.default != null ? whois.default : whois;
+  const lookup = typeof mod.lookup === 'function' ? mod.lookup : (typeof mod === 'function' ? mod : null);
+  if (typeof lookup !== 'function') throw new Error('whois package: lookup not found');
+  whoisLookupCached = promisify(lookup);
+  return whoisLookupCached;
+}
 
 const AVAILABLE_PATTERNS = [
   /no match for\s+/i,
@@ -44,6 +54,7 @@ async function checkDomainAvailability(domainName) {
     throw new Error('Invalid domain name');
   }
 
+  const whoisLookup = await getWhoisLookup();
   const raw = await whoisLookup(domain, { timeout: 10000 });
   const text = (raw || '').toString();
 

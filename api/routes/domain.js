@@ -8,6 +8,8 @@ const pool = require('../config/database');
 const axios = require('axios');
 const { getDomainPrice, listTldPricing } = require('../utils/domainPricing');
 const { checkDomainAvailability } = require('../utils/domainAvailability');
+const { checkDynadotAvailability } = require('../utils/dynadotAvailability');
+const { getDomainResellerConfig } = require('../utils/domainConfig');
 const { defaultLogger } = require('../utils/logger');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
@@ -25,12 +27,24 @@ router.get('/tld-pricing', async (req, res) => {
   }
 });
 
-// GET /api/domain/availability?domain=example.com – check if domain is available (WHOIS)
+// GET /api/domain/availability?domain=example.com – WHOIS first, Dynadot fallback when configured
 router.get('/availability', async (req, res) => {
   try {
     const domain = req.query.domain;
     if (!domain || !domain.trim()) return res.status(400).json({ error: 'domain query required' });
-    const result = await checkDomainAvailability(domain.trim());
+    const name = domain.trim();
+    let result;
+    try {
+      result = await checkDomainAvailability(name);
+    } catch (whoisErr) {
+      defaultLogger.warn('WHOIS availability failed, trying Dynadot fallback', whoisErr?.message || whoisErr);
+      const config = await getDomainResellerConfig();
+      if (config && (config.provider || '').toLowerCase() === 'dynadot' && config.api_key) {
+        result = await checkDynadotAvailability(name, config.api_key, config.api_url);
+      } else {
+        throw whoisErr;
+      }
+    }
     res.json(result);
   } catch (e) {
     defaultLogger.error('Domain availability error', e);
