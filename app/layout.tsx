@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import './globals.css'
+import FacebookPixel from '@/components/FacebookPixel'
 
 export const metadata: Metadata = {
   title: 'FivedIT - Full-Stack Development & DevOps Excellence',
@@ -28,6 +29,7 @@ export default function RootLayout({
             gtag('config', 'G-18QYJ802J9');
           `}
         </Script>
+        <FacebookPixel />
         {children}
       </body>
     </html>

@@ -35,6 +35,7 @@ const crypto = require('crypto');
 const { getDomainPrice } = require('../utils/domainPricing');
 const { checkDomainAvailability } = require('../utils/domainAvailability');
 const { registerDomain } = require('../utils/dynadotRegister');
+const { sendFacebookEvent } = require('../utils/facebookEvents');
 
 // Optional customer auth (same pattern as hosting)
 function optionalCustomerAuth(req, res, next) {
@@ -487,6 +488,17 @@ router.post('/payments/webhook', async (req, res) => {
       } catch (regErr) {
         defaultLogger.error('SMM: domain registration error', regErr?.message || regErr);
       }
+    }
+
+    if (isPaid) {
+      sendFacebookEvent('Purchase', {
+        value: Number(order.amount),
+        currency: order.currency || 'USD',
+        content_name: order.order_id,
+        content_type: 'product',
+        email: order.customer_email,
+        phone: order.customer_phone,
+      }).catch(() => {});
     }
 
     if (isPaid && !alreadyHasInstance) {

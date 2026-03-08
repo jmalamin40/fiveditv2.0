@@ -11,6 +11,7 @@ const { checkDomainAvailability } = require('../utils/domainAvailability');
 const { checkDynadotAvailability } = require('../utils/dynadotAvailability');
 const { getDomainResellerConfig } = require('../utils/domainConfig');
 const { registerDomain } = require('../utils/dynadotRegister');
+const { sendFacebookEvent } = require('../utils/facebookEvents');
 const { defaultLogger } = require('../utils/logger');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
@@ -210,6 +211,14 @@ router.post('/payments/webhook', async (req, res) => {
       } else {
         defaultLogger.error('Domain registration failed after payment', { order_id: order.order_id, domain: order.domain_name, error: reg.error });
       }
+      sendFacebookEvent('Purchase', {
+        value: Number(order.amount),
+        currency: order.currency || 'USD',
+        content_name: order.domain_name,
+        content_type: 'product',
+        email: order.customer_email,
+        phone: order.customer_phone,
+      }).catch(() => {});
     } else {
       await pool.execute(
         'UPDATE domain_orders SET status = ?, payment_gateway_response = ? WHERE order_id = ?',

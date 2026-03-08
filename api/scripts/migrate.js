@@ -664,6 +664,20 @@ async function migrate() {
     `);
     console.log('✅ domain_tld_pricing table created');
 
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS facebook_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        pixel_enabled BOOLEAN DEFAULT FALSE,
+        pixel_id VARCHAR(50) NULL COMMENT 'Facebook Pixel ID',
+        pixel_access_token VARCHAR(500) NULL COMMENT 'Optional: for Conversions API server-side events',
+        conv_api_enabled BOOLEAN DEFAULT FALSE,
+        page_id VARCHAR(50) NULL COMMENT 'Facebook Page ID for Conversations API',
+        page_access_token VARCHAR(500) NULL COMMENT 'Page Access Token for Conversations API / CAPI',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ facebook_config table created');
+
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
       'ADD COLUMN domain_price DECIMAL(10, 2) NULL',

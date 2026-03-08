@@ -306,6 +306,26 @@ export async function updateCloudflareConfig(token: string, payload: CloudflareC
   return data;
 }
 
+// Facebook Pixel & Conversations API
+export interface FacebookConfig {
+  pixel_enabled: boolean;
+  pixel_id: string;
+  pixel_access_token: string;
+  conv_api_enabled: boolean;
+  page_id: string;
+  page_access_token: string;
+}
+
+export async function getFacebookConfig(token: string) {
+  const { data } = await client.get<FacebookConfig>('/admin/facebook-config', authHeaders(token));
+  return data;
+}
+
+export async function updateFacebookConfig(token: string, payload: Partial<FacebookConfig>) {
+  const { data } = await client.put<{ success: boolean }>('/admin/facebook-config', payload, authHeaders(token));
+  return data;
+}
+
 // Domain reseller config & TLD pricing
 export interface DomainResellerConfig {
   id: number;

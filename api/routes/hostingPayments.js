@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const { defaultLogger, syncLogger } = require('../utils/logger');
 const { sendHostingCredentialsEmail, sendOrderConfirmationEmail } = require('../utils/email');
 const { generateInvoiceForOrder } = require('./invoices');
+const { sendFacebookEvent } = require('../utils/facebookEvents');
 
 const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://api-pay.fivedit.com';
 const PAYMENT_API_KEY = process.env.PAYMENT_API_KEY || 'your-api-key';
@@ -856,6 +857,17 @@ router.post('/webhook', async (req, res) => {
         defaultLogger.error('Failed to generate invoice:', invoiceError);
         // Don't fail the webhook if invoice generation fails
       }
+    }
+
+    if (isPaymentSuccessful) {
+      sendFacebookEvent('Purchase', {
+        value: Number(order.amount) || 0,
+        currency: order.currency || 'USD',
+        content_name: order.order_id,
+        content_type: 'product',
+        email: order.customer_email,
+        phone: order.customer_phone,
+      }).catch(() => {});
     }
 
     // If payment is successful (status is 'paid' or 'completed'), create hosting account automatically
