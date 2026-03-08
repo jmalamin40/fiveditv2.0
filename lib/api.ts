@@ -508,6 +508,18 @@ export interface SmmInstance {
   product_display_name?: string;
 }
 
+export interface SmmWebsiteConfig {
+  website_configuration_price: number;
+  website_configuration_currency: string;
+  website_configuration_product_id: number | null;
+}
+
+export async function fetchSmmConfig(): Promise<SmmWebsiteConfig> {
+  const response = await fetch(`${API_BASE_URL}/smm/config`);
+  if (!response.ok) return { website_configuration_price: 4999, website_configuration_currency: 'BDT', website_configuration_product_id: null };
+  return response.json();
+}
+
 export async function fetchSmmProducts(): Promise<SmmProduct[]> {
   const response = await fetch(`${API_BASE_URL}/smm/products`);
   if (!response.ok) throw new Error('Failed to fetch SMM products');

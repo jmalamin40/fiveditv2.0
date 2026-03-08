@@ -326,6 +326,22 @@ export async function updateFacebookConfig(token: string, payload: Partial<Faceb
   return data;
 }
 
+// SMM Website Configuration (one-time service price)
+export interface SmmWebsiteConfig {
+  website_configuration_price: number;
+  website_configuration_currency: string;
+}
+
+export async function getSmmWebsiteConfig(token: string) {
+  const { data } = await client.get<SmmWebsiteConfig>('/admin/smm-config', authHeaders(token));
+  return data;
+}
+
+export async function updateSmmWebsiteConfig(token: string, payload: SmmWebsiteConfig) {
+  const { data } = await client.put<{ success: boolean }>('/admin/smm-config', payload, authHeaders(token));
+  return data;
+}
+
 // Domain reseller config & TLD pricing
 export interface DomainResellerConfig {
   id: number;

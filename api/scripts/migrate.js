@@ -678,6 +678,32 @@ async function migrate() {
     `);
     console.log('✅ facebook_config table created');
 
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS smm_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        website_configuration_price DECIMAL(10, 2) NOT NULL DEFAULT 4999,
+        website_configuration_currency VARCHAR(10) NOT NULL DEFAULT 'BDT',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ smm_config table created');
+    await connection.execute(`
+      INSERT INTO smm_config (id, website_configuration_price, website_configuration_currency)
+      VALUES (1, 4999, 'BDT')
+      ON DUPLICATE KEY UPDATE id = id
+    `);
+
+    const [configProduct] = await connection.execute(
+      "SELECT id FROM smm_website_products WHERE name = 'smm-website-configuration' LIMIT 1"
+    );
+    if (configProduct.length === 0) {
+      await connection.execute(`
+        INSERT INTO smm_website_products (name, display_name, description, price, currency, billing_interval, package_tier, sort_order, is_active)
+        VALUES ('smm-website-configuration', 'SMM Website Configuration', 'One-time setup and configuration of your SMM website.', 4999, 'BDT', NULL, NULL, 0, TRUE)
+      `);
+      console.log('✅ SMM Website Configuration product seeded');
+    }
+
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
       'ADD COLUMN domain_price DECIMAL(10, 2) NULL',

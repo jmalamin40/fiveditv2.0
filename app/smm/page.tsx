@@ -5,8 +5,8 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import Chat from '@/components/Chat';
-import { fetchSmmProducts, SmmProduct } from '@/lib/api';
-import { Loader2, Link2, Zap, Crown, CheckCircle, ArrowRight, Star, Globe } from 'lucide-react';
+import { fetchSmmProducts, fetchSmmConfig, SmmProduct, SmmWebsiteConfig } from '@/lib/api';
+import { Loader2, Link2, Zap, Crown, CheckCircle, ArrowRight, Star, Globe, Settings } from 'lucide-react';
 
 type BillingPeriod = 'monthly' | 'yearly';
 
@@ -54,6 +54,7 @@ function buildPlans(products: SmmProduct[]): PlanRow[] {
 
 export default function SmmPage() {
   const [products, setProducts] = useState<SmmProduct[]>([]);
+  const [smmConfig, setSmmConfig] = useState<SmmWebsiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
@@ -61,8 +62,9 @@ export default function SmmPage() {
   useEffect(() => {
     (async () => {
       try {
-        const list = await fetchSmmProducts();
+        const [list, config] = await Promise.all([fetchSmmProducts(), fetchSmmConfig()]);
         setProducts(list);
+        setSmmConfig(config);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Failed to load');
       } finally {
@@ -217,6 +219,35 @@ export default function SmmPage() {
           {!loading && !error && plans.length === 0 && (
             <div className="text-center py-12 text-gray-600">
               No plans available at the moment.
+            </div>
+          )}
+
+          {!loading && smmConfig && smmConfig.website_configuration_product_id && (
+            <div className="max-w-xl mx-auto mt-12 mb-16">
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-slate-100">
+                    <Settings className="w-8 h-8 text-slate-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">SMM Website Configuration</h3>
+                    <p className="text-gray-600 text-sm mt-1">One-time setup and configuration of your SMM website.</p>
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-2 shrink-0">
+                  <span className="text-3xl font-bold text-gray-900 tabular-nums">
+                    {smmConfig.website_configuration_currency} {Number(smmConfig.website_configuration_price).toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                  </span>
+                  <span className="text-gray-500 text-sm">one-time</span>
+                </div>
+                <Link
+                  href={`/smm/checkout?product=${smmConfig.website_configuration_product_id}`}
+                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto py-3 px-6 rounded-lg font-semibold bg-gradient-to-r from-slate-700 to-slate-800 text-white hover:shadow-lg transition-all"
+                >
+                  Get Started
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
             </div>
           )}
 

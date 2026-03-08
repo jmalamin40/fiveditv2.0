@@ -10,6 +10,7 @@ import SmmPackageEditPage from './SmmPackageEditPage';
 import CloudflareConfigManager from './CloudflareConfigManager';
 import DomainResellerManager from './DomainResellerManager';
 import FacebookConfigManager from './FacebookConfigManager';
+import SmmWebsiteConfigManager from './SmmWebsiteConfigManager';
 import ProfileManager from './ProfileManager';
 import InvoiceManager from './InvoiceManager';
 import { fetchAdminProfile } from '../api';
@@ -33,6 +34,7 @@ const tabs = [
   { id: 'scripts', label: 'CodeCanyon Scripts', icon: '💻' },
   { id: 'hosting', label: 'Hosting', icon: '🖥️' },
   { id: 'smm-packages', label: 'SMM Packages', icon: '📦' },
+  { id: 'smm-website-config', label: 'SMM Website Config', icon: '🔧' },
   { id: 'cloudflare', label: 'Cloudflare DNS', icon: '☁️' },
   { id: 'domain', label: 'Domain sales', icon: '🌐' },
   { id: 'facebook', label: 'Facebook Pixel', icon: '📘' },
@@ -115,6 +117,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
           <Route path="hosting/*" element={<HostingManager token={token} toast={toast} />} />
           <Route path="smm-packages" element={<SmmPackagesManager token={token} toast={toast} />} />
           <Route path="smm-packages/edit/:id" element={<SmmPackageEditPage token={token} toast={toast} />} />
+          <Route path="smm-website-config" element={<SmmWebsiteConfigManager token={token} toast={toast} />} />
           <Route path="cloudflare" element={<CloudflareConfigManager token={token} toast={toast} />} />
           <Route path="domain" element={<DomainResellerManager token={token} toast={toast} />} />
           <Route path="facebook" element={<FacebookConfigManager token={token} toast={toast} />} />
