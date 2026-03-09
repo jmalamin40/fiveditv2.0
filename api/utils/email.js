@@ -508,6 +508,7 @@ async function sendContactFormEmail({ name, email, phone, company, message }) {
     ...(config.cc && config.cc.length ? { cc: config.cc } : {}),
     subject,
     text: body,
+    cc: config.cc && config.cc.length ? config.cc : null,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
         <h2 style="color: #1e293b;">New contact form submission</h2>

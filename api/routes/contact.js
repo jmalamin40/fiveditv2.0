@@ -47,7 +47,7 @@ router.post('/', async (req, res) => {
     try {
       await sendContactFormEmail({
         name: n,
-        email: e,
+        email: 'jomaddarit@gmail.com',
         phone: phoneVal,
         company: companyVal,
         message: msg,
