@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Mail, Phone, MessageCircle, Send, CheckCircle, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import axios from "axios";
+
+const API_BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE_URL) || 'https://api.fivedit.com/api' || 'http://localhost:3001/api';
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -27,42 +27,25 @@ export default function Contact() {
     setSubmitStatus('idle');
 
     try {
-      const { error } = await supabase
-        .from('contact_inquiries')
-        .insert([formData]);
-      const url ='https://aiagent.jomaddarit.com/webhook/3881b14b-08b0-4894-a926-066b7a1b1e50'
-        const resp = await axios.post(url, formData, {
-          auth: {
-            username: "fivedit",
-            password: "fivedit@@##"
-          },
-          headers: {
-            "Content-Type": "application/json"
-          },
-          timeout: 30000 // 30s
-        });
-        console.log("Status:", resp.status);
-      if (error) throw error;
+      const res = await fetch(`${API_BASE_URL}/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || undefined,
+          company: formData.company || undefined,
+          message: formData.message,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to send message');
 
       setSubmitStatus('success');
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        company: '',
-        message: '',
-      });
+      setFormData({ name: '', email: '', phone: '', company: '', message: '' });
     } catch (error) {
       console.error('Error submitting form:', error);
-      // For demo purposes, show success even if Supabase is not configured
-      setSubmitStatus('success');
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        company: '',
-        message: '',
-      });
+      setSubmitStatus('error');
     } finally {
       setIsSubmitting(false);
     }
@@ -130,7 +113,7 @@ export default function Contact() {
             <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
               <div className="flex items-center gap-3">
                 <Mail className="text-blue-600" size={24} />
-                <span className="text-gray-700">contact@fivedit.com</span>
+                <span className="text-gray-700">info@fivedit.com</span>
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="text-blue-600" size={24} />

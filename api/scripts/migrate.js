@@ -727,6 +727,21 @@ async function migrate() {
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
 
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS contact_inquiries (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NULL,
+        company VARCHAR(255) NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email (email),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ contact_inquiries table created');
+
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
       'ADD COLUMN domain_price DECIMAL(10, 2) NULL',

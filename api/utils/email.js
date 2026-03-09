@@ -479,10 +479,66 @@ FivedIT Team
   }
 }
 
+/**
+ * Send contact form notification to site owner. Uses CONTACT_NOTIFICATION_EMAIL or SMTP from address.
+ */
+async function sendContactFormEmail({ name, email, phone, company, message }) {
+  const { transporter, config } = await getTransporter();
+  if (!transporter || !config) {
+    defaultLogger.warn('Contact form: SMTP not configured, skipping notification email.');
+    return { success: false, skipped: true };
+  }
+  const to = (process.env.CONTACT_NOTIFICATION_EMAIL && process.env.CONTACT_NOTIFICATION_EMAIL.trim()) || config.from;
+  const subject = `Contact form: ${name}${company ? ` (${company})` : ''}`;
+  const body = [
+    `Name: ${name}`,
+    `Email: ${email}`,
+    phone ? `Phone: ${phone}` : null,
+    company ? `Company: ${company}` : null,
+    '',
+    'Message:',
+    message,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const mailOptions = {
+    from: config.from,
+    to,
+    ...(config.cc && config.cc.length ? { cc: config.cc } : {}),
+    subject,
+    text: body,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2 style="color: #1e293b;">New contact form submission</h2>
+        <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+        <p><strong>Email:</strong> <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>
+        ${phone ? `<p><strong>Phone:</strong> ${escapeHtml(phone)}</p>` : ''}
+        ${company ? `<p><strong>Company:</strong> ${escapeHtml(company)}</p>` : ''}
+        <p><strong>Message:</strong></p>
+        <div style="background: #f1f5f9; padding: 1rem; border-radius: 0.5rem; white-space: pre-wrap;">${escapeHtml(message)}</div>
+      </div>
+    `,
+  };
+  const info = await transporter.sendMail(mailOptions);
+  defaultLogger.log(`✅ Contact form notification sent to ${to} (Message ID: ${info.messageId || 'N/A'})`);
+  return { success: true, messageId: info.messageId };
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 module.exports = {
   sendHostingCredentialsEmail,
   sendOrderConfirmationEmail,
   sendSmmCredentialsEmail,
+  sendContactFormEmail,
   getTransporter,
 };
 

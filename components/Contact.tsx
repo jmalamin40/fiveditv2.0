@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Mail, Phone, MessageCircle, Send, CheckCircle, AlertCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import axios from "axios";
+import { submitContactForm } from '@/lib/api';
 
 export default function Contact() {
   const searchParams = useSearchParams();
@@ -56,23 +55,13 @@ export default function Contact() {
     setSubmitStatus('idle');
 
     try {
-      const { error } = await supabase
-        .from('contact_inquiries')
-        .insert([formData]);
-      const url ='https://aiagent.jomaddarit.com/webhook/3881b14b-08b0-4894-a926-066b7a1b1e50'
-        const resp = await axios.post(url, formData, {
-          auth: {
-            username: "fivedit",
-            password: "fivedit@@##"
-          },
-          headers: {
-            "Content-Type": "application/json"
-          },
-          timeout: 30000 // 30s
-        });
-        console.log("Status:", resp.status);
-      if (error) throw error;
-
+      await submitContactForm({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || undefined,
+        company: formData.company || undefined,
+        message: formData.message,
+      });
       setSubmitStatus('success');
       setFormData({
         name: '',
@@ -83,15 +72,7 @@ export default function Contact() {
       });
     } catch (error) {
       console.error('Error submitting form:', error);
-      // For demo purposes, show success even if Supabase is not configured
-      setSubmitStatus('success');
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        company: '',
-        message: '',
-      });
+      setSubmitStatus('error');
     } finally {
       setIsSubmitting(false);
     }
@@ -159,7 +140,7 @@ export default function Contact() {
             <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
               <div className="flex items-center gap-3">
                 <Mail className="text-blue-600" size={24} />
-                <span className="text-gray-700">contact@fivedit.com</span>
+                <span className="text-gray-700">info@fivedit.com</span>
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="text-blue-600" size={24} />

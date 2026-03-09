@@ -675,3 +675,23 @@ export async function customerGuestLogin(token: string, orderId: string): Promis
   return response.json();
 }
 
+// Contact form
+export interface ContactFormPayload {
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  message: string;
+}
+
+export async function submitContactForm(payload: ContactFormPayload): Promise<{ success: boolean; id?: number }> {
+  const response = await fetch(`${API_BASE_URL}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Failed to send message');
+  return data;
+}
+
