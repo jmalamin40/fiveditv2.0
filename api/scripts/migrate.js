@@ -704,6 +704,22 @@ async function migrate() {
       console.log('✅ SMM Website Configuration product seeded');
     }
 
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS smtp_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        is_enabled BOOLEAN DEFAULT FALSE,
+        host VARCHAR(255) NULL DEFAULT 'smtp.gmail.com',
+        port INT NULL DEFAULT 587,
+        secure BOOLEAN DEFAULT FALSE,
+        user VARCHAR(255) NULL,
+        password_encrypted TEXT NULL,
+        from_address VARCHAR(255) NULL COMMENT 'From email e.g. noreply@example.com',
+        require_tls BOOLEAN DEFAULT TRUE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ smtp_config table created');
+
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
       'ADD COLUMN domain_price DECIMAL(10, 2) NULL',

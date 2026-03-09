@@ -342,6 +342,28 @@ export async function updateSmmWebsiteConfig(token: string, payload: SmmWebsiteC
   return data;
 }
 
+// SMTP (email) configuration
+export interface SmtpConfig {
+  is_enabled: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+  from_address: string;
+  require_tls: boolean;
+}
+
+export async function getSmtpConfig(token: string) {
+  const { data } = await client.get<SmtpConfig>('/admin/smtp-config', authHeaders(token));
+  return data;
+}
+
+export async function updateSmtpConfig(token: string, payload: SmtpConfig) {
+  const { data } = await client.put<{ success: boolean }>('/admin/smtp-config', payload, authHeaders(token));
+  return data;
+}
+
 // Domain reseller config & TLD pricing
 export interface DomainResellerConfig {
   id: number;

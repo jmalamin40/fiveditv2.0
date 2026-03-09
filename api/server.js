@@ -49,8 +49,10 @@ app.use('/api/admin/smm-config', smmConfig.adminRouter);
 app.use('/api/admin', require('./routes/adminProfile'));
 app.use('/api/admin/cloudflare-config', require('./routes/cloudflareConfig'));
 const facebookConfig = require('./routes/facebookConfig');
+const smtpConfig = require('./routes/smtpConfig');
 app.use('/api/facebook-config', facebookConfig);
 app.use('/api/admin/facebook-config', facebookConfig.adminRouter);
+app.use('/api/admin/smtp-config', smtpConfig.adminRouter);
 app.use('/api/domain', require('./routes/domain'));
 app.use('/api/admin/domain', require('./routes/domainAdmin'));
 

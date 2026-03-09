@@ -1,64 +1,83 @@
 const nodemailer = require('nodemailer');
+const pool = require('../config/database');
 const { defaultLogger } = require('./logger');
+const { decryptPassword } = require('./encryption');
 
-// Create reusable transporter
-let transporter = null;
-
-function getTransporter() {
-  if (transporter) {
-    return transporter;
+/**
+ * Load SMTP config from DB (smtp_config). Returns null if disabled or no credentials.
+ */
+async function getSmtpConfigFromDb() {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT is_enabled, host, port, secure, user, password_encrypted, from_address, require_tls FROM smtp_config WHERE id = 1'
+    );
+    if (!rows.length || !rows[0].is_enabled || !rows[0].user || !rows[0].password_encrypted) {
+      return null;
+    }
+    const r = rows[0];
+    const pass = decryptPassword(r.password_encrypted);
+    if (!pass) return null;
+    return {
+      host: r.host || 'smtp.gmail.com',
+      port: r.port != null ? Number(r.port) : 587,
+      secure: Boolean(r.secure),
+      user: r.user,
+      pass,
+      from: (r.from_address || r.user || 'noreply@fivedit.com').trim(),
+      requireTLS: r.require_tls !== false,
+    };
+  } catch (e) {
+    defaultLogger.error('getSmtpConfigFromDb', e);
+    return null;
   }
+}
 
-  // Configure email transporter
-  // You can use SMTP, Gmail, SendGrid, etc.
-  const emailConfig = {
+/**
+ * Get SMTP config: from DB if configured there, else from .env.
+ */
+async function getSmtpConfig() {
+  const fromDb = await getSmtpConfigFromDb();
+  if (fromDb) return fromDb;
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
+  if (!user || !pass) return null;
+  return {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || '',
-    },
-    // Add connection timeout and other options
-    connectionTimeout: 10000, // 10 seconds
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
-    // For Gmail and other providers that require TLS
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user,
+    pass,
+    from: process.env.SMTP_FROM || user || 'noreply@fivedit.com',
     requireTLS: process.env.SMTP_REQUIRE_TLS !== 'false',
   };
+}
 
-  // Log configuration (without sensitive data)
-  defaultLogger.log('📧 Email transporter configuration:');
-  defaultLogger.log(`   Host: ${emailConfig.host}`);
-  defaultLogger.log(`   Port: ${emailConfig.port}`);
-  defaultLogger.log(`   Secure: ${emailConfig.secure}`);
-  defaultLogger.log(`   User: ${emailConfig.auth.user ? 'SET' : 'NOT SET'}`);
-  defaultLogger.log(`   Pass: ${emailConfig.auth.pass ? 'SET' : 'NOT SET'}`);
-
-  // If no SMTP credentials, return null (will be handled by caller)
-  if (!emailConfig.auth.user || !emailConfig.auth.pass) {
-    defaultLogger.warn('⚠️  SMTP credentials not configured. Emails will not be sent.');
-    defaultLogger.warn('   Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS in .env');
-    defaultLogger.warn('   For Gmail, use App Password (not regular password)');
-    return null;
+/**
+ * Create and return { transporter, config } from current config (DB or .env). config includes .from for mail options.
+ */
+async function getTransporter() {
+  const config = await getSmtpConfig();
+  if (!config || !config.user || !config.pass) {
+    defaultLogger.warn('⚠️  SMTP credentials not configured. Configure in Admin → SMTP or set SMTP_* in .env');
+    return { transporter: null, config: null };
   }
-
+  const emailConfig = {
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    requireTLS: config.requireTLS,
+  };
+  defaultLogger.log('📧 Email transporter: ' + config.host + ':' + config.port + ' (user: SET)');
   try {
-    transporter = nodemailer.createTransport(emailConfig);
-    
-    // Verify connection
-    transporter.verify((error, success) => {
-      if (error) {
-        defaultLogger.error('❌ SMTP connection verification failed:', error);
-      } else {
-        defaultLogger.log('✅ SMTP connection verified successfully');
-      }
-    });
-    
-    return transporter;
+    const transporter = nodemailer.createTransport(emailConfig);
+    return { transporter, config };
   } catch (error) {
     defaultLogger.error('❌ Failed to create email transporter:', error);
-    return null;
+    return { transporter: null, config: null };
   }
 }
 
@@ -84,23 +103,13 @@ async function sendHostingCredentialsEmail({
     defaultLogger.log(`📧 Attempting to send hosting credentials email to: ${to}`);
     defaultLogger.log(`   Domain: ${domain}, Username: ${username}, Package: ${packageName}`);
 
-    const emailTransporter = getTransporter();
-    
-    // Check if transporter is properly configured
-    if (!emailTransporter) {
-      throw new Error('Email transporter not initialized');
+    const { transporter: emailTransporter, config: smtpConfig } = await getTransporter();
+    if (!emailTransporter || !smtpConfig) {
+      throw new Error('Email transporter not configured. Configure SMTP in Admin panel or .env.');
     }
 
-    // Verify SMTP credentials are configured
-    const hasCredentials = process.env.SMTP_USER && process.env.SMTP_PASS;
-    if (!hasCredentials) {
-      defaultLogger.warn('⚠️  SMTP credentials not configured. Email will not be sent.');
-      defaultLogger.warn('   Please set SMTP_USER and SMTP_PASS in .env file');
-      throw new Error('SMTP credentials not configured');
-    }
-    
     const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@fivedit.com',
+      from: smtpConfig.from,
       to: to,
       subject: `Your Hosting Account is Ready - ${domain}`,
       html: `
@@ -212,9 +221,7 @@ FivedIT Hosting Team
       `,
     };
 
-    defaultLogger.log(`📤 Sending email via ${process.env.SMTP_HOST || 'smtp.gmail.com'}:${process.env.SMTP_PORT || '587'}`);
-    defaultLogger.log(`   From: ${mailOptions.from}`);
-    defaultLogger.log(`   To: ${mailOptions.to}`);
+    defaultLogger.log(`📤 Sending email from ${mailOptions.from} to ${mailOptions.to}`);
     defaultLogger.log(`   Subject: ${mailOptions.subject}`);
 
     const info = await emailTransporter.sendMail(mailOptions);
@@ -232,14 +239,6 @@ FivedIT Hosting Team
     defaultLogger.error('   Error response:', error?.response || 'N/A');
     defaultLogger.error('   Error responseCode:', error?.responseCode || 'N/A');
     defaultLogger.error('   Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-    
-    // Log SMTP configuration status
-    defaultLogger.error('   SMTP Configuration:');
-    defaultLogger.error(`     SMTP_HOST: ${process.env.SMTP_HOST || 'NOT SET'}`);
-    defaultLogger.error(`     SMTP_PORT: ${process.env.SMTP_PORT || 'NOT SET'}`);
-    defaultLogger.error(`     SMTP_USER: ${process.env.SMTP_USER ? 'SET' : 'NOT SET'}`);
-    defaultLogger.error(`     SMTP_PASS: ${process.env.SMTP_PASS ? 'SET' : 'NOT SET'}`);
-    defaultLogger.error(`     SMTP_FROM: ${process.env.SMTP_FROM || 'NOT SET'}`);
     
     throw error;
   }
@@ -268,23 +267,13 @@ async function sendOrderConfirmationEmail({
     defaultLogger.log(`📧 Attempting to send order confirmation email to: ${to}`);
     defaultLogger.log(`Order ID: ${orderId}, Package: ${packageName}, Amount: ${amount} ${currency}`);
 
-    const emailTransporter = getTransporter();
-
-    // Check if transporter is properly configured
-    if (!emailTransporter) {
-      throw new Error('Email transporter not initialized');
-    }
-
-    // Verify SMTP credentials are configured
-    const hasCredentials = process.env.SMTP_USER && process.env.SMTP_PASS;
-    if (!hasCredentials) {
-      defaultLogger.warn('⚠️ SMTP credentials not configured. Email will not be sent.');
-      defaultLogger.warn('Please set SMTP_USER and SMTP_PASS in .env file');
-      throw new Error('SMTP credentials not configured');
+    const { transporter: emailTransporter, config: smtpConfig } = await getTransporter();
+    if (!emailTransporter || !smtpConfig) {
+      throw new Error('Email transporter not configured. Configure SMTP in Admin panel or .env.');
     }
 
     const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@fivedit.com',
+      from: smtpConfig.from,
       to: to,
       subject: `Order Confirmation - ${orderId}`,
       html: `
@@ -339,10 +328,7 @@ async function sendOrderConfirmationEmail({
       `,
     };
 
-    defaultLogger.log(`📤 Sending email via ${process.env.SMTP_HOST || 'smtp.gmail.com'}:${process.env.SMTP_PORT || '587'}`);
-    defaultLogger.log(`From: ${mailOptions.from}`);
-    defaultLogger.log(`To: ${mailOptions.to}`);
-    defaultLogger.log(`Subject: ${mailOptions.subject}`);
+    defaultLogger.log(`📤 Sending order confirmation from ${mailOptions.from} to ${mailOptions.to}`);
 
     const info = await emailTransporter.sendMail(mailOptions);
 
@@ -360,14 +346,6 @@ async function sendOrderConfirmationEmail({
     defaultLogger.error(`Error responseCode: ${error?.responseCode || 'N/A'}`);
     defaultLogger.error(`Error stack: ${error?.stack || 'No stack'}`);
     defaultLogger.error('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-
-    // Log SMTP configuration status
-    defaultLogger.error('SMTP Configuration:');
-    defaultLogger.error(`SMTP_HOST: ${process.env.SMTP_HOST || 'NOT SET'}`);
-    defaultLogger.error(`SMTP_PORT: ${process.env.SMTP_PORT || 'NOT SET'}`);
-    defaultLogger.error(`SMTP_USER: ${process.env.SMTP_USER ? 'SET' : 'NOT SET'}`);
-    defaultLogger.error(`SMTP_PASS: ${process.env.SMTP_PASS ? 'SET' : 'NOT SET'}`);
-    defaultLogger.error(`SMTP_FROM: ${process.env.SMTP_FROM || 'NOT SET'}`);
 
     throw error;
   }
@@ -393,21 +371,15 @@ async function sendSmmCredentialsEmail({
     defaultLogger.log(`📧 Sending SMM credentials email to: ${to}`);
     defaultLogger.log(`   Site: ${siteUrl}, Login: ${loginEmail}`);
 
-    const emailTransporter = getTransporter();
-    if (!emailTransporter) {
+    const { transporter: emailTransporter, config: smtpConfig } = await getTransporter();
+    if (!emailTransporter || !smtpConfig) {
       defaultLogger.warn('⚠️ Email transporter not configured. SMM credentials email skipped.');
       return { success: false, skipped: true, reason: 'SMTP not configured' };
     }
 
-    const hasCredentials = process.env.SMTP_USER && process.env.SMTP_PASS;
-    if (!hasCredentials) {
-      defaultLogger.warn('⚠️ SMTP credentials not configured. SMM credentials email skipped.');
-      return { success: false, skipped: true, reason: 'SMTP credentials not set' };
-    }
-
     const name = customerName || to.split('@')[0] || 'Customer';
     const mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@fivedit.com',
+      from: smtpConfig.from,
       to,
       subject: `Your SMM Store is Ready – ${siteUrl.replace(/^https?:\/\//, '').split('/')[0]}`,
       html: `

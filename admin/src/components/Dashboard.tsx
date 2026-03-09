@@ -10,6 +10,7 @@ import SmmPackageEditPage from './SmmPackageEditPage';
 import CloudflareConfigManager from './CloudflareConfigManager';
 import DomainResellerManager from './DomainResellerManager';
 import FacebookConfigManager from './FacebookConfigManager';
+import SmtpConfigManager from './SmtpConfigManager';
 import SmmWebsiteConfigManager from './SmmWebsiteConfigManager';
 import ProfileManager from './ProfileManager';
 import InvoiceManager from './InvoiceManager';
@@ -28,19 +29,55 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-const tabs = [
-  { id: 'categories', label: 'Categories', icon: '📁' },
-  { id: 'services', label: 'Services', icon: '⚙️' },
-  { id: 'scripts', label: 'CodeCanyon Scripts', icon: '💻' },
-  { id: 'hosting', label: 'Hosting', icon: '🖥️' },
-  { id: 'smm-packages', label: 'SMM Packages', icon: '📦' },
-  { id: 'smm-website-config', label: 'SMM Website Config', icon: '🔧' },
-  { id: 'cloudflare', label: 'Cloudflare DNS', icon: '☁️' },
-  { id: 'domain', label: 'Domain sales', icon: '🌐' },
-  { id: 'facebook', label: 'Facebook Pixel', icon: '📘' },
-  { id: 'invoices', label: 'Invoices', icon: '🧾' },
-  { id: 'chat', label: 'Support Chat', icon: '💬' },
-  { id: 'profile', label: 'Profile', icon: '👤' },
+type NavItem = {
+  id: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+};
+
+type NavSection = {
+  id: string;
+  title: string;
+  items: NavItem[];
+};
+
+const navSections: NavSection[] = [
+  {
+    id: 'store',
+    title: 'Store & Services',
+    items: [
+      { id: 'categories', label: 'Categories', icon: '📁' },
+      { id: 'services', label: 'Services', icon: '⚙️' },
+      { id: 'scripts', label: 'CodeCanyon Scripts', icon: '💻' },
+      { id: 'invoices', label: 'Invoices', icon: '🧾' },
+    ],
+  },
+  {
+    id: 'infrastructure',
+    title: 'Hosting & Automation',
+    items: [
+      { id: 'hosting', label: 'Hosting', icon: '🖥️', end: false },
+      { id: 'smm-packages', label: 'SMM Packages', icon: '📦', end: false },
+      { id: 'smm-website-config', label: 'SMM Website Config', icon: '🔧' },
+      { id: 'cloudflare', label: 'Cloudflare DNS', icon: '☁️' },
+      { id: 'domain', label: 'Domain Sales', icon: '🌐' },
+    ],
+  },
+  {
+    id: 'integrations',
+    title: 'Integrations & Messaging',
+    items: [
+      { id: 'facebook', label: 'Facebook Pixel', icon: '📘' },
+      { id: 'smtp', label: 'SMTP / Email', icon: '📧' },
+      { id: 'chat', label: 'Support Chat', icon: '💬' },
+    ],
+  },
+  {
+    id: 'account',
+    title: 'Account',
+    items: [{ id: 'profile', label: 'Profile', icon: '👤' }],
+  },
 ];
 
 export default function Dashboard({ token, user, onLogout }: DashboardProps) {
@@ -88,16 +125,21 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
         </div>
 
         <nav className="nav">
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.id}
-              to={`/admin/${tab.id}`}
-              className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-              end={tab.id !== 'hosting' && tab.id !== 'smm-packages'}
-            >
-              <span className="nav-icon">{tab.icon}</span>
-              <span className="nav-label">{tab.label}</span>
-            </NavLink>
+          {navSections.map((section) => (
+            <div key={section.id} className="nav-section">
+              <div className="nav-section-title">{section.title}</div>
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.id}
+                  to={`/admin/${item.id}`}
+                  className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+                  end={item.end !== false}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -121,6 +163,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
           <Route path="cloudflare" element={<CloudflareConfigManager token={token} toast={toast} />} />
           <Route path="domain" element={<DomainResellerManager token={token} toast={toast} />} />
           <Route path="facebook" element={<FacebookConfigManager token={token} toast={toast} />} />
+          <Route path="smtp" element={<SmtpConfigManager token={token} toast={toast} />} />
           <Route path="invoices" element={<InvoiceManager token={token} toast={toast} />} />
           <Route path="chat" element={<ChatManager token={token} />} />
           <Route path="profile" element={<ProfileManager token={token} />} />
