@@ -351,6 +351,7 @@ export interface SmtpConfig {
   user: string;
   password: string;
   from_address: string;
+  cc_addresses: string;
   require_tls: boolean;
 }
 

@@ -9,7 +9,7 @@ const { decryptPassword } = require('./encryption');
 async function getSmtpConfigFromDb() {
   try {
     const [rows] = await pool.execute(
-      'SELECT is_enabled, host, port, secure, user, password_encrypted, from_address, require_tls FROM smtp_config WHERE id = 1'
+      'SELECT is_enabled, host, port, secure, user, password_encrypted, from_address, cc_addresses, require_tls FROM smtp_config WHERE id = 1'
     );
     if (!rows.length || !rows[0].is_enabled || !rows[0].user || !rows[0].password_encrypted) {
       return null;
@@ -17,6 +17,8 @@ async function getSmtpConfigFromDb() {
     const r = rows[0];
     const pass = decryptPassword(r.password_encrypted);
     if (!pass) return null;
+    const ccRaw = r.cc_addresses ? String(r.cc_addresses).trim() : '';
+    const cc = ccRaw ? ccRaw.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : null;
     return {
       host: r.host || 'smtp.gmail.com',
       port: r.port != null ? Number(r.port) : 587,
@@ -24,6 +26,7 @@ async function getSmtpConfigFromDb() {
       user: r.user,
       pass,
       from: (r.from_address || r.user || 'noreply@fivedit.com').trim(),
+      cc: cc && cc.length ? cc : null,
       requireTLS: r.require_tls !== false,
     };
   } catch (e) {
@@ -111,6 +114,7 @@ async function sendHostingCredentialsEmail({
     const mailOptions = {
       from: smtpConfig.from,
       to: to,
+      ...(smtpConfig.cc && smtpConfig.cc.length ? { cc: smtpConfig.cc } : {}),
       subject: `Your Hosting Account is Ready - ${domain}`,
       html: `
         <!DOCTYPE html>
@@ -275,6 +279,7 @@ async function sendOrderConfirmationEmail({
     const mailOptions = {
       from: smtpConfig.from,
       to: to,
+      ...(smtpConfig.cc && smtpConfig.cc.length ? { cc: smtpConfig.cc } : {}),
       subject: `Order Confirmation - ${orderId}`,
       html: `
 <!DOCTYPE html>
@@ -381,6 +386,7 @@ async function sendSmmCredentialsEmail({
     const mailOptions = {
       from: smtpConfig.from,
       to,
+      ...(smtpConfig.cc && smtpConfig.cc.length ? { cc: smtpConfig.cc } : {}),
       subject: `Your SMM Store is Ready – ${siteUrl.replace(/^https?:\/\//, '').split('/')[0]}`,
       html: `
         <!DOCTYPE html>

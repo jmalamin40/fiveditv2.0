@@ -15,6 +15,7 @@ const defaultConfig: SmtpConfig = {
   user: '',
   password: '',
   from_address: '',
+  cc_addresses: '',
   require_tls: true,
 };
 
@@ -128,6 +129,16 @@ export default function SmtpConfigManager({ token, toast }: Props) {
           placeholder="noreply@yourdomain.com"
           style={{ width: '100%', padding: '0.5rem 0.75rem', marginBottom: '1rem', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }}
         />
+
+        <label style={{ fontSize: '0.875rem', fontWeight: 500, display: 'block', marginBottom: '0.25rem' }}>CC (optional)</label>
+        <input
+          type="text"
+          value={config.cc_addresses}
+          onChange={(e) => setConfig((c) => ({ ...c, cc_addresses: e.target.value.trim() }))}
+          placeholder="admin@example.com, support@example.com"
+          style={{ width: '100%', padding: '0.5rem 0.75rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }}
+        />
+        <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1rem' }}>Comma- or space-separated emails to receive a copy of all outgoing emails (order confirmations, credentials, etc.).</p>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontWeight: 500 }}>
           <input

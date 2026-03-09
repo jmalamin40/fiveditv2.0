@@ -16,7 +16,7 @@ adminRouter.use(authenticate, requireAdmin);
 adminRouter.get('/', async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT is_enabled, host, port, secure, user, password_encrypted, from_address, require_tls FROM smtp_config WHERE id = 1'
+      'SELECT is_enabled, host, port, secure, user, password_encrypted, from_address, cc_addresses, require_tls FROM smtp_config WHERE id = 1'
     );
     if (!rows.length) {
       return res.json({
@@ -27,6 +27,7 @@ adminRouter.get('/', async (req, res) => {
         user: '',
         password: '', // never send real password to client
         from_address: '',
+        cc_addresses: '',
         require_tls: true,
       });
     }
@@ -39,6 +40,7 @@ adminRouter.get('/', async (req, res) => {
       user: r.user || '',
       password: r.password_encrypted ? '********' : '', // masked
       from_address: r.from_address || '',
+      cc_addresses: r.cc_addresses ? String(r.cc_addresses).trim() : '',
       require_tls: r.require_tls !== false,
     });
   } catch (e) {
@@ -57,6 +59,7 @@ adminRouter.put('/', async (req, res) => {
       user,
       password,
       from_address,
+      cc_addresses,
       require_tls,
     } = req.body;
 
@@ -73,9 +76,10 @@ adminRouter.put('/', async (req, res) => {
       passwordToStore = existing[0].password_encrypted; // keep existing
     }
 
+    const ccValue = (cc_addresses && String(cc_addresses).trim()) ? String(cc_addresses).trim() : null;
     await pool.execute(
-      `INSERT INTO smtp_config (id, is_enabled, host, port, secure, user, password_encrypted, from_address, require_tls, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO smtp_config (id, is_enabled, host, port, secure, user, password_encrypted, from_address, cc_addresses, require_tls, updated_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON DUPLICATE KEY UPDATE
          is_enabled = VALUES(is_enabled),
          host = VALUES(host),
@@ -84,6 +88,7 @@ adminRouter.put('/', async (req, res) => {
          user = VALUES(user),
          password_encrypted = COALESCE(VALUES(password_encrypted), password_encrypted),
          from_address = VALUES(from_address),
+         cc_addresses = VALUES(cc_addresses),
          require_tls = VALUES(require_tls),
          updated_at = CURRENT_TIMESTAMP`,
       [
@@ -94,6 +99,7 @@ adminRouter.put('/', async (req, res) => {
         (user || '').trim() || null,
         passwordToStore,
         (from_address || '').trim() || null,
+        ccValue,
         require_tls !== false,
       ]
     );

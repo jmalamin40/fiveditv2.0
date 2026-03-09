@@ -714,11 +714,18 @@ async function migrate() {
         user VARCHAR(255) NULL,
         password_encrypted TEXT NULL,
         from_address VARCHAR(255) NULL COMMENT 'From email e.g. noreply@example.com',
+        cc_addresses TEXT NULL COMMENT 'Comma-separated CC emails',
         require_tls BOOLEAN DEFAULT TRUE,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ smtp_config table created');
+    try {
+      await connection.execute(`ALTER TABLE smtp_config ADD COLUMN cc_addresses TEXT NULL COMMENT 'Comma-separated CC emails' AFTER from_address`);
+      console.log('✅ smtp_config.cc_addresses column added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
 
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
