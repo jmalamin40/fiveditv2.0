@@ -197,7 +197,7 @@ async function createSupabaseAuthUser(supabaseUrl, serviceRoleKey, options) {
 /**
  * Replace Supabase URL and anon key in the provisioned codebase (domain folder).
  * - Replaces any https://*.supabase.co with the new url
- * - Replaces placeholder URL (e.g. https://xxxxxxxxxxxx.com or with path like /rest/v1/...) with the new url
+ * - Replaces placeholder URL (e.g.or with path like /rest/v1/...) with the new url
  * - Replaces placeholder anon key everywhere: literal string, apikey value, "Bearer yyy..." in authorization
  * - Replaces process.env.VITE_SUPABASE_URL / process.env.VITE_SUPABASE_ANON_KEY with the new values
  * - Updates or creates .env / .env.local with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
@@ -215,11 +215,11 @@ function replaceSupabaseConfigInCodebase(folderPath, url, anonKey) {
     return;
   }
   const urlPattern = /https:\/\/[a-z0-9-]+\.supabase\.co/g;
-  const urlPlaceholder = process.env.SMM_SUPABASE_URL_PLACEHOLDER || 'https://xxxxxxxxxxxx.com';
+  const urlPlaceholder = process.env.SMM_SUPABASE_URL_PLACEHOLDER || 'https://api-social-ecom.fivedit.com';
   const anonKeyPlaceholder = process.env.SMM_SUPABASE_ANON_KEY_PLACEHOLDER || 'yyyyyyyyyyyyyyyyyyy';
   const urlPlaceholderRegex = /https:\/\/x+\.com/g;
   const bearerPlaceholderRegex = /Bearer\s+y{10,}/g;
-  // Minified bundle pattern: const o0="https://xxxxxxxxxxxx.com",a0="yyyyyyyyyyyyyyyyyyy"
+  // Minified bundle pattern: const o0="https://api-social-ecom.fivedit.com,a0="yyyyyyyyyyyyyyyyyyy"
   const quotedUrlPlaceholderRegex = /["']https:\/\/x+\.com["']/g;
   const quotedAnonKeyPlaceholderRegex = /["']y{15,}["']/g;
   const extensions = ['.html', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.env', '.env.local', '.env.production', '.json'];
