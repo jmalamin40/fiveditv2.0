@@ -20,7 +20,7 @@ const SMM_SOURCE_DIR = process.env.SMM_SOURCE_PATH || path.join(__dirname, '..',
 // Update frontend: source path to copy from; target = FIVEDIT_UPDATE_TARGET_BASE/domains/{domain}/public_html
 const UPDATE_FRONTEND_SOURCE = process.env.FIVEDIT_UPDATE_SOURCE_PATH || '/home/fiveditc/domains/fivedit.com/api/ecomerce_dist';
 const UPDATE_FRONTEND_TARGET_BASE = process.env.FIVEDIT_UPDATE_TARGET_BASE || '/home/fiveditc';
-const { getSmmDaConfig, createDomainInDirectAdmin } = require('../utils/directAdminSmm');
+const { getSmmDaConfig, createDomainInDirectAdmin, enableLetsEncryptForDomain } = require('../utils/directAdminSmm');
 const { createDnsRecord } = require('../utils/cloudflareDns');
 const { setupSupabaseForInstance, createSupabaseAuthUser, replaceSupabaseConfigInCodebase, getSupabaseConfig, getSupabaseApiKeys } = require('../utils/supabaseSmm');
 const {
@@ -560,11 +560,13 @@ router.post('/payments/webhook', async (req, res) => {
             const docroot = await createDomainInDirectAdmin(daConfig, subdomainFull);
             folderPathToStore = docroot;
             usedDirectAdmin = true;
+            await enableLetsEncryptForDomain(daConfig, subdomainFull);
           } else if (order.domain) {
             const cleanDomain = order.domain.replace(/^https?:\/\//, '').split('/')[0];
             const docroot = await createDomainInDirectAdmin(daConfig, cleanDomain);
             folderPathToStore = docroot;
             usedDirectAdmin = true;
+            await enableLetsEncryptForDomain(daConfig, cleanDomain);
           }
         }
       });

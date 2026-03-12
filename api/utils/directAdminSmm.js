@@ -186,6 +186,33 @@ async function createDomainInDirectAdmin(config, domain) {
 }
 
 /**
+ * Enable Let's Encrypt SSL for a domain in DirectAdmin.
+ * Best-effort: logs errors but does not throw so provisioning continues.
+ */
+async function enableLetsEncryptForDomain(config, domain) {
+  const cleanDomain = domain.replace(/^https?:\/\//, '').split('/')[0];
+  if (!cleanDomain) return;
+  try {
+    defaultLogger.log(`SMM DA: enabling Let's Encrypt SSL for ${cleanDomain}`);
+    await makeSmmDaRequest(
+      config,
+      'CMD_API_SSL',
+      {
+        action: 'save',
+        type: 'letsencrypt',
+        domain: cleanDomain,
+        request: '1',
+        keysize: '4096',
+      },
+      'POST'
+    );
+    defaultLogger.log(`SMM DA: Let's Encrypt SSL requested for ${cleanDomain}`);
+  } catch (e) {
+    defaultLogger.error(`SMM DA: enableLetsEncryptForDomain failed for ${cleanDomain}:`, e.message || e);
+  }
+}
+
+/**
  * Return the document root path for a domain (and optional subdomain).
  */
 function getDaDocroot(config, domain, subdomain) {
@@ -229,4 +256,5 @@ module.exports = {
   getDaDocroot,
   getSmmFixedDocroot,
   addSmmDomainPointer,
+  enableLetsEncryptForDomain,
 };
