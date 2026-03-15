@@ -24,7 +24,17 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1rem;
+}
+@media (max-width: 480px) {
+  .login-container {
+    padding: 0.75rem;
+    align-items: flex-start;
+    padding-top: 2rem;
+  }
+  .card {
+    padding: 1.25rem;
+  }
 }
 
 .card {
@@ -108,18 +118,67 @@ button:not(:disabled):hover {
 .dashboard {
   display: flex;
   min-height: 100vh;
+  position: relative;
+}
+
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1002;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.sidebar-toggle:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+.sidebar-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.4);
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.sidebar-overlay[aria-hidden="false"] {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .sidebar {
   width: 280px;
+  min-width: 280px;
   background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
   color: white;
   padding: 0;
   display: flex;
   flex-direction: column;
   box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
   overflow: hidden;
+  z-index: 1000;
+  transition: transform 0.25s ease;
 }
 
 .sidebar::before {
@@ -340,8 +399,81 @@ a.nav-item.active {
 
 .content {
   flex: 1;
+  margin-left: 280px;
   padding: 2rem 2.5rem;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+/* ----- Responsive: tablet and below ----- */
+@media (max-width: 1024px) {
+  .content {
+    padding: 1.5rem 1.25rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar-toggle {
+    display: flex;
+  }
+
+  .sidebar-overlay {
+    display: block;
+  }
+
+  .sidebar {
+    width: 280px;
+    max-width: 85vw;
+    transform: translateX(-100%);
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .content {
+    margin-left: 0;
+    padding: 1rem 1rem 4rem 1rem;
+    width: 100%;
+  }
+
+  .sidebar-header {
+    padding: 1.25rem 1rem 1rem;
+  }
+  .brand h2 {
+    font-size: 1.25rem;
+  }
+  .user-profile {
+    padding: 1rem;
+  }
+  .nav {
+    padding: 1rem;
+  }
+  .sidebar-footer {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .content {
+    padding: 0.75rem 0.75rem 4rem;
+  }
+  .card-panel {
+    padding: 1rem;
+    border-radius: 0.75rem;
+  }
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .item-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .row-actions {
+    flex-wrap: wrap;
+  }
 }
 
 .section-header {
@@ -409,5 +541,59 @@ a.nav-item.active {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
+}
+
+/* Table scroll on small screens */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -1rem;
+  padding: 0 1rem;
+}
+@media (max-width: 768px) {
+  .table-responsive {
+    margin: 0 -0.75rem;
+    padding: 0 0.75rem;
+  }
+  .data-table {
+    min-width: 600px;
+    font-size: 0.875rem;
+  }
+  .data-table th,
+  .data-table td {
+    padding: 0.5rem 0.4rem;
+  }
+}
+
+/* Utility for flex wrap */
+.flex {
+  display: flex;
+}
+.flex-wrap {
+  flex-wrap: wrap;
+}
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+.items-center { align-items: center; }
+.min-w-0 { min-width: 0; }
+.min-w-\[200px\] { min-width: 200px; }
+@media (max-width: 640px) {
+  .flex-wrap {
+    flex-direction: column;
+  }
+  .min-w-\[200px\] {
+    min-width: 100%;
+  }
+}
+
+/* Responsive grid helper for admin pages */
+.responsive-grid {
+  display: grid;
+  gap: 1rem;
+}
+@media (max-width: 768px) {
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
 import CategoriesManager from './CategoriesManager';
 import ServicesManager from './ServicesManager';
 import ScriptsManager from './ScriptsManager';
@@ -88,11 +89,28 @@ const navSections: NavSection[] = [
 
 export default function Dashboard({ token, user, onLogout }: DashboardProps) {
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
   const toast = useToast();
 
   useEffect(() => {
     loadProfile();
   }, [token]);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [sidebarOpen]);
 
   const loadProfile = async () => {
     try {
@@ -105,7 +123,20 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
 
   return (
     <div className="dashboard">
-      <aside className="sidebar">
+      <button
+        type="button"
+        className="sidebar-toggle"
+        onClick={() => setSidebarOpen((o) => !o)}
+        aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+      >
+        {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
+      <div
+        className="sidebar-overlay"
+        aria-hidden={!sidebarOpen}
+        onClick={() => setSidebarOpen(false)}
+      />
+      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-header">
           <div className="brand">
             <div className="brand-icon">🚀</div>
