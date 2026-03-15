@@ -31,6 +31,8 @@ app.use('/api/customer', require('./routes/customer'));
 app.use('/api/services', require('./routes/services'));
 app.use('/api/reviews', require('./routes/reviews'));
 app.use('/api/contact', require('./routes/contact'));
+const analytics = require('./routes/analytics');
+app.use('/api/analytics', analytics);
 app.use('/api/codecanyon', require('./routes/codecanyon'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/admin/categories', require('./routes/adminCategories'));
@@ -54,6 +56,7 @@ const smtpConfig = require('./routes/smtpConfig');
 app.use('/api/facebook-config', facebookConfig);
 app.use('/api/admin/facebook-config', facebookConfig.adminRouter);
 app.use('/api/admin/smtp-config', smtpConfig.adminRouter);
+app.use('/api/admin/analytics', analytics.adminRouter);
 app.use('/api/domain', require('./routes/domain'));
 app.use('/api/admin/domain', require('./routes/domainAdmin'));
 

@@ -742,6 +742,24 @@ async function migrate() {
     `);
     console.log('✅ contact_inquiries table created');
 
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS traffic_events (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        path VARCHAR(500) NOT NULL DEFAULT '/',
+        referrer VARCHAR(1000) NULL,
+        referrer_domain VARCHAR(255) NULL,
+        source VARCHAR(50) NOT NULL DEFAULT 'direct' COMMENT 'direct|referral|search|social|email',
+        utm_source VARCHAR(255) NULL,
+        utm_medium VARCHAR(255) NULL,
+        utm_campaign VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_created_at (created_at),
+        INDEX idx_source (source),
+        INDEX idx_referrer_domain (referrer_domain)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ traffic_events table created');
+
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
       'ADD COLUMN domain_price DECIMAL(10, 2) NULL',

@@ -365,6 +365,26 @@ export async function updateSmtpConfig(token: string, payload: SmtpConfig) {
   return data;
 }
 
+// Traffic analytics
+export interface TrafficAnalytics {
+  from: string;
+  to: string;
+  totalVisits: number;
+  bySource: { direct: number; referral: number; search: number; social: number; email: number };
+  topReferrers: { domain: string; count: number }[];
+  topPaths: { path: string; count: number }[];
+  visitsByDay: { date: string; count: number }[];
+}
+
+export async function getTrafficAnalytics(token: string, from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const q = params.toString();
+  const { data } = await client.get<TrafficAnalytics>(`/admin/analytics/traffic${q ? `?${q}` : ''}`, authHeaders(token));
+  return data;
+}
+
 // Domain reseller config & TLD pricing
 export interface DomainResellerConfig {
   id: number;

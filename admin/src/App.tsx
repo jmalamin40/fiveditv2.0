@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginForm from './components/LoginForm';
 import Dashboard from './components/Dashboard';
 import { LoginResponse } from './api';
 
-export default function App() {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<LoginResponse['user'] | null>(null);
+function readStoredAuth(): { token: string | null; user: LoginResponse['user'] | null } {
+  if (typeof window === 'undefined') return { token: null, user: null };
+  const storedToken = localStorage.getItem('fivedit_admin_token');
+  const storedUser = localStorage.getItem('fivedit_admin_user');
+  if (!storedToken || !storedUser) return { token: null, user: null };
+  try {
+    return { token: storedToken, user: JSON.parse(storedUser) as LoginResponse['user'] };
+  } catch {
+    return { token: null, user: null };
+  }
+}
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('fivedit_admin_token');
-    const storedUser = localStorage.getItem('fivedit_admin_user');
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
+export default function App() {
+  const [token, setToken] = useState<string | null>(() => readStoredAuth().token);
+  const [user, setUser] = useState<LoginResponse['user'] | null>(() => readStoredAuth().user);
 
   const handleLoginSuccess = (data: LoginResponse) => {
     setToken(data.token);

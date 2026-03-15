@@ -12,6 +12,7 @@ import DomainResellerManager from './DomainResellerManager';
 import FacebookConfigManager from './FacebookConfigManager';
 import SmtpConfigManager from './SmtpConfigManager';
 import SmmWebsiteConfigManager from './SmmWebsiteConfigManager';
+import TrafficAnalyticsManager from './TrafficAnalyticsManager';
 import ProfileManager from './ProfileManager';
 import InvoiceManager from './InvoiceManager';
 import { fetchAdminProfile } from '../api';
@@ -72,6 +73,11 @@ const navSections: NavSection[] = [
       { id: 'smtp', label: 'SMTP / Email', icon: '📧' },
       { id: 'chat', label: 'Support Chat', icon: '💬' },
     ],
+  },
+  {
+    id: 'insights',
+    title: 'Insights',
+    items: [{ id: 'analytics', label: 'Traffic Analytics', icon: '📊' }],
   },
   {
     id: 'account',
@@ -164,6 +170,7 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
           <Route path="domain" element={<DomainResellerManager token={token} toast={toast} />} />
           <Route path="facebook" element={<FacebookConfigManager token={token} toast={toast} />} />
           <Route path="smtp" element={<SmtpConfigManager token={token} toast={toast} />} />
+          <Route path="analytics" element={<TrafficAnalyticsManager token={token} toast={toast} />} />
           <Route path="invoices" element={<InvoiceManager token={token} toast={toast} />} />
           <Route path="chat" element={<ChatManager token={token} />} />
           <Route path="profile" element={<ProfileManager token={token} />} />

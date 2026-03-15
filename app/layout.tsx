@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 import './globals.css'
 import FacebookPixel from '@/components/FacebookPixel'
+import TrafficBeacon from '@/components/TrafficBeacon'
 
 export const metadata: Metadata = {
   title: 'FivedIT - Full-Stack Development & DevOps Excellence',
@@ -30,6 +31,7 @@ export default function RootLayout({
           `}
         </Script>
         <FacebookPixel />
+        <TrafficBeacon />
         {children}
       </body>
     </html>
