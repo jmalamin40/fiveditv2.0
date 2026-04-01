@@ -30,30 +30,51 @@ async function generateSupportReply(messages) {
   try {
     if ((cfg.provider || '').toLowerCase() === 'gemini') {
       const base = (cfg.api_base_url || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
-      const model = cfg.model || 'gemini-1.5-flash';
-      const url = `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.api_key)}`;
       const contents = messages.map((m) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
       }));
-      const response = await axios.post(
-        url,
-        {
-          systemInstruction: cfg.system_prompt ? { parts: [{ text: cfg.system_prompt }] } : undefined,
-          contents,
-          generationConfig: {
-            temperature: Number.isFinite(cfg.temperature) ? cfg.temperature : 0.7,
-            maxOutputTokens: Number.isFinite(cfg.max_tokens) ? cfg.max_tokens : 300,
-          },
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 20000,
+      const configuredModel = String(cfg.model || 'gemini-2.5-flash').replace(/^models\//, '').trim();
+      const fallbackModels = [
+        configuredModel,
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash-lite',
+        'gemini-3-flash-preview',
+        'gemini-3.1-pro-preview',
+        'gemini-3.1-flash-lite-preview',
+        'gemini-1.5-flash',
+      ].filter(Boolean);
+
+      for (const model of [...new Set(fallbackModels)]) {
+        try {
+          const url = `${base}/models/${model}:generateContent?key=${encodeURIComponent(cfg.api_key)}`;
+          const response = await axios.post(
+            url,
+            {
+              systemInstruction: cfg.system_prompt ? { parts: [{ text: cfg.system_prompt }] } : undefined,
+              contents,
+              generationConfig: {
+                temperature: Number.isFinite(cfg.temperature) ? cfg.temperature : 0.7,
+                maxOutputTokens: Number.isFinite(cfg.max_tokens) ? cfg.max_tokens : 300,
+              },
+            },
+            {
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 20000,
+            }
+          );
+          const parts = response?.data?.candidates?.[0]?.content?.parts || [];
+          const text = parts.map((p) => p.text || '').join('\n').trim();
+          if (text) return text;
+        } catch (err) {
+          const status = err?.response?.status;
+          // Try next model if unavailable/not supported.
+          if (status === 404 || status === 400) continue;
+          throw err;
         }
-      );
-      const parts = response?.data?.candidates?.[0]?.content?.parts || [];
-      const text = parts.map((p) => p.text || '').join('\n').trim();
-      return text || null;
+      }
+      return null;
     }
 
     // Default: OpenAI-compatible chat.completions

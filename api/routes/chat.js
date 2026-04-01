@@ -559,12 +559,13 @@ router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
     }
     const r = rows[0];
     const providerSafe = (r.provider || 'openai').toLowerCase() === 'gemini' ? 'gemini' : 'openai';
+    const defaultGeminiModel = 'gemini-2.5-flash';
     res.json({
       is_enabled: Boolean(r.is_enabled),
       provider: providerSafe,
       api_base_url: r.api_base_url || (providerSafe === 'gemini' ? 'https://generativelanguage.googleapis.com/v1beta' : 'https://api.openai.com/v1'),
       api_key: r.api_key_encrypted ? '********' : '',
-      model: r.model || (providerSafe === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o-mini'),
+      model: r.model || (providerSafe === 'gemini' ? defaultGeminiModel : 'gpt-4o-mini'),
       system_prompt: r.system_prompt || '',
       temperature: Number(r.temperature ?? 0.7),
       max_tokens: Number(r.max_tokens ?? 300),
@@ -602,7 +603,7 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
     const defaultBase = providerSafe === 'gemini'
       ? 'https://generativelanguage.googleapis.com/v1beta'
       : 'https://api.openai.com/v1';
-    const defaultModel = providerSafe === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o-mini';
+    const defaultModel = providerSafe === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini';
 
     await pool.execute(
       `INSERT INTO ai_support_config

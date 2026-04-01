@@ -57,7 +57,15 @@ interface ChatManagerProps {
 }
 
 const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'];
-const GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'];
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-3.1-pro-preview',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-1.5-flash',
+];
 
 export default function ChatManager({ token }: ChatManagerProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
