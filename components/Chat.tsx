@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, MessageCircle, X, Bot, User } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { sanitizeAssistantChatHtml } from '@/lib/sanitizeAssistantChatHtml';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.fivedit.com/api';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.fivedit.com';
@@ -483,8 +484,17 @@ const Chat: React.FC = () => {
                       <div className="flex items-start space-x-2">
                         {!isUser && <Bot size={16} className="mt-0.5 flex-shrink-0" />}
                         {isUser && <User size={16} className="mt-0.5 flex-shrink-0" />}
-                        <div>
-                          <p className="text-sm">{message.message}</p>
+                        <div className="min-w-0">
+                          {isUser ? (
+                            <p className="text-sm whitespace-pre-wrap break-words">{message.message}</p>
+                          ) : (
+                            <div
+                              className="text-sm break-words [&_a]:text-blue-600 [&_a]:underline hover:[&_a]:text-blue-800"
+                              dangerouslySetInnerHTML={{
+                                __html: sanitizeAssistantChatHtml(message.message || ''),
+                              }}
+                            />
+                          )}
                           <p className={`text-xs mt-1 ${isUser ? 'opacity-70' : 'opacity-60'}`}>
                             {timestamp.toLocaleTimeString([], { 
                               hour: '2-digit', 

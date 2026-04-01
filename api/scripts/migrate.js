@@ -788,7 +788,7 @@ async function migrate() {
 
     await connection.execute(`
       INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens, include_catalog_knowledge)
-      VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300, TRUE)
+      VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a support teammate for FivedIT. Sound natural and human: warm, clear, and concise - like a real person on the team, not a robot or a formal brochure.', 0.70, 300, TRUE)
       ON DUPLICATE KEY UPDATE id = id
     `);
 

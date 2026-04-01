@@ -78,16 +78,18 @@ async function buildPublicSiteAndSupportText() {
   const lines = [];
   lines.push('### Website base URL');
   lines.push(`Primary site: ${base}`);
-  lines.push('Always give customers full https links: concatenate base URL + path (no broken relative links in chat).');
+  lines.push(
+    'Use this base only when building full URLs inside <a href="..."> if the customer asked for a link. Do not recite URLs unprompted.'
+  );
   lines.push('');
-  lines.push('### Official support contact (share when asked)');
+  lines.push('### Official support contact (only if customer asks for email/phone/WhatsApp/contact page)');
   lines.push(`- Email: ${email}`);
   if (phone) lines.push(`- Phone: ${phone}${telDigits ? ` (tel:${telDigits})` : ''}`);
-  if (waUrl) lines.push(`- WhatsApp chat: ${waUrl}`);
-  lines.push(`- Contact form: ${contactFull}`);
-  if (notes && String(notes).trim()) lines.push(`- More: ${String(notes).replace(/\s+/g, ' ').slice(0, 600)}`);
+  if (waUrl) lines.push(`- WhatsApp: ${waUrl}`);
+  lines.push(`- Contact form page: ${contactFull}`);
+  if (notes && String(notes).trim()) lines.push(`- Notes: ${String(notes).replace(/\s+/g, ' ').slice(0, 600)}`);
   lines.push('');
-  lines.push('### Pages to link (hosting, services, SMM, account)');
+  lines.push('### Page URLs (use in <a href> only when customer wants a link)');
   for (const item of routes) {
     if (!item || !item.path) continue;
     const p = item.path.startsWith('/') ? item.path : `/${item.path}`;
@@ -288,7 +290,7 @@ async function buildWebsiteKnowledgeText() {
   }
 
   const header =
-    'Use the sections below for accurate offerings, prices, plan names, full page URLs, and official support contact. When customers need hosting, services, SMM, domains, or login, share the matching full https link from the list. If something is not listed, say you are not sure and point them to the contact form or WhatsApp.\n';
+    'Internal catalog: offerings, prices, plan names, page URLs, and support contacts. Answer in your own words; do not paste raw URLs unless the customer asked for links. If they ask for a page link, use HTML <a href="FULL_URL" target="_blank" rel="noopener noreferrer">label</a>. If unsure, say so and offer to connect them with the team when they want contact details.\n';
   const body = parts.join('\n');
   if (!body.trim()) return '';
   return `${header}\n${body}`.slice(0, MAX_TOTAL_CHARS);

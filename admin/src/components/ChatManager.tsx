@@ -17,6 +17,7 @@ import {
   type AiSupportConfig,
   type AiPublicInfo,
 } from '../api';
+import { sanitizeAssistantChatHtml } from '../lib/sanitizeAssistantChatHtml';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
@@ -112,7 +113,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
     api_base_url: 'https://api.openai.com/v1',
     api_key: '',
     model: 'gpt-4o-mini',
-    system_prompt: 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.',
+    system_prompt: 'You are a support teammate for FivedIT. Sound natural and human: warm, clear, and concise - like a real person on the team, not a robot or a formal brochure.',
     temperature: 0.7,
     max_tokens: 300,
     include_catalog_knowledge: true,
@@ -1194,7 +1195,16 @@ export default function ChatManager({ token }: ChatManagerProps) {
                           {isAdmin ? <Bot size={16} /> : <User size={16} />}
                         </div>
                         <div className="message-content">
-                          <p>{message.message}</p>
+                          {isAdmin ? (
+                            <div
+                              className="message-body-html"
+                              dangerouslySetInnerHTML={{
+                                __html: sanitizeAssistantChatHtml(message.message || ''),
+                              }}
+                            />
+                          ) : (
+                            <p className="message-body-plain">{message.message}</p>
+                          )}
                           <span className="message-time">
                             {timestamp.toLocaleString()}
                           </span>
@@ -1696,10 +1706,24 @@ export default function ChatManager({ token }: ChatManagerProps) {
           box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
         }
 
-        .message-content p {
+        .message-content p,
+        .message-body-plain {
           margin: 0;
           font-size: 0.9375rem;
           line-height: 1.45;
+        }
+
+        .message-body-html {
+          margin: 0;
+          font-size: 0.9375rem;
+          line-height: 1.45;
+          word-break: break-word;
+        }
+
+        .message-body-html a {
+          color: inherit;
+          text-decoration: underline;
+          font-weight: 500;
         }
 
         .message-time {

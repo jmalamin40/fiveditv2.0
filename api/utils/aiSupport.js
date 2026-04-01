@@ -5,7 +5,17 @@ const { defaultLogger } = require('./logger');
 const { getWebsiteKnowledgeForAi } = require('./aiSupportKnowledge');
 
 const DEFAULT_SYSTEM =
-  'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.';
+  'You are a support teammate for FivedIT. Sound natural and human: warm, clear, and concise—like a real person on the team, not a robot or a formal brochure.';
+
+/** Appended to every AI support reply (after optional catalog knowledge). */
+const CONVERSATION_GUIDE = `
+
+## How you reply (required)
+- Write the way a thoughtful human would in chat: short paragraphs, natural wording, occasional contractions if they fit. Vary how you open replies; skip clichés like "As an AI" or stiff "Certainly! I would be happy to assist."
+- Do not paste website URLs, email addresses, WhatsApp links, or phone tel: links unless the customer clearly asks for a link, URL, where to open something, where to sign up/buy, or how to reach you online (e.g. "send me the link", "where do I go", "how can I contact you"). For general questions ("what is hosting?"), explain in plain words without links.
+- When you do share a clickable link, use HTML only: <a href="https://full-url-here" target="_blank" rel="noopener noreferrer">short readable label</a>. Never use bare https:// text or Markdown [label](url) for links. Use a meaningful label (e.g. "Hosting plans" not "click here").
+- You may use <br /> for a line break between short paragraphs when it helps readability.
+- If they only need a path conceptually, you can name the page ("Hosting page") without a link until they ask for the link.`;
 
 let ensuredKnowledgeColumn = false;
 async function ensureIncludeCatalogColumn() {
@@ -44,15 +54,17 @@ async function getAiSupportConfig() {
 
 async function buildFullSystemPrompt(cfg) {
   let system = (cfg.system_prompt || DEFAULT_SYSTEM).trim();
-  if (!cfg.include_catalog_knowledge) return system;
-  try {
-    const knowledge = await getWebsiteKnowledgeForAi();
-    if (knowledge && knowledge.trim()) {
-      system += `\n\n---\nWebsite catalog (from our database; use for services, prices, and plan names - if unsure, offer human follow-up):\n${knowledge}`;
+  if (cfg.include_catalog_knowledge) {
+    try {
+      const knowledge = await getWebsiteKnowledgeForAi();
+      if (knowledge && knowledge.trim()) {
+        system += `\n\n---\nInternal reference (database: services, prices, pages, contacts). Use facts when relevant, but follow "How you reply" below—do not dump links or contact info unless the customer asks for them.\n${knowledge}`;
+      }
+    } catch (e) {
+      defaultLogger.error('AI support: knowledge load failed:', e.message || e);
     }
-  } catch (e) {
-    defaultLogger.error('AI support: knowledge load failed:', e.message || e);
   }
+  system += CONVERSATION_GUIDE;
   return system;
 }
 
