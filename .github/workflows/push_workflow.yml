@@ -154,6 +154,7 @@ jobs:
             
             echo "Installing API dependencies..."
             cd $API_DIR
+            source /home/fiveditc/nodevenv/domains/fivedit.com/api/20/bin/activate && cd /home/fiveditc/domains/fivedit.com/api
             npm install --production
             
             echo "Migrating API database..."

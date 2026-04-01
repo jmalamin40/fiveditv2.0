@@ -5,6 +5,28 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendPushToRecipient } = require('../utils/firebasePush');
 const { encryptPassword } = require('../utils/encryption');
 
+async function ensureAiSupportConfigTable() {
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS ai_support_config (
+      id INT PRIMARY KEY DEFAULT 1,
+      is_enabled BOOLEAN DEFAULT FALSE,
+      provider VARCHAR(30) NOT NULL DEFAULT 'openai',
+      api_base_url VARCHAR(500) NULL DEFAULT 'https://api.openai.com/v1',
+      api_key_encrypted TEXT NULL,
+      model VARCHAR(120) NULL DEFAULT 'gpt-4o-mini',
+      system_prompt TEXT NULL,
+      temperature DECIMAL(4,2) DEFAULT 0.70,
+      max_tokens INT DEFAULT 300,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.execute(`
+    INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens)
+    VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300)
+    ON DUPLICATE KEY UPDATE id = id
+  `);
+}
+
 // Generate UUID for session IDs
 const generateUUID = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -519,6 +541,7 @@ router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res
 // Admin: Get AI support config (for editing)
 router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, res) => {
   try {
+    await ensureAiSupportConfigTable();
     const [rows] = await pool.execute(
       'SELECT is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens FROM ai_support_config WHERE id = 1'
     );
@@ -555,6 +578,7 @@ router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
 // Admin: Update AI support config
 router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, res) => {
   try {
+    await ensureAiSupportConfigTable();
     const {
       is_enabled,
       provider,
@@ -608,7 +632,7 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating AI support config:', error);
-    res.status(500).json({ error: 'Failed to update AI support config' });
+    res.status(500).json({ error: 'Failed to update AI support config', details: error?.message || 'unknown error' });
   }
 });
 

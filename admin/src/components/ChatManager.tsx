@@ -1080,10 +1080,12 @@ export default function ChatManager({ token }: ChatManagerProps) {
       <style>{`
         .chat-manager {
           padding: 1.5rem 2rem;
-          height: calc(100vh - 4rem);
+          min-height: calc(100vh - 4rem);
+          height: auto;
           display: flex;
           flex-direction: column;
           background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+          overflow: visible;
         }
 
         .chat-header {
@@ -1215,6 +1217,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
           gap: 1.25rem;
           flex: 1;
           min-height: 0;
+          align-items: stretch;
         }
 
         .sessions-panel {
@@ -1288,7 +1291,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
         .sessions-list {
           flex: 1;
           overflow-y: auto;
-          max-height: calc(100vh - 300px);
+          max-height: calc(100vh - 340px);
         }
 
         .loading-more,
@@ -1652,6 +1655,55 @@ export default function ChatManager({ token }: ChatManagerProps) {
           0%, 20% { content: '.'; }
           40% { content: '..'; }
           60%, 100% { content: '...'; }
+        }
+
+        @media (max-width: 1024px) {
+          .chat-manager {
+            padding: 1rem 1rem 1.5rem;
+            min-height: auto;
+          }
+
+          .chat-layout {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+          }
+
+          .sessions-panel,
+          .chat-area {
+            min-height: 420px;
+          }
+
+          .sessions-list {
+            max-height: 280px;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .chat-manager {
+            padding: 0.75rem;
+          }
+
+          .chat-header h1 {
+            font-size: 1.25rem;
+          }
+
+          .filter-section {
+            flex-direction: column;
+            gap: 0.5rem;
+          }
+
+          .filter-group {
+            width: 100%;
+            justify-content: space-between;
+          }
+
+          .chat-input-area {
+            padding: 0.75rem;
+          }
+
+          .messages-container {
+            padding: 0.75rem;
+          }
         }
       `}</style>
     </div>
