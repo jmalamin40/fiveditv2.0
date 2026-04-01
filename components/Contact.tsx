@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Mail, Phone, MessageCircle, Send, CheckCircle, AlertCircle } from 'lucide-react';
+import { Mail, Clock3, MessageCircle, Send, CheckCircle, AlertCircle, PhoneCall, Zap } from 'lucide-react';
 import { submitContactForm } from '@/lib/api';
 
 export default function Contact() {
@@ -143,11 +143,28 @@ export default function Contact() {
                 <span className="text-gray-700">info@fivedit.com</span>
               </div>
               <div className="flex items-center gap-3">
-                <Phone className="text-blue-600" size={24} />
+                <Clock3 className="text-blue-600" size={24} />
                 <span className="text-gray-700">Available 24/7</span>
               </div>
               <div className="flex items-center gap-3">
+                <PhoneCall className="text-blue-600" size={24} />
+                <a href="tel:+8801812161440" className="text-gray-700 hover:text-blue-600 transition-colors">
+                  tel: +880 1812 161440
+                </a>
+              </div>
+              <div className="flex items-center gap-3">
                 <MessageCircle className="text-blue-600" size={24} />
+                <a
+                  href="https://wa.me/8801812161440"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-700 hover:text-blue-600 transition-colors"
+                >
+                  WhatsApp: +880 1812 161440
+                </a>
+              </div>
+              <div className="flex items-center gap-3">
+                <Zap className="text-blue-600" size={24} />
                 <span className="text-gray-700">Rapid Response Guaranteed</span>
               </div>
             </div>
