@@ -78,6 +78,8 @@ jobs:
           fi
 
           ls -lh deploy.tar.gz
+          echo "deploy.tar.gz bytes: $(stat -c%s deploy.tar.gz)"
+          echo "deploy.tar.gz sha256: $(sha256sum deploy.tar.gz | awk '{print $1}')"
 
       - name: Create admin deployment tarball
         run: |
@@ -86,6 +88,15 @@ jobs:
           tar -czf ../../admin-deploy.tar.gz .
           cd ../..
           ls -lh admin-deploy.tar.gz
+          echo "admin-deploy.tar.gz bytes: $(stat -c%s admin-deploy.tar.gz)"
+          echo "admin-deploy.tar.gz sha256: $(sha256sum admin-deploy.tar.gz | awk '{print $1}')"
+
+      - name: Debug tarball sizes
+        run: |
+          echo "=== Local tarball debug ==="
+          du -h deploy.tar.gz admin-deploy.tar.gz
+          wc -c deploy.tar.gz admin-deploy.tar.gz
+          ls -lah deploy.tar.gz admin-deploy.tar.gz
 
       - name: Upload tarball to server
         run: |
@@ -98,10 +109,19 @@ jobs:
               -o ConnectTimeout=30 \
               -o ServerAliveInterval=20 \
               -o ServerAliveCountMax=6 \
+              -o StrictHostKeyChecking=accept-new \
               -o TCPKeepAlive=yes \
               deploy.tar.gz fiveditc@198.251.84.129:/tmp/ && break
             if [ "$i" -eq 3 ]; then
               echo "❌ Failed to upload deploy.tar.gz after 3 attempts"
+              echo "Running SSH debug probe..."
+              ssh -vvv -p 25552 \
+                -o ConnectTimeout=30 \
+                -o ServerAliveInterval=20 \
+                -o ServerAliveCountMax=6 \
+                -o StrictHostKeyChecking=accept-new \
+                -o TCPKeepAlive=yes \
+                fiveditc@198.251.84.129 "echo 'SSH probe connected'; hostname; whoami; df -h /tmp || true" || true
               exit 1
             fi
             echo "Retrying in 10s..."
@@ -119,10 +139,19 @@ jobs:
               -o ConnectTimeout=30 \
               -o ServerAliveInterval=20 \
               -o ServerAliveCountMax=6 \
+              -o StrictHostKeyChecking=accept-new \
               -o TCPKeepAlive=yes \
               admin-deploy.tar.gz fiveditc@198.251.84.129:/tmp/ && break
             if [ "$i" -eq 3 ]; then
               echo "❌ Failed to upload admin-deploy.tar.gz after 3 attempts"
+              echo "Running SSH debug probe..."
+              ssh -vvv -p 25552 \
+                -o ConnectTimeout=30 \
+                -o ServerAliveInterval=20 \
+                -o ServerAliveCountMax=6 \
+                -o StrictHostKeyChecking=accept-new \
+                -o TCPKeepAlive=yes \
+                fiveditc@198.251.84.129 "echo 'SSH probe connected'; hostname; whoami; df -h /tmp || true" || true
               exit 1
             fi
             echo "Retrying in 10s..."
