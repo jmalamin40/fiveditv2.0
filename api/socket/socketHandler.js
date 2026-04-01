@@ -8,6 +8,20 @@ const activeAdmins = new Map(); // adminId -> socketId
 const socketToSession = new Map(); // socketId -> sessionId
 const socketToAdmin = new Map(); // socketId -> adminId
 
+function hasOtherUserSocket(sessionId) {
+  for (const [, sid] of socketToSession.entries()) {
+    if (sid === sessionId) return true;
+  }
+  return false;
+}
+
+function hasOtherAdminSocket(adminId) {
+  for (const [, aid] of socketToAdmin.entries()) {
+    if (aid === adminId) return true;
+  }
+  return false;
+}
+
 // Generate UUID for session IDs
 const generateUUID = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -560,20 +574,28 @@ function setupSocketHandlers(io) {
       const adminId = socketToAdmin.get(socket.id);
 
       if (sessionId) {
-        activeUsers.delete(sessionId);
         socketToSession.delete(socket.id);
-        await removeOnlineStatus(null, 'user', sessionId);
-        io.to('admins').emit('user:disconnected', { sessionId });
-        console.log(`User disconnected: session ${sessionId}`);
+        // Only mark offline if this was the last socket for the session
+        if (!hasOtherUserSocket(sessionId)) {
+          activeUsers.delete(sessionId);
+          await removeOnlineStatus(null, 'user', sessionId);
+          io.to('admins').emit('user:disconnected', { sessionId });
+          console.log(`User disconnected: session ${sessionId}`);
+        } else {
+          console.log(`User socket disconnected but session still online: ${sessionId}`);
+        }
       } else if (adminId) {
-        activeAdmins.delete(adminId);
         socketToAdmin.delete(socket.id);
-        await removeOnlineStatus(adminId, 'admin');
-        
-        // Broadcast updated admin list
-        const activeAdminsList = await getActiveAdmins();
-        io.emit('admins:active', { count: activeAdminsList.length, admins: activeAdminsList });
-        console.log(`Admin disconnected: ${adminId}`);
+        // Only mark admin offline if no other admin socket exists (multi-tab safe)
+        if (!hasOtherAdminSocket(adminId)) {
+          activeAdmins.delete(adminId);
+          await removeOnlineStatus(adminId, 'admin');
+          const activeAdminsList = await getActiveAdmins();
+          io.emit('admins:active', { count: activeAdminsList.length, admins: activeAdminsList });
+          console.log(`Admin disconnected: ${adminId}`);
+        } else {
+          console.log(`Admin socket disconnected but admin still online: ${adminId}`);
+        }
       }
     });
   });
