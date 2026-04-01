@@ -771,14 +771,23 @@ async function migrate() {
         system_prompt TEXT NULL,
         temperature DECIMAL(4,2) DEFAULT 0.70,
         max_tokens INT DEFAULT 300,
+        include_catalog_knowledge BOOLEAN NOT NULL DEFAULT TRUE COMMENT 'Inject DB catalog into AI support context',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ ai_support_config table created');
+    try {
+      await connection.execute(
+        'ALTER TABLE ai_support_config ADD COLUMN include_catalog_knowledge BOOLEAN NOT NULL DEFAULT TRUE COMMENT \'Inject DB catalog into AI support context\''
+      );
+      console.log('✅ ai_support_config.include_catalog_knowledge added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ ai_support_config alter:', e.message);
+    }
 
     await connection.execute(`
-      INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens)
-      VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300)
+      INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens, include_catalog_knowledge)
+      VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300, TRUE)
       ON DUPLICATE KEY UPDATE id = id
     `);
 

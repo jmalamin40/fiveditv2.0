@@ -2,10 +2,29 @@ const axios = require('axios');
 const pool = require('../config/database');
 const { decryptPassword } = require('./encryption');
 const { defaultLogger } = require('./logger');
+const { getWebsiteKnowledgeForAi } = require('./aiSupportKnowledge');
+
+const DEFAULT_SYSTEM =
+  'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.';
+
+let ensuredKnowledgeColumn = false;
+async function ensureIncludeCatalogColumn() {
+  if (ensuredKnowledgeColumn) return;
+  try {
+    await pool.execute(
+      'ALTER TABLE ai_support_config ADD COLUMN include_catalog_knowledge BOOLEAN NOT NULL DEFAULT TRUE'
+    );
+  } catch (e) {
+    if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  ensuredKnowledgeColumn = true;
+}
 
 async function getAiSupportConfig() {
+  await ensureIncludeCatalogColumn();
   const [rows] = await pool.execute(
-    `SELECT is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens
+    `SELECT is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens,
+            include_catalog_knowledge
      FROM ai_support_config WHERE id = 1`
   );
   if (!rows.length) return null;
@@ -16,17 +35,31 @@ async function getAiSupportConfig() {
     api_base_url: r.api_base_url || 'https://api.openai.com/v1',
     api_key: r.api_key_encrypted ? decryptPassword(r.api_key_encrypted) : '',
     model: r.model || 'gpt-4o-mini',
-    system_prompt:
-      r.system_prompt ||
-      'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.',
+    system_prompt: r.system_prompt || DEFAULT_SYSTEM,
     temperature: Number(r.temperature ?? 0.7),
     max_tokens: Number(r.max_tokens ?? 300),
+    include_catalog_knowledge: r.include_catalog_knowledge == null ? true : Boolean(r.include_catalog_knowledge),
   };
+}
+
+async function buildFullSystemPrompt(cfg) {
+  let system = (cfg.system_prompt || DEFAULT_SYSTEM).trim();
+  if (!cfg.include_catalog_knowledge) return system;
+  try {
+    const knowledge = await getWebsiteKnowledgeForAi();
+    if (knowledge && knowledge.trim()) {
+      system += `\n\n---\nWebsite catalog (from our database; use for services, prices, and plan names - if unsure, offer human follow-up):\n${knowledge}`;
+    }
+  } catch (e) {
+    defaultLogger.error('AI support: knowledge load failed:', e.message || e);
+  }
+  return system;
 }
 
 async function generateSupportReply(messages) {
   const cfg = await getAiSupportConfig();
   if (!cfg || !cfg.is_enabled || !cfg.api_key) return null;
+  const fullSystemPrompt = await buildFullSystemPrompt(cfg);
   try {
     if ((cfg.provider || '').toLowerCase() === 'gemini') {
       const base = (cfg.api_base_url || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
@@ -52,7 +85,7 @@ async function generateSupportReply(messages) {
           const response = await axios.post(
             url,
             {
-              systemInstruction: cfg.system_prompt ? { parts: [{ text: cfg.system_prompt }] } : undefined,
+              systemInstruction: fullSystemPrompt ? { parts: [{ text: fullSystemPrompt }] } : undefined,
               contents,
               generationConfig: {
                 temperature: Number.isFinite(cfg.temperature) ? cfg.temperature : 0.7,
@@ -85,10 +118,7 @@ async function generateSupportReply(messages) {
         model: cfg.model,
         temperature: Number.isFinite(cfg.temperature) ? cfg.temperature : 0.7,
         max_tokens: Number.isFinite(cfg.max_tokens) ? cfg.max_tokens : 300,
-        messages: [
-          { role: 'system', content: cfg.system_prompt },
-          ...messages,
-        ],
+        messages: [{ role: 'system', content: fullSystemPrompt }, ...messages],
       },
       {
         headers: {
@@ -106,5 +136,5 @@ async function generateSupportReply(messages) {
   }
 }
 
-module.exports = { getAiSupportConfig, generateSupportReply };
+module.exports = { getAiSupportConfig, generateSupportReply, buildFullSystemPrompt };
 

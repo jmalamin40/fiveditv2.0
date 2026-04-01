@@ -295,6 +295,8 @@ export interface AiSupportConfig {
   system_prompt: string;
   temperature: number;
   max_tokens: number;
+  /** When true, AI receives live catalog from DB (services, hosting, SMM products, scripts). */
+  include_catalog_knowledge: boolean;
 }
 
 export async function getAiSupportConfig(token: string) {

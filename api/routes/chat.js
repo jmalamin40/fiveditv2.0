@@ -4,6 +4,7 @@ const pool = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendPushToRecipient } = require('../utils/firebasePush');
 const { encryptPassword } = require('../utils/encryption');
+const { invalidateWebsiteKnowledgeCache } = require('../utils/aiSupportKnowledge');
 
 async function ensureAiSupportConfigTable() {
   await pool.execute(`
@@ -17,12 +18,20 @@ async function ensureAiSupportConfigTable() {
       system_prompt TEXT NULL,
       temperature DECIMAL(4,2) DEFAULT 0.70,
       max_tokens INT DEFAULT 300,
+      include_catalog_knowledge BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  try {
+    await pool.execute(
+      'ALTER TABLE ai_support_config ADD COLUMN include_catalog_knowledge BOOLEAN NOT NULL DEFAULT TRUE'
+    );
+  } catch (e) {
+    if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
-    INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens)
-    VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300)
+    INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens, include_catalog_knowledge)
+    VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300, TRUE)
     ON DUPLICATE KEY UPDATE id = id
   `);
 }
@@ -543,7 +552,7 @@ router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
   try {
     await ensureAiSupportConfigTable();
     const [rows] = await pool.execute(
-      'SELECT is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens FROM ai_support_config WHERE id = 1'
+      'SELECT is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens, include_catalog_knowledge FROM ai_support_config WHERE id = 1'
     );
     if (!rows.length) {
       return res.json({
@@ -555,6 +564,7 @@ router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
         system_prompt: 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.',
         temperature: 0.7,
         max_tokens: 300,
+        include_catalog_knowledge: true,
       });
     }
     const r = rows[0];
@@ -569,6 +579,7 @@ router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
       system_prompt: r.system_prompt || '',
       temperature: Number(r.temperature ?? 0.7),
       max_tokens: Number(r.max_tokens ?? 300),
+      include_catalog_knowledge: r.include_catalog_knowledge == null ? true : Boolean(r.include_catalog_knowledge),
     });
   } catch (error) {
     console.error('Error fetching AI support config:', error);
@@ -589,6 +600,7 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
       system_prompt,
       temperature,
       max_tokens,
+      include_catalog_knowledge,
     } = req.body || {};
 
     const [existing] = await pool.execute('SELECT api_key_encrypted FROM ai_support_config WHERE id = 1');
@@ -607,8 +619,8 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
 
     await pool.execute(
       `INSERT INTO ai_support_config
-       (id, is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens, include_catalog_knowledge)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          is_enabled = VALUES(is_enabled),
          provider = VALUES(provider),
@@ -618,6 +630,7 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
          system_prompt = VALUES(system_prompt),
          temperature = VALUES(temperature),
          max_tokens = VALUES(max_tokens),
+         include_catalog_knowledge = VALUES(include_catalog_knowledge),
          updated_at = CURRENT_TIMESTAMP`,
       [
         Boolean(is_enabled),
@@ -628,8 +641,10 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
         (system_prompt || '').toString(),
         Number.isFinite(Number(temperature)) ? Number(temperature) : 0.7,
         Number.isFinite(Number(max_tokens)) ? Number(max_tokens) : 300,
+        include_catalog_knowledge == null ? true : Boolean(include_catalog_knowledge),
       ]
     );
+    invalidateWebsiteKnowledgeCache();
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating AI support config:', error);

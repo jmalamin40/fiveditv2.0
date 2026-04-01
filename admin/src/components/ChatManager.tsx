@@ -100,6 +100,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
     system_prompt: 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.',
     temperature: 0.7,
     max_tokens: 300,
+    include_catalog_knowledge: true,
   });
   const [aiConfigSaving, setAiConfigSaving] = useState(false);
   const [aiConfigSaveMessage, setAiConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -721,6 +722,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
                 onChange={(e) => setAiConfig(c => ({ ...c, is_enabled: e.target.checked }))}
               />
               Enable AI auto-reply when all admins are offline
+            </label>
+            <label className="firebase-config-label">
+              <input
+                type="checkbox"
+                checked={aiConfig.include_catalog_knowledge !== false}
+                onChange={(e) => setAiConfig((c) => ({ ...c, include_catalog_knowledge: e.target.checked }))}
+              />
+              Ground answers in website database (services, plans, hosting, SMM products, scripts)
             </label>
             <label className="firebase-config-label">Provider</label>
             <select
