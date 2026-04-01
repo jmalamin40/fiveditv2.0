@@ -56,6 +56,9 @@ interface ChatManagerProps {
   token: string;
 }
 
+const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'];
+const GEMINI_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'];
+
 export default function ChatManager({ token }: ChatManagerProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -712,13 +715,22 @@ export default function ChatManager({ token }: ChatManagerProps) {
               Enable AI auto-reply when all admins are offline
             </label>
             <label className="firebase-config-label">Provider</label>
-            <input
-              type="text"
+            <select
               className="firebase-config-textarea"
-              value={aiConfig.provider}
-              onChange={(e) => setAiConfig(c => ({ ...c, provider: e.target.value }))}
-              placeholder="openai"
-            />
+              value={(aiConfig.provider || 'openai').toLowerCase()}
+              onChange={(e) => {
+                const provider = e.target.value as 'openai' | 'gemini';
+                setAiConfig((c) => ({
+                  ...c,
+                  provider,
+                  api_base_url: provider === 'gemini' ? 'https://generativelanguage.googleapis.com/v1beta' : 'https://api.openai.com/v1',
+                  model: provider === 'gemini' ? GEMINI_MODELS[0] : OPENAI_MODELS[0],
+                }));
+              }}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Google Gemini</option>
+            </select>
             <label className="firebase-config-label">API Base URL</label>
             <input
               type="text"
@@ -736,13 +748,27 @@ export default function ChatManager({ token }: ChatManagerProps) {
               placeholder={aiConfig.api_key === '********' ? 'Leave as is to keep saved key' : 'sk-...'}
             />
             <label className="firebase-config-label">Model</label>
-            <input
-              type="text"
-              className="firebase-config-textarea"
-              value={aiConfig.model}
-              onChange={(e) => setAiConfig(c => ({ ...c, model: e.target.value }))}
-              placeholder="gpt-4o-mini"
-            />
+            {(aiConfig.provider || 'openai').toLowerCase() === 'gemini' ? (
+              <select
+                className="firebase-config-textarea"
+                value={aiConfig.model}
+                onChange={(e) => setAiConfig(c => ({ ...c, model: e.target.value }))}
+              >
+                {GEMINI_MODELS.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            ) : (
+              <select
+                className="firebase-config-textarea"
+                value={aiConfig.model}
+                onChange={(e) => setAiConfig(c => ({ ...c, model: e.target.value }))}
+              >
+                {OPENAI_MODELS.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            )}
             <label className="firebase-config-label">System Prompt</label>
             <textarea
               className="firebase-config-textarea"

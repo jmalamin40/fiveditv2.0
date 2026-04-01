@@ -535,12 +535,13 @@ router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
       });
     }
     const r = rows[0];
+    const providerSafe = (r.provider || 'openai').toLowerCase() === 'gemini' ? 'gemini' : 'openai';
     res.json({
       is_enabled: Boolean(r.is_enabled),
-      provider: r.provider || 'openai',
-      api_base_url: r.api_base_url || 'https://api.openai.com/v1',
+      provider: providerSafe,
+      api_base_url: r.api_base_url || (providerSafe === 'gemini' ? 'https://generativelanguage.googleapis.com/v1beta' : 'https://api.openai.com/v1'),
       api_key: r.api_key_encrypted ? '********' : '',
-      model: r.model || 'gpt-4o-mini',
+      model: r.model || (providerSafe === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o-mini'),
       system_prompt: r.system_prompt || '',
       temperature: Number(r.temperature ?? 0.7),
       max_tokens: Number(r.max_tokens ?? 300),
@@ -573,6 +574,12 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
       apiKeyToStore = existing[0].api_key_encrypted;
     }
 
+    const providerSafe = (provider || 'openai').toString().trim().toLowerCase() === 'gemini' ? 'gemini' : 'openai';
+    const defaultBase = providerSafe === 'gemini'
+      ? 'https://generativelanguage.googleapis.com/v1beta'
+      : 'https://api.openai.com/v1';
+    const defaultModel = providerSafe === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o-mini';
+
     await pool.execute(
       `INSERT INTO ai_support_config
        (id, is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens)
@@ -589,10 +596,10 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
          updated_at = CURRENT_TIMESTAMP`,
       [
         Boolean(is_enabled),
-        (provider || 'openai').toString().trim() || 'openai',
-        (api_base_url || 'https://api.openai.com/v1').toString().trim() || 'https://api.openai.com/v1',
+        providerSafe,
+        (api_base_url || defaultBase).toString().trim() || defaultBase,
         apiKeyToStore,
-        (model || 'gpt-4o-mini').toString().trim() || 'gpt-4o-mini',
+        (model || defaultModel).toString().trim() || defaultModel,
         (system_prompt || '').toString(),
         Number.isFinite(Number(temperature)) ? Number(temperature) : 0.7,
         Number.isFinite(Number(max_tokens)) ? Number(max_tokens) : 300,
