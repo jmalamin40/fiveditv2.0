@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendPushToRecipient } = require('../utils/firebasePush');
+const { encryptPassword } = require('../utils/encryption');
 
 // Generate UUID for session IDs
 const generateUUID = () => {
@@ -512,6 +513,95 @@ router.get('/admin/firebase-config', authenticate, requireAdmin, async (req, res
   } catch (error) {
     console.error('Error fetching Firebase config:', error);
     res.status(500).json({ error: 'Failed to fetch config' });
+  }
+});
+
+// Admin: Get AI support config (for editing)
+router.get('/admin/ai-support-config', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens FROM ai_support_config WHERE id = 1'
+    );
+    if (!rows.length) {
+      return res.json({
+        is_enabled: false,
+        provider: 'openai',
+        api_base_url: 'https://api.openai.com/v1',
+        api_key: '',
+        model: 'gpt-4o-mini',
+        system_prompt: 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.',
+        temperature: 0.7,
+        max_tokens: 300,
+      });
+    }
+    const r = rows[0];
+    res.json({
+      is_enabled: Boolean(r.is_enabled),
+      provider: r.provider || 'openai',
+      api_base_url: r.api_base_url || 'https://api.openai.com/v1',
+      api_key: r.api_key_encrypted ? '********' : '',
+      model: r.model || 'gpt-4o-mini',
+      system_prompt: r.system_prompt || '',
+      temperature: Number(r.temperature ?? 0.7),
+      max_tokens: Number(r.max_tokens ?? 300),
+    });
+  } catch (error) {
+    console.error('Error fetching AI support config:', error);
+    res.status(500).json({ error: 'Failed to fetch AI support config' });
+  }
+});
+
+// Admin: Update AI support config
+router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const {
+      is_enabled,
+      provider,
+      api_base_url,
+      api_key,
+      model,
+      system_prompt,
+      temperature,
+      max_tokens,
+    } = req.body || {};
+
+    const [existing] = await pool.execute('SELECT api_key_encrypted FROM ai_support_config WHERE id = 1');
+    let apiKeyToStore = null;
+    if (typeof api_key === 'string' && api_key.trim() && api_key !== '********') {
+      apiKeyToStore = encryptPassword(api_key.trim());
+    } else if (existing.length > 0 && existing[0].api_key_encrypted) {
+      apiKeyToStore = existing[0].api_key_encrypted;
+    }
+
+    await pool.execute(
+      `INSERT INTO ai_support_config
+       (id, is_enabled, provider, api_base_url, api_key_encrypted, model, system_prompt, temperature, max_tokens)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         is_enabled = VALUES(is_enabled),
+         provider = VALUES(provider),
+         api_base_url = VALUES(api_base_url),
+         api_key_encrypted = COALESCE(VALUES(api_key_encrypted), api_key_encrypted),
+         model = VALUES(model),
+         system_prompt = VALUES(system_prompt),
+         temperature = VALUES(temperature),
+         max_tokens = VALUES(max_tokens),
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        Boolean(is_enabled),
+        (provider || 'openai').toString().trim() || 'openai',
+        (api_base_url || 'https://api.openai.com/v1').toString().trim() || 'https://api.openai.com/v1',
+        apiKeyToStore,
+        (model || 'gpt-4o-mini').toString().trim() || 'gpt-4o-mini',
+        (system_prompt || '').toString(),
+        Number.isFinite(Number(temperature)) ? Number(temperature) : 0.7,
+        Number.isFinite(Number(max_tokens)) ? Number(max_tokens) : 300,
+      ]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating AI support config:', error);
+    res.status(500).json({ error: 'Failed to update AI support config' });
   }
 });
 

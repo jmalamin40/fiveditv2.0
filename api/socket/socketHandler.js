@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const { sendPushToRecipient } = require('../utils/firebasePush');
+const { generateSupportReply } = require('../utils/aiSupport');
 
 // Store active connections
 const activeUsers = new Map(); // sessionId -> socketId
@@ -353,6 +354,44 @@ function setupSocketHandlers(io) {
           [sessionId]
         );
         io.to('admins').emit('session:updated', sessions[0]);
+
+        // If no admins are online, auto-reply with AI assistant
+        const activeAdminsList = await getActiveAdmins();
+        if (!activeAdminsList.length) {
+          const [recentRows] = await pool.execute(
+            `SELECT sender_type, message
+             FROM chat_messages
+             WHERE session_id = ?
+             ORDER BY created_at DESC
+             LIMIT 8`,
+            [sessionId]
+          );
+          const aiMessages = recentRows
+            .reverse()
+            .map((m) => ({ role: m.sender_type === 'user' ? 'user' : 'assistant', content: m.message }));
+          const aiReply = await generateSupportReply(aiMessages);
+          if (aiReply) {
+            const [aiInsert] = await pool.execute(
+              'INSERT INTO chat_messages (session_id, message, sender_type, sender_id) VALUES (?, ?, ?, ?)',
+              [sessionId, aiReply, 'admin', null]
+            );
+            await pool.execute(
+              'UPDATE chat_sessions SET last_message_at = CURRENT_TIMESTAMP, status = ? WHERE id = ?',
+              ['active', sessionId]
+            );
+            const [aiMsgRows] = await pool.execute('SELECT * FROM chat_messages WHERE id = ?', [aiInsert.insertId]);
+            const aiMsg = aiMsgRows[0];
+            io.to(`session:${sessionId}`).emit('message:new', aiMsg);
+
+            const [userUnreadResult] = await pool.execute(
+              `SELECT COUNT(*) as count
+               FROM chat_messages
+               WHERE session_id = ? AND sender_type = 'admin' AND is_read = FALSE`,
+              [sessionId]
+            );
+            io.to(`session:${sessionId}`).emit('unread:count', { count: userUnreadResult[0].count });
+          }
+        }
 
         console.log(`Message sent by user in session ${sessionId}`);
       } catch (error) {

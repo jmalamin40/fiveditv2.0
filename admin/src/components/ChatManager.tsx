@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Bell } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
-import { fetchChatSessions, getFirebaseConfig, updateFirebaseConfig, getFirebaseClientConfig, registerAdminFcmToken, type ChatSessionsFilters, type FirebaseConfig } from '../api';
+import { fetchChatSessions, getFirebaseConfig, updateFirebaseConfig, getFirebaseClientConfig, registerAdminFcmToken, getAiSupportConfig, updateAiSupportConfig, type ChatSessionsFilters, type FirebaseConfig, type AiSupportConfig } from '../api';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
@@ -79,6 +79,19 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const [firebaseConfigSaveMessage, setFirebaseConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [enablePushLoading, setEnablePushLoading] = useState(false);
   const [enablePushMessage, setEnablePushMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [aiConfigOpen, setAiConfigOpen] = useState(false);
+  const [aiConfig, setAiConfig] = useState<AiSupportConfig>({
+    is_enabled: false,
+    provider: 'openai',
+    api_base_url: 'https://api.openai.com/v1',
+    api_key: '',
+    model: 'gpt-4o-mini',
+    system_prompt: 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.',
+    temperature: 0.7,
+    max_tokens: 300,
+  });
+  const [aiConfigSaving, setAiConfigSaving] = useState(false);
+  const [aiConfigSaveMessage, setAiConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -460,6 +473,11 @@ export default function ChatManager({ token }: ChatManagerProps) {
     getFirebaseConfig(token).then(setFirebaseConfig).catch(() => {});
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    getAiSupportConfig(token).then(setAiConfig).catch(() => {});
+  }, [token]);
+
   // Register FCM token for admin push notifications (when Firebase is enabled)
   useEffect(() => {
     if (!token) return;
@@ -566,6 +584,20 @@ export default function ChatManager({ token }: ChatManagerProps) {
     }
   };
 
+  const handleSaveAiConfig = async () => {
+    if (!token) return;
+    setAiConfigSaveMessage(null);
+    setAiConfigSaving(true);
+    try {
+      await updateAiSupportConfig(token, aiConfig);
+      setAiConfigSaveMessage({ type: 'success', text: 'AI support settings saved.' });
+    } catch {
+      setAiConfigSaveMessage({ type: 'error', text: 'Failed to save AI support settings.' });
+    } finally {
+      setAiConfigSaving(false);
+    }
+  };
+
   return (
     <div className="chat-manager">
       <div className="chat-header">
@@ -653,6 +685,110 @@ export default function ChatManager({ token }: ChatManagerProps) {
                 {enablePushMessage.text}
               </p>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* AI support config - collapsible */}
+      <div className="firebase-config-card">
+        <button
+          type="button"
+          className="firebase-config-toggle"
+          onClick={() => setAiConfigOpen(!aiConfigOpen)}
+        >
+          <Bot size={20} />
+          <span>AI support agent</span>
+          {aiConfig.is_enabled && <span className="firebase-enabled-badge">On</span>}
+          {aiConfigOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        </button>
+        {aiConfigOpen && (
+          <div className="firebase-config-body">
+            <label className="firebase-config-label">
+              <input
+                type="checkbox"
+                checked={aiConfig.is_enabled}
+                onChange={(e) => setAiConfig(c => ({ ...c, is_enabled: e.target.checked }))}
+              />
+              Enable AI auto-reply when all admins are offline
+            </label>
+            <label className="firebase-config-label">Provider</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={aiConfig.provider}
+              onChange={(e) => setAiConfig(c => ({ ...c, provider: e.target.value }))}
+              placeholder="openai"
+            />
+            <label className="firebase-config-label">API Base URL</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={aiConfig.api_base_url}
+              onChange={(e) => setAiConfig(c => ({ ...c, api_base_url: e.target.value }))}
+              placeholder="https://api.openai.com/v1"
+            />
+            <label className="firebase-config-label">API Key</label>
+            <input
+              type="password"
+              className="firebase-config-textarea"
+              value={aiConfig.api_key}
+              onChange={(e) => setAiConfig(c => ({ ...c, api_key: e.target.value }))}
+              placeholder={aiConfig.api_key === '********' ? 'Leave as is to keep saved key' : 'sk-...'}
+            />
+            <label className="firebase-config-label">Model</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={aiConfig.model}
+              onChange={(e) => setAiConfig(c => ({ ...c, model: e.target.value }))}
+              placeholder="gpt-4o-mini"
+            />
+            <label className="firebase-config-label">System Prompt</label>
+            <textarea
+              className="firebase-config-textarea"
+              value={aiConfig.system_prompt}
+              onChange={(e) => setAiConfig(c => ({ ...c, system_prompt: e.target.value }))}
+              rows={4}
+            />
+            <div className="split">
+              <label className="firebase-config-label">
+                Temperature
+                <input
+                  type="number"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  className="firebase-config-textarea"
+                  value={aiConfig.temperature}
+                  onChange={(e) => setAiConfig(c => ({ ...c, temperature: Number(e.target.value) || 0.7 }))}
+                />
+              </label>
+              <label className="firebase-config-label">
+                Max tokens
+                <input
+                  type="number"
+                  min={50}
+                  max={2000}
+                  step={10}
+                  className="firebase-config-textarea"
+                  value={aiConfig.max_tokens}
+                  onChange={(e) => setAiConfig(c => ({ ...c, max_tokens: Number(e.target.value) || 300 }))}
+                />
+              </label>
+            </div>
+            {aiConfigSaveMessage && (
+              <p className={`firebase-config-msg ${aiConfigSaveMessage.type}`}>
+                {aiConfigSaveMessage.text}
+              </p>
+            )}
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleSaveAiConfig}
+              disabled={aiConfigSaving}
+            >
+              {aiConfigSaving ? 'Saving...' : 'Save AI settings'}
+            </button>
           </div>
         )}
       </div>

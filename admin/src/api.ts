@@ -285,6 +285,28 @@ export async function registerAdminFcmToken(token: string, fcmToken: string) {
   return data;
 }
 
+// AI support agent config
+export interface AiSupportConfig {
+  is_enabled: boolean;
+  provider: string;
+  api_base_url: string;
+  api_key: string;
+  model: string;
+  system_prompt: string;
+  temperature: number;
+  max_tokens: number;
+}
+
+export async function getAiSupportConfig(token: string) {
+  const { data } = await client.get<AiSupportConfig>('/chat/admin/ai-support-config', authHeaders(token));
+  return data;
+}
+
+export async function updateAiSupportConfig(token: string, payload: AiSupportConfig) {
+  const { data } = await client.put<{ success: boolean }>('/chat/admin/ai-support-config', payload, authHeaders(token));
+  return data;
+}
+
 // Cloudflare config (SMM subdomain DNS)
 export interface CloudflareConfig {
   is_enabled: boolean;

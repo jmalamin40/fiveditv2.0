@@ -760,6 +760,28 @@ async function migrate() {
     `);
     console.log('✅ traffic_events table created');
 
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS ai_support_config (
+        id INT PRIMARY KEY DEFAULT 1,
+        is_enabled BOOLEAN DEFAULT FALSE,
+        provider VARCHAR(30) NOT NULL DEFAULT 'openai',
+        api_base_url VARCHAR(500) NULL DEFAULT 'https://api.openai.com/v1',
+        api_key_encrypted TEXT NULL,
+        model VARCHAR(120) NULL DEFAULT 'gpt-4o-mini',
+        system_prompt TEXT NULL,
+        temperature DECIMAL(4,2) DEFAULT 0.70,
+        max_tokens INT DEFAULT 300,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ ai_support_config table created');
+
+    await connection.execute(`
+      INSERT INTO ai_support_config (id, is_enabled, provider, api_base_url, model, system_prompt, temperature, max_tokens)
+      VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300)
+      ON DUPLICATE KEY UPDATE id = id
+    `);
+
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',
       'ADD COLUMN domain_price DECIMAL(10, 2) NULL',
