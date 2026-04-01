@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { defaultLogger } = require('./logger');
+const { DEFAULTS, DYNAMIC_HINT, DEFAULT_ROUTES } = require('./defaultAiPublicInfo');
 
 const TTL_MS = 90_000;
 const MAX_TOTAL_CHARS = 14_000;
@@ -23,11 +24,81 @@ function parseJsonArray(raw) {
 function truncateBlock(label, body, budget) {
   if (!body || !body.trim()) return { chunk: '', used: 0 };
   const t = body.trim();
-  if (t.length <= budget) return { chunk: `${label}\n${t}\n`, used: t.length + label.length + 2 };
+  const prefix = label ? `${label}\n` : '';
+  if (t.length <= budget) return { chunk: `${prefix}${t}\n`, used: t.length + prefix.length + 1 };
   return {
-    chunk: `${label}\n${t.slice(0, Math.max(0, budget - 60))}...\n(truncated)\n`,
+    chunk: `${prefix}${t.slice(0, Math.max(0, budget - 60))}...\n(truncated)\n`,
     used: budget,
   };
+}
+
+async function buildPublicSiteAndSupportText() {
+  let base = (process.env.PUBLIC_SITE_URL || DEFAULTS.public_site_url || '').replace(/\/$/, '');
+  let email = process.env.SUPPORT_EMAIL || DEFAULTS.support_email;
+  let phone = DEFAULTS.support_phone_display;
+  let wa = DEFAULTS.whatsapp_e164;
+  let contactPath = DEFAULTS.contact_page_path.startsWith('/')
+    ? DEFAULTS.contact_page_path
+    : `/${DEFAULTS.contact_page_path}`;
+  let notes = DEFAULTS.support_notes;
+  let routes = [...DEFAULT_ROUTES];
+
+  try {
+    const [rows] = await pool.execute('SELECT * FROM ai_support_public_info WHERE id = 1');
+    if (rows.length) {
+      const r = rows[0];
+      if (r.public_site_url) base = String(r.public_site_url).replace(/\/$/, '');
+      if (r.support_email) email = r.support_email;
+      if (r.support_phone_display != null && r.support_phone_display !== '') phone = r.support_phone_display;
+      if (r.whatsapp_e164 != null && r.whatsapp_e164 !== '') wa = r.whatsapp_e164;
+      if (r.contact_page_path) {
+        contactPath = r.contact_page_path.startsWith('/') ? r.contact_page_path : `/${r.contact_page_path}`;
+      }
+      if (r.support_notes) notes = r.support_notes;
+      if (r.routes_json) {
+        try {
+          const parsed = JSON.parse(r.routes_json);
+          if (Array.isArray(parsed) && parsed.length) routes = parsed;
+        } catch {
+          /* keep defaults */
+        }
+      }
+    }
+  } catch (e) {
+    defaultLogger.error('AI knowledge: ai_support_public_info', e.message);
+  }
+
+  if (!base) base = 'https://example.com';
+
+  const waDigits = String(wa || '').replace(/\D/g, '');
+  const waUrl = waDigits ? `https://wa.me/${waDigits}` : '';
+  const telDigits = String(phone || '').replace(/[^\d+]/g, '');
+  const contactFull = `${base}${contactPath}`;
+
+  const lines = [];
+  lines.push('### Website base URL');
+  lines.push(`Primary site: ${base}`);
+  lines.push('Always give customers full https links: concatenate base URL + path (no broken relative links in chat).');
+  lines.push('');
+  lines.push('### Official support contact (share when asked)');
+  lines.push(`- Email: ${email}`);
+  if (phone) lines.push(`- Phone: ${phone}${telDigits ? ` (tel:${telDigits})` : ''}`);
+  if (waUrl) lines.push(`- WhatsApp chat: ${waUrl}`);
+  lines.push(`- Contact form: ${contactFull}`);
+  if (notes && String(notes).trim()) lines.push(`- More: ${String(notes).replace(/\s+/g, ' ').slice(0, 600)}`);
+  lines.push('');
+  lines.push('### Pages to link (hosting, services, SMM, account)');
+  for (const item of routes) {
+    if (!item || !item.path) continue;
+    const p = item.path.startsWith('/') ? item.path : `/${item.path}`;
+    const full = `${base}${p}`;
+    const title = item.title || p;
+    const hint = item.hint ? ` — ${item.hint}` : '';
+    lines.push(`- ${full} (${title})${hint}`);
+  }
+  lines.push(`- ${DYNAMIC_HINT}`);
+
+  return lines.join('\n');
 }
 
 /**
@@ -45,6 +116,15 @@ async function buildWebsiteKnowledgeText() {
       budget -= used;
     }
   };
+
+  try {
+    const publicBlock = await buildPublicSiteAndSupportText();
+    if (publicBlock && publicBlock.trim()) {
+      take('## Public site, routes, and support contact', publicBlock);
+    }
+  } catch (e) {
+    defaultLogger.error('AI knowledge: public block', e.message);
+  }
 
   try {
     const [cats] = await pool.execute(
@@ -208,7 +288,7 @@ async function buildWebsiteKnowledgeText() {
   }
 
   const header =
-    'Use the sections below for accurate offerings, prices, and plan names. If something is not listed, say you are not sure and offer to connect them with the team.\n';
+    'Use the sections below for accurate offerings, prices, plan names, full page URLs, and official support contact. When customers need hosting, services, SMM, domains, or login, share the matching full https link from the list. If something is not listed, say you are not sure and point them to the contact form or WhatsApp.\n';
   const body = parts.join('\n');
   if (!body.trim()) return '';
   return `${header}\n${body}`.slice(0, MAX_TOTAL_CHARS);

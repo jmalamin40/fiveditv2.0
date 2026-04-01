@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
+const { DEFAULTS, getDefaultRoutesJson } = require('../utils/defaultAiPublicInfo');
 
 async function migrate() {
   let connection;
@@ -790,6 +791,37 @@ async function migrate() {
       VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300, TRUE)
       ON DUPLICATE KEY UPDATE id = id
     `);
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS ai_support_public_info (
+        id INT PRIMARY KEY DEFAULT 1,
+        public_site_url VARCHAR(500) NOT NULL DEFAULT 'https://fivedit.com',
+        support_email VARCHAR(255) NOT NULL DEFAULT 'info@fivedit.com',
+        support_phone_display VARCHAR(120) NULL,
+        whatsapp_e164 VARCHAR(32) NULL COMMENT 'Digits only for wa.me e.g. 8801812161440',
+        contact_page_path VARCHAR(200) NOT NULL DEFAULT '/contact',
+        routes_json LONGTEXT NOT NULL COMMENT 'JSON array of {path,title,hint}',
+        support_notes TEXT NULL COMMENT 'Extra instructions for AI (hours, escalation)',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ ai_support_public_info table created');
+    const routesJsonSeed = getDefaultRoutesJson();
+    await connection.execute(
+      `INSERT INTO ai_support_public_info (id, public_site_url, support_email, support_phone_display, whatsapp_e164, contact_page_path, routes_json, support_notes)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE id = id`,
+      [
+        DEFAULTS.public_site_url,
+        DEFAULTS.support_email,
+        DEFAULTS.support_phone_display,
+        DEFAULTS.whatsapp_e164,
+        DEFAULTS.contact_page_path,
+        routesJsonSeed,
+        DEFAULTS.support_notes,
+      ]
+    );
+    console.log('✅ ai_support_public_info seeded');
 
     for (const col of [
       'ADD COLUMN new_domain_name VARCHAR(255) NULL COMMENT \'Domain to register when user purchases new domain\'',

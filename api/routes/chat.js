@@ -5,6 +5,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendPushToRecipient } = require('../utils/firebasePush');
 const { encryptPassword } = require('../utils/encryption');
 const { invalidateWebsiteKnowledgeCache } = require('../utils/aiSupportKnowledge');
+const { DEFAULTS, getDefaultRoutesJson } = require('../utils/defaultAiPublicInfo');
 
 async function ensureAiSupportConfigTable() {
   await pool.execute(`
@@ -34,6 +35,36 @@ async function ensureAiSupportConfigTable() {
     VALUES (1, FALSE, 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'You are a helpful support assistant for FivedIT. Keep answers short, professional, and actionable.', 0.70, 300, TRUE)
     ON DUPLICATE KEY UPDATE id = id
   `);
+}
+
+async function ensureAiSupportPublicInfoTable() {
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS ai_support_public_info (
+      id INT PRIMARY KEY DEFAULT 1,
+      public_site_url VARCHAR(500) NOT NULL DEFAULT 'https://fivedit.com',
+      support_email VARCHAR(255) NOT NULL DEFAULT 'info@fivedit.com',
+      support_phone_display VARCHAR(120) NULL,
+      whatsapp_e164 VARCHAR(32) NULL,
+      contact_page_path VARCHAR(200) NOT NULL DEFAULT '/contact',
+      routes_json LONGTEXT NOT NULL,
+      support_notes TEXT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.execute(
+    `INSERT INTO ai_support_public_info (id, public_site_url, support_email, support_phone_display, whatsapp_e164, contact_page_path, routes_json, support_notes)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
+    [
+      DEFAULTS.public_site_url,
+      DEFAULTS.support_email,
+      DEFAULTS.support_phone_display,
+      DEFAULTS.whatsapp_e164,
+      DEFAULTS.contact_page_path,
+      getDefaultRoutesJson(),
+      DEFAULTS.support_notes,
+    ]
+  );
 }
 
 // Generate UUID for session IDs
@@ -649,6 +680,111 @@ router.put('/admin/ai-support-config', authenticate, requireAdmin, async (req, r
   } catch (error) {
     console.error('Error updating AI support config:', error);
     res.status(500).json({ error: 'Failed to update AI support config', details: error?.message || 'unknown error' });
+  }
+});
+
+// Admin: Public site URL, support contact, and page routes for AI replies
+router.get('/admin/ai-public-info', authenticate, requireAdmin, async (req, res) => {
+  try {
+    await ensureAiSupportPublicInfoTable();
+    const [rows] = await pool.execute('SELECT * FROM ai_support_public_info WHERE id = 1');
+    if (!rows.length) {
+      return res.json({
+        public_site_url: DEFAULTS.public_site_url,
+        support_email: DEFAULTS.support_email,
+        support_phone_display: DEFAULTS.support_phone_display,
+        whatsapp_e164: DEFAULTS.whatsapp_e164,
+        contact_page_path: DEFAULTS.contact_page_path,
+        routes_json: getDefaultRoutesJson(),
+        support_notes: DEFAULTS.support_notes,
+      });
+    }
+    const r = rows[0];
+    res.json({
+      public_site_url: r.public_site_url || DEFAULTS.public_site_url,
+      support_email: r.support_email || DEFAULTS.support_email,
+      support_phone_display: r.support_phone_display || '',
+      whatsapp_e164: r.whatsapp_e164 || '',
+      contact_page_path: r.contact_page_path || DEFAULTS.contact_page_path,
+      routes_json: r.routes_json || getDefaultRoutesJson(),
+      support_notes: r.support_notes || '',
+    });
+  } catch (error) {
+    console.error('Error fetching AI public info:', error);
+    res.status(500).json({ error: 'Failed to fetch AI public info' });
+  }
+});
+
+router.get('/admin/ai-public-builtin', authenticate, requireAdmin, async (req, res) => {
+  res.json({
+    public_site_url: DEFAULTS.public_site_url,
+    support_email: DEFAULTS.support_email,
+    support_phone_display: DEFAULTS.support_phone_display,
+    whatsapp_e164: DEFAULTS.whatsapp_e164,
+    contact_page_path: DEFAULTS.contact_page_path,
+    routes_json: getDefaultRoutesJson(),
+    support_notes: DEFAULTS.support_notes,
+  });
+});
+
+router.put('/admin/ai-public-info', authenticate, requireAdmin, async (req, res) => {
+  try {
+    await ensureAiSupportPublicInfoTable();
+    const {
+      public_site_url,
+      support_email,
+      support_phone_display,
+      whatsapp_e164,
+      contact_page_path,
+      routes_json,
+      support_notes,
+    } = req.body || {};
+
+    let routesStr = typeof routes_json === 'string' ? routes_json.trim() : '';
+    if (!routesStr) routesStr = getDefaultRoutesJson();
+    let parsed;
+    try {
+      parsed = JSON.parse(routesStr);
+    } catch {
+      return res.status(400).json({ error: 'routes_json must be valid JSON' });
+    }
+    if (!Array.isArray(parsed)) {
+      return res.status(400).json({ error: 'routes_json must be a JSON array of {path,title,hint}' });
+    }
+    for (const item of parsed) {
+      if (!item || typeof item.path !== 'string' || !item.path.trim()) {
+        return res.status(400).json({ error: 'Each route must have a non-empty path string' });
+      }
+    }
+
+    const baseUrl = (public_site_url || DEFAULTS.public_site_url).toString().trim().replace(/\/$/, '');
+    const email = (support_email || DEFAULTS.support_email).toString().trim();
+    const phone = support_phone_display != null ? String(support_phone_display).trim() : '';
+    const wa = whatsapp_e164 != null ? String(whatsapp_e164).replace(/\D/g, '') : '';
+    const cpath = (contact_page_path || DEFAULTS.contact_page_path).toString().trim() || '/contact';
+    const cpathNorm = cpath.startsWith('/') ? cpath : `/${cpath}`;
+    const notes = support_notes != null ? String(support_notes).trim() : '';
+
+    await pool.execute(
+      `INSERT INTO ai_support_public_info
+       (id, public_site_url, support_email, support_phone_display, whatsapp_e164, contact_page_path, routes_json, support_notes)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         public_site_url = VALUES(public_site_url),
+         support_email = VALUES(support_email),
+         support_phone_display = VALUES(support_phone_display),
+         whatsapp_e164 = VALUES(whatsapp_e164),
+         contact_page_path = VALUES(contact_page_path),
+         routes_json = VALUES(routes_json),
+         support_notes = VALUES(support_notes),
+         updated_at = CURRENT_TIMESTAMP`,
+      [baseUrl, email, phone || null, wa || null, cpathNorm, routesStr, notes || null]
+    );
+    invalidateWebsiteKnowledgeCache();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating AI public info:', error);
+    res.status(500).json({ error: 'Failed to update AI public info', details: error?.message || 'unknown error' });
   }
 });
 

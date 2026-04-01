@@ -178,17 +178,24 @@ jobs:
             'bash --noprofile --norc -s' << 'EOF'
           set -e
           export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
-          # Use CloudLinux Node Selector venv for npm (avoid nvm in ~/.bashrc under LVE)
-          NEXT_NODEVENV="/home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate"
-          if [ -f "$NEXT_NODEVENV" ]; then
-            source "$NEXT_NODEVENV"
-          fi
+
+          # CloudLinux NodeJS Selector: app-root must use symlink node_modules -> venv, never a real folder/file
+          remove_physical_node_modules() {
+            local base="$1"
+            [ -n "$base" ] && [ -d "$base" ] || return 0
+            if [ -e "$base/node_modules" ] && [ ! -L "$base/node_modules" ]; then
+              echo "Removing physical node_modules under $base (Selector requires symlink only)"
+              rm -rf "$base/node_modules"
+            fi
+          }
 
           APP_DIR="/home/fiveditc/domains/fivedit.com/public_html"
           API_DIR="/home/fiveditc/domains/fivedit.com/api"
+          NEXT_NODEVENV="/home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate"
+          API_NODEVENV="/home/fiveditc/nodevenv/domains/fivedit.com/api/20/bin/activate"
 
           echo "Moving to app directory..."
-          cd $APP_DIR
+          cd "$APP_DIR"
 
           echo "Extracting upload..."
           tar -xzf /tmp/deploy.tar.gz --exclude='admin'
@@ -196,73 +203,84 @@ jobs:
           echo "Cleaning tar file..."
           rm -f /tmp/deploy.tar.gz
 
+          remove_physical_node_modules "$APP_DIR"
+
           # Deploy Admin app
           echo "Deploying Admin app..."
           ADMIN_DIR="/home/fiveditc/domains/admin.fivedit.com/public_html"
-          mkdir -p $ADMIN_DIR
-          
+          mkdir -p "$ADMIN_DIR"
+
           echo "Extracting admin files..."
-          cd $ADMIN_DIR
+          cd "$ADMIN_DIR"
           tar -xzf /tmp/admin-deploy.tar.gz
           rm -f /tmp/admin-deploy.tar.gz
-          
+          remove_physical_node_modules "$ADMIN_DIR"
+
           echo "✅ Admin app deployed to $ADMIN_DIR"
 
-          # Deploy API
+          # Deploy API (subshell so API venv does not replace Next.js venv in parent shell)
           echo "Deploying API..."
           if [ -d "$APP_DIR/api" ]; then
-            echo "Setting up API directory..."
-            mkdir -p $API_DIR
-            
-            # Backup existing .env if it exists
-            if [ -f "$API_DIR/.env" ]; then
-              cp $API_DIR/.env $API_DIR/.env.backup
-              echo "✅ Backed up existing API .env file"
-            fi
-            
-            echo "Copying API files..."
-            # Copy all API files
-            cp -r $APP_DIR/api/* $API_DIR/ 2>/dev/null || true
-            
-            # Restore .env backup if it existed
-            if [ -f "$API_DIR/.env.backup" ]; then
-              mv $API_DIR/.env.backup $API_DIR/.env
-              echo "✅ Restored API .env file"
-            elif [ ! -f "$API_DIR/.env" ]; then
-              echo "⚠️ API .env file not found - configure database credentials in $API_DIR/.env"
-            fi
-            
-            echo "Installing API dependencies..."
-            cd $API_DIR
-            source /home/fiveditc/nodevenv/domains/fivedit.com/api/20/bin/activate && cd /home/fiveditc/domains/fivedit.com/api
-            npm install --production
-            
-            echo "Migrating API database..."
-            npm run migrate
-            
-            echo "Seeding API database..."
-            npm run seed
-            
-            echo "Restarting API..."
-            cloudlinux-selector restart \
-              --user fiveditc \
-              --interpreter nodejs \
-              --app-root $API_DIR \
-              --json || echo "⚠️ API restart failed - ensure API is configured in CloudLinux"
+            (
+              set -e
+              echo "Setting up API directory..."
+              mkdir -p "$API_DIR"
+
+              if [ -f "$API_DIR/.env" ]; then
+                cp "$API_DIR/.env" "$API_DIR/.env.backup"
+                echo "✅ Backed up existing API .env file"
+              fi
+
+              echo "Copying API files..."
+              cp -r "$APP_DIR/api/"* "$API_DIR/" 2>/dev/null || true
+
+              remove_physical_node_modules "$API_DIR"
+
+              if [ -f "$API_DIR/.env.backup" ]; then
+                mv "$API_DIR/.env.backup" "$API_DIR/.env"
+                echo "✅ Restored API .env file"
+              elif [ ! -f "$API_DIR/.env" ]; then
+                echo "⚠️ API .env file not found - configure database credentials in $API_DIR/.env"
+              fi
+
+              echo "Installing API dependencies..."
+              cd "$API_DIR"
+              if [ -f "$API_NODEVENV" ]; then
+                source "$API_NODEVENV"
+              fi
+              npm install --production
+
+              echo "Migrating API database..."
+              npm run migrate
+
+              echo "Seeding API database..."
+              npm run seed
+
+              echo "Restarting API..."
+              cloudlinux-selector restart \
+                --user fiveditc \
+                --interpreter nodejs \
+                --app-root "$API_DIR" \
+                --json || echo "⚠️ API restart failed - ensure API is configured in CloudLinux"
+            )
           else
             echo "⚠️ API directory not found in deployment - skipping API deployment"
           fi
 
-          # Deploy Next.js app
+          # Next.js: activate public_html venv, install into venv via symlink (not a real node_modules dir)
           echo "Installing Next.js production dependencies..."
-          cd $APP_DIR
+          cd "$APP_DIR"
+          remove_physical_node_modules "$APP_DIR"
+          if [ -f "$NEXT_NODEVENV" ]; then
+            source "$NEXT_NODEVENV"
+          fi
           npm install --production
 
           echo "Restarting Next.js app..."
           cloudlinux-selector restart \
             --user fiveditc \
             --interpreter nodejs \
-            --app-root $APP_DIR \
+            --app-root "$APP_DIR" \
             --json
 
           echo "✅ Deployment completed successfully"

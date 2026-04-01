@@ -1,7 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Bell } from 'lucide-react';
+import { MessageCircle, Send, User, Bot, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Bell, Link2 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
-import { fetchChatSessions, getFirebaseConfig, updateFirebaseConfig, getFirebaseClientConfig, registerAdminFcmToken, getAiSupportConfig, updateAiSupportConfig, type ChatSessionsFilters, type FirebaseConfig, type AiSupportConfig } from '../api';
+import {
+  fetchChatSessions,
+  getFirebaseConfig,
+  updateFirebaseConfig,
+  getFirebaseClientConfig,
+  registerAdminFcmToken,
+  getAiSupportConfig,
+  updateAiSupportConfig,
+  getAiPublicInfo,
+  updateAiPublicInfo,
+  getAiPublicBuiltin,
+  type ChatSessionsFilters,
+  type FirebaseConfig,
+  type AiSupportConfig,
+  type AiPublicInfo,
+} from '../api';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://api.fivedit.com';
 const SOCKET_PATH = '/api/socket.io';
@@ -104,6 +119,18 @@ export default function ChatManager({ token }: ChatManagerProps) {
   });
   const [aiConfigSaving, setAiConfigSaving] = useState(false);
   const [aiConfigSaveMessage, setAiConfigSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [aiPublicOpen, setAiPublicOpen] = useState(false);
+  const [aiPublicInfo, setAiPublicInfo] = useState<AiPublicInfo>({
+    public_site_url: 'https://fivedit.com',
+    support_email: 'info@fivedit.com',
+    support_phone_display: '+880 1812 161440',
+    whatsapp_e164: '8801812161440',
+    contact_page_path: '/contact',
+    routes_json: '[]',
+    support_notes: '',
+  });
+  const [aiPublicSaving, setAiPublicSaving] = useState(false);
+  const [aiPublicMessage, setAiPublicMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -490,6 +517,11 @@ export default function ChatManager({ token }: ChatManagerProps) {
     getAiSupportConfig(token).then(setAiConfig).catch(() => {});
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    getAiPublicInfo(token).then(setAiPublicInfo).catch(() => {});
+  }, [token]);
+
   // Register FCM token for admin push notifications (when Firebase is enabled)
   useEffect(() => {
     if (!token) return;
@@ -607,6 +639,42 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setAiConfigSaveMessage({ type: 'error', text: 'Failed to save AI support settings.' });
     } finally {
       setAiConfigSaving(false);
+    }
+  };
+
+  const handleSaveAiPublicInfo = async () => {
+    if (!token) return;
+    setAiPublicMessage(null);
+    setAiPublicSaving(true);
+    try {
+      await updateAiPublicInfo(token, aiPublicInfo);
+      setAiPublicMessage({ type: 'success', text: 'Public site & routes saved. AI will use these links and contact details.' });
+    } catch {
+      setAiPublicMessage({ type: 'error', text: 'Failed to save. Check routes JSON is valid.' });
+    } finally {
+      setAiPublicSaving(false);
+    }
+  };
+
+  const handleRestoreBuiltinRoutes = async () => {
+    if (!token) return;
+    try {
+      const b = await getAiPublicBuiltin(token);
+      setAiPublicInfo((p) => ({ ...p, routes_json: b.routes_json }));
+      setAiPublicMessage({ type: 'success', text: 'Route list replaced with built-in defaults (not saved yet).' });
+    } catch {
+      setAiPublicMessage({ type: 'error', text: 'Could not load built-in routes.' });
+    }
+  };
+
+  const handleRestoreAllAiPublicBuiltin = async () => {
+    if (!token) return;
+    try {
+      const b = await getAiPublicBuiltin(token);
+      setAiPublicInfo(b);
+      setAiPublicMessage({ type: 'success', text: 'All fields restored to built-in defaults (not saved yet).' });
+    } catch {
+      setAiPublicMessage({ type: 'error', text: 'Could not load defaults.' });
     }
   };
 
@@ -831,6 +899,93 @@ export default function ChatManager({ token }: ChatManagerProps) {
               disabled={aiConfigSaving}
             >
               {aiConfigSaving ? 'Saving...' : 'Save AI settings'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="firebase-config-card">
+        <button
+          type="button"
+          className="firebase-config-toggle"
+          onClick={() => setAiPublicOpen(!aiPublicOpen)}
+        >
+          <Link2 size={20} />
+          <span>AI: site links &amp; support contact</span>
+          {aiPublicOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        </button>
+        {aiPublicOpen && (
+          <div className="firebase-config-body">
+            <p className="text-sm text-gray-600 mb-3" style={{ marginTop: 0 }}>
+              The support bot uses this together with the database catalog. Give full site URL, official email, phone, WhatsApp (digits only for wa.me), and a JSON list of pages so it can send correct links for hosting, services, SMM, domains, and customer login.
+            </p>
+            <label className="firebase-config-label">Public site URL (no trailing slash)</label>
+            <input
+              type="url"
+              className="firebase-config-textarea"
+              value={aiPublicInfo.public_site_url}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, public_site_url: e.target.value.trim() }))}
+              placeholder="https://fivedit.com"
+            />
+            <label className="firebase-config-label">Support email</label>
+            <input
+              type="email"
+              className="firebase-config-textarea"
+              value={aiPublicInfo.support_email}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, support_email: e.target.value.trim() }))}
+            />
+            <label className="firebase-config-label">Phone (display)</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={aiPublicInfo.support_phone_display}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, support_phone_display: e.target.value }))}
+              placeholder="+880 1812 161440"
+            />
+            <label className="firebase-config-label">WhatsApp (digits only, country code included)</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={aiPublicInfo.whatsapp_e164}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, whatsapp_e164: e.target.value.replace(/\D/g, '') }))}
+              placeholder="8801812161440"
+            />
+            <label className="firebase-config-label">Contact form path</label>
+            <input
+              type="text"
+              className="firebase-config-textarea"
+              value={aiPublicInfo.contact_page_path}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, contact_page_path: e.target.value.trim() || '/contact' }))}
+              placeholder="/contact"
+            />
+            <label className="firebase-config-label">Extra notes for AI (hours, escalation)</label>
+            <textarea
+              className="firebase-config-textarea"
+              rows={2}
+              value={aiPublicInfo.support_notes}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, support_notes: e.target.value }))}
+            />
+            <label className="firebase-config-label">Page routes (JSON array: path, title, hint)</label>
+            <textarea
+              className="firebase-config-textarea"
+              rows={14}
+              value={aiPublicInfo.routes_json}
+              onChange={(e) => setAiPublicInfo((p) => ({ ...p, routes_json: e.target.value }))}
+              style={{ fontFamily: 'ui-monospace, monospace', fontSize: '12px' }}
+            />
+            <div className="split" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button type="button" className="btn-secondary" onClick={handleRestoreBuiltinRoutes}>
+                Reset routes to built-in list
+              </button>
+              <button type="button" className="btn-secondary" onClick={handleRestoreAllAiPublicBuiltin}>
+                Reset all to built-in defaults
+              </button>
+            </div>
+            {aiPublicMessage && (
+              <p className={`firebase-config-msg ${aiPublicMessage.type}`}>{aiPublicMessage.text}</p>
+            )}
+            <button type="button" className="btn-primary" onClick={handleSaveAiPublicInfo} disabled={aiPublicSaving}>
+              {aiPublicSaving ? 'Saving...' : 'Save site &amp; support for AI'}
             </button>
           </div>
         )}

@@ -309,6 +309,32 @@ export async function updateAiSupportConfig(token: string, payload: AiSupportCon
   return data;
 }
 
+/** Site URL, support channels, and JSON route list injected into the AI agent (with catalog knowledge). */
+export interface AiPublicInfo {
+  public_site_url: string;
+  support_email: string;
+  support_phone_display: string;
+  whatsapp_e164: string;
+  contact_page_path: string;
+  routes_json: string;
+  support_notes: string;
+}
+
+export async function getAiPublicInfo(token: string) {
+  const { data } = await client.get<AiPublicInfo>('/chat/admin/ai-public-info', authHeaders(token));
+  return data;
+}
+
+export async function updateAiPublicInfo(token: string, payload: AiPublicInfo) {
+  const { data } = await client.put<{ success: boolean }>('/chat/admin/ai-public-info', payload, authHeaders(token));
+  return data;
+}
+
+export async function getAiPublicBuiltin(token: string) {
+  const { data } = await client.get<AiPublicInfo>('/chat/admin/ai-public-builtin', authHeaders(token));
+  return data;
+}
+
 // Cloudflare config (SMM subdomain DNS)
 export interface CloudflareConfig {
   is_enabled: boolean;
