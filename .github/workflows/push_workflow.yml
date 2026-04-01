@@ -89,19 +89,56 @@ jobs:
 
       - name: Upload tarball to server
         run: |
+          set -e
           echo "Uploading tarball..."
-          scp -P 25552 deploy.tar.gz fiveditc@198.251.84.129:/tmp/
+          for i in 1 2 3; do
+            echo "Attempt $i/3: upload deploy.tar.gz"
+            scp \
+              -P 25552 \
+              -o ConnectTimeout=30 \
+              -o ServerAliveInterval=20 \
+              -o ServerAliveCountMax=6 \
+              -o TCPKeepAlive=yes \
+              deploy.tar.gz fiveditc@198.251.84.129:/tmp/ && break
+            if [ "$i" -eq 3 ]; then
+              echo "❌ Failed to upload deploy.tar.gz after 3 attempts"
+              exit 1
+            fi
+            echo "Retrying in 10s..."
+            sleep 10
+          done
 
       - name: Upload admin tarball to server
         run: |
+          set -e
           echo "Uploading admin tarball..."
-          scp -P 25552 admin-deploy.tar.gz fiveditc@198.251.84.129:/tmp/
+          for i in 1 2 3; do
+            echo "Attempt $i/3: upload admin-deploy.tar.gz"
+            scp \
+              -P 25552 \
+              -o ConnectTimeout=30 \
+              -o ServerAliveInterval=20 \
+              -o ServerAliveCountMax=6 \
+              -o TCPKeepAlive=yes \
+              admin-deploy.tar.gz fiveditc@198.251.84.129:/tmp/ && break
+            if [ "$i" -eq 3 ]; then
+              echo "❌ Failed to upload admin-deploy.tar.gz after 3 attempts"
+              exit 1
+            fi
+            echo "Retrying in 10s..."
+            sleep 10
+          done
 
       - name: Deploy on cPanel server
         run: |
           echo "Starting remote deployment..."
-
-          ssh -p 25552 fiveditc@198.251.84.129 << 'EOF'
+          ssh \
+            -p 25552 \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=20 \
+            -o ServerAliveCountMax=6 \
+            -o TCPKeepAlive=yes \
+            fiveditc@198.251.84.129 << 'EOF'
           set -e
 
           APP_DIR="/home/fiveditc/domains/fivedit.com/public_html"
