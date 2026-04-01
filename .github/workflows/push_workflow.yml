@@ -42,6 +42,9 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -p 25552 -H 198.251.84.129 >> ~/.ssh/known_hosts
 
+      # Shared SSH options (cPanel/DirectAdmin: avoid long hangs; tune keepalives)
+      # Uploads use SFTP subsystem first so the server does NOT run login shell / ~/.nvm/nvm.sh
+      # (legacy scp -O can trigger nvm and hit "fork: Resource temporarily unavailable" under LVE)
       - name: Create deployment tarball
         run: |
           set -e
@@ -98,81 +101,88 @@ jobs:
           wc -c deploy.tar.gz admin-deploy.tar.gz
           ls -lah deploy.tar.gz admin-deploy.tar.gz
 
-      - name: Upload tarball to server
+      - name: Upload tarballs to server
         run: |
-          set -e
-          echo "Uploading tarball..."
-          for i in 1 2 3; do
-            echo "Attempt $i/3: upload deploy.tar.gz"
-            scp \
-              -O \
-              -P 25552 \
-              -o ConnectTimeout=30 \
-              -o ServerAliveInterval=20 \
-              -o ServerAliveCountMax=6 \
-              -o StrictHostKeyChecking=accept-new \
-              -o TCPKeepAlive=yes \
-              deploy.tar.gz fiveditc@198.251.84.129:/tmp/ && break
-            if [ "$i" -eq 3 ]; then
-              echo "❌ Failed to upload deploy.tar.gz after 3 attempts"
-              echo "Running SSH debug probe..."
-              ssh -vvv -p 25552 \
-                -o ConnectTimeout=30 \
-                -o ServerAliveInterval=20 \
-                -o ServerAliveCountMax=6 \
-                -o StrictHostKeyChecking=accept-new \
-                -o TCPKeepAlive=yes \
-                fiveditc@198.251.84.129 "echo 'SSH probe connected'; hostname; whoami; df -h /tmp || true" || true
-              exit 1
-            fi
-            echo "Retrying in 10s..."
-            sleep 10
-          done
+          set -euo pipefail
+          # scp uses -P for port; ssh uses -p. Keep only shared -o flags here.
+          SSH_OPTS=(
+            -o ConnectTimeout=30
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -o StrictHostKeyChecking=accept-new
+            -o TCPKeepAlive=yes
+            -o BatchMode=yes
+          )
+          HOST="fiveditc@198.251.84.129"
+          PORT=25552
 
-      - name: Upload admin tarball to server
-        run: |
-          set -e
-          echo "Uploading admin tarball..."
-          for i in 1 2 3; do
-            echo "Attempt $i/3: upload admin-deploy.tar.gz"
-            scp \
-              -O \
-              -P 25552 \
-              -o ConnectTimeout=30 \
-              -o ServerAliveInterval=20 \
-              -o ServerAliveCountMax=6 \
-              -o StrictHostKeyChecking=accept-new \
-              -o TCPKeepAlive=yes \
-              admin-deploy.tar.gz fiveditc@198.251.84.129:/tmp/ && break
-            if [ "$i" -eq 3 ]; then
-              echo "❌ Failed to upload admin-deploy.tar.gz after 3 attempts"
-              echo "Running SSH debug probe..."
-              ssh -vvv -p 25552 \
-                -o ConnectTimeout=30 \
-                -o ServerAliveInterval=20 \
-                -o ServerAliveCountMax=6 \
-                -o StrictHostKeyChecking=accept-new \
-                -o TCPKeepAlive=yes \
-                fiveditc@198.251.84.129 "echo 'SSH probe connected'; hostname; whoami; df -h /tmp || true" || true
-              exit 1
-            fi
-            echo "Retrying in 10s..."
-            sleep 10
-          done
+          # 1) SFTP subsystem: no login shell → ~/.nvm/nvm.sh is not sourced (avoids fork/EAGAIN under CloudLinux LVE)
+          # 2) scp without -O: SFTP back-end on OpenSSH 8+ client
+          # 3) scp -O: legacy protocol for older hosts only
+          upload_with_fallbacks() {
+            local file="$1"
+            local dest_name="$2"
+            local attempt batch
+            for attempt in 1 2 3; do
+              echo "=== $dest_name — attempt $attempt/3 ==="
+
+              batch="$(mktemp)"
+              printf 'put -f %s /tmp/%s\nbye\n' "$file" "$dest_name" > "$batch"
+              if sftp "${SSH_OPTS[@]}" -P "$PORT" -b "$batch" "$HOST"; then
+                rm -f "$batch"
+                echo "✅ Uploaded via SFTP: /tmp/${dest_name}"
+                return 0
+              fi
+              rm -f "$batch"
+              echo "⚠️ SFTP failed, trying scp (SFTP protocol)..."
+
+              if scp "${SSH_OPTS[@]}" -P "$PORT" "$file" "$HOST:/tmp/$dest_name"; then
+                echo "✅ Uploaded via scp (SFTP): /tmp/${dest_name}"
+                return 0
+              fi
+              echo "⚠️ scp SFTP failed, trying legacy scp -O..."
+
+              if scp -O "${SSH_OPTS[@]}" -P "$PORT" "$file" "$HOST:/tmp/$dest_name"; then
+                echo "✅ Uploaded via legacy scp: /tmp/${dest_name}"
+                return 0
+              fi
+
+              echo "⚠️ All methods failed this round; sleeping 10s..."
+              sleep 10
+            done
+
+            echo "❌ Failed to upload ${file} after 3 rounds"
+            echo "SSH debug probe (shell login may still source nvm):"
+            ssh -vvv "${SSH_OPTS[@]}" -p "$PORT" "$HOST" \
+              "echo probe; hostname; whoami; ulimit -u 2>/dev/null || true; df -h /tmp 2>/dev/null || true" || true
+            return 1
+          }
+
+          echo "Uploading tarballs (SFTP-first avoids remote nvm fork storms on shared hosting)..."
+          upload_with_fallbacks deploy.tar.gz deploy.tar.gz
+          upload_with_fallbacks admin-deploy.tar.gz admin-deploy.tar.gz
 
       - name: Deploy on cPanel server
         run: |
           echo "Starting remote deployment..."
+          # bash --noprofile --norc: skip ~/.bashrc nvm hooks (same fork/LVE issue as uploads)
           ssh \
             -T \
             -p 25552 \
             -o ConnectTimeout=30 \
             -o RequestTTY=no \
-            -o ServerAliveInterval=20 \
-            -o ServerAliveCountMax=6 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
             -o TCPKeepAlive=yes \
-            fiveditc@198.251.84.129 << 'EOF'
+            fiveditc@198.251.84.129 \
+            'bash --noprofile --norc -s' << 'EOF'
           set -e
+          export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+          # Use CloudLinux Node Selector venv for npm (avoid nvm in ~/.bashrc under LVE)
+          NEXT_NODEVENV="/home/fiveditc/nodevenv/domains/fivedit.com/public_html/20/bin/activate"
+          if [ -f "$NEXT_NODEVENV" ]; then
+            source "$NEXT_NODEVENV"
+          fi
 
           APP_DIR="/home/fiveditc/domains/fivedit.com/public_html"
           API_DIR="/home/fiveditc/domains/fivedit.com/api"
