@@ -145,6 +145,22 @@ export default function ChatManager({ token }: ChatManagerProps) {
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedSessionRef = useRef<string | null>(null);
   const sessionsListRef = useRef<HTMLDivElement>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  const isPaginatedLoadActiveRef = useRef(false);
+
+  const mergeUniqueSessions = useCallback((base: ChatSession[], incoming: ChatSession[]) => {
+    const map = new Map<string, ChatSession>();
+    base.forEach((s) => map.set(s.id, s));
+    incoming.forEach((s) => {
+      const prev = map.get(s.id);
+      map.set(s.id, prev ? { ...prev, ...s } : s);
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const at = new Date(a.last_message_at || a.created_at || 0).getTime();
+      const bt = new Date(b.last_message_at || b.created_at || 0).getTime();
+      return bt - at;
+    });
+  }, []);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -201,7 +217,11 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
     // Receive sessions list
     socket.on('sessions:list', (sessionsList: ChatSession[]) => {
-      setSessions(sessionsList);
+      // Keep pagination state intact. Socket list may be unpaginated or partial.
+      setSessions((prev) => {
+        if (!prev.length) return sessionsList;
+        return mergeUniqueSessions(prev, sessionsList);
+      });
       
       // If a session was selected, reload its messages after receiving sessions list
       // This handles the case when admin reconnects after page refresh
@@ -343,7 +363,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setConnectionError('Failed to initialize chat connection');
       setIsLoadingSessions(false);
     }
-  }, [token]);
+  }, [token, mergeUniqueSessions]);
   
   // Update ref when selectedSession changes
   useEffect(() => {
@@ -457,8 +477,10 @@ export default function ChatManager({ token }: ChatManagerProps) {
   // Load sessions from API with filters
   const loadSessions = useCallback(async (page: number = 1, append: boolean = false) => {
     if (!token) return;
+    if (isPaginatedLoadActiveRef.current) return;
     
     try {
+      isPaginatedLoadActiveRef.current = true;
       setIsLoadingMore(true);
       const filters: ChatSessionsFilters = {
         page,
@@ -471,7 +493,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
       const response = await fetchChatSessions(token, filters);
       
       if (append) {
-        setSessions(prev => [...prev, ...response.sessions]);
+        setSessions((prev) => mergeUniqueSessions(prev, response.sessions));
       } else {
         setSessions(response.sessions);
       }
@@ -481,39 +503,44 @@ export default function ChatManager({ token }: ChatManagerProps) {
     } catch (error) {
       console.error('Error loading sessions:', error);
     } finally {
+      isPaginatedLoadActiveRef.current = false;
       setIsLoadingMore(false);
       setIsLoadingSessions(false);
     }
-  }, [token, onlineFilter, trafficFilter, unreadFilter]);
+  }, [token, onlineFilter, trafficFilter, unreadFilter, mergeUniqueSessions]);
 
   // Load initial sessions and reload when filters change
   useEffect(() => {
+    setSessions([]);
     setCurrentPage(1);
     setHasMore(true);
     setIsLoadingSessions(true);
     loadSessions(1, false);
   }, [onlineFilter, trafficFilter, unreadFilter, loadSessions]);
 
-  // Infinite scroll handler
-  const handleScroll = useCallback(() => {
-    if (!sessionsListRef.current || isLoadingMore || !hasMore) return;
-    
-    const { scrollTop, scrollHeight, clientHeight } = sessionsListRef.current;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    
-    if (isNearBottom) {
-      loadSessions(currentPage + 1, true);
-    }
-  }, [currentPage, hasMore, isLoadingMore, loadSessions]);
-
-  // Attach scroll listener
+  // Infinite scroll via bottom sentinel (more reliable than scroll event math)
   useEffect(() => {
-    const listElement = sessionsListRef.current;
-    if (listElement) {
-      listElement.addEventListener('scroll', handleScroll);
-      return () => listElement.removeEventListener('scroll', handleScroll);
-    }
-  }, [handleScroll]);
+    const root = sessionsListRef.current;
+    const target = loadMoreTriggerRef.current;
+    if (!root || !target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasMore && !isLoadingMore) {
+          loadSessions(currentPage + 1, true);
+        }
+      },
+      {
+        root,
+        rootMargin: '140px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [currentPage, hasMore, isLoadingMore, loadSessions, sessions.length]);
 
   // Load Firebase config
   useEffect(() => {
@@ -1144,6 +1171,13 @@ export default function ChatManager({ token }: ChatManagerProps) {
                   </div>
                 );
               })}
+              <div ref={loadMoreTriggerRef} style={{ height: '1px' }} />
+              {isLoadingMore && (
+                <div className="loading-more">Loading more conversations...</div>
+              )}
+              {!hasMore && sessions.length > 0 && (
+                <div className="no-more">No more conversations</div>
+              )}
             </div>
           )}
         </div>
@@ -1424,7 +1458,9 @@ export default function ChatManager({ token }: ChatManagerProps) {
           flex: 1;
           min-height: 0;
           align-items: stretch;
-          height: clamp(560px, calc(100vh - 310px), 780px);
+          /* Match ~800px desktop panel height; shrink on short viewports */
+          height: min(800px, max(420px, calc(100vh - 260px)));
+          max-height: min(800px, max(420px, calc(100vh - 260px)));
         }
 
         .sessions-panel {
@@ -1436,6 +1472,8 @@ export default function ChatManager({ token }: ChatManagerProps) {
           flex-direction: column;
           overflow: hidden;
           min-height: 0;
+          height: 100%;
+          max-height: 100%;
         }
 
         .sessions-header {
@@ -1498,10 +1536,12 @@ export default function ChatManager({ token }: ChatManagerProps) {
 
         .sessions-list {
           flex: 1;
-          overflow-y: auto;
           min-height: 0;
-          max-height: none;
+          height: 100%;
+          overflow-y: scroll;
+          -webkit-overflow-scrolling: touch;
           overscroll-behavior: contain;
+          scrollbar-gutter: stable;
         }
 
         .loading-more,
@@ -1934,16 +1974,18 @@ export default function ChatManager({ token }: ChatManagerProps) {
             grid-template-columns: 1fr;
             gap: 1rem;
             height: auto;
+            max-height: none;
           }
 
-          .sessions-panel,
+          .sessions-panel {
+            height: min(520px, max(360px, 52vh));
+            max-height: min(520px, max(360px, 52vh));
+          }
+
           .chat-area {
             min-height: 0;
-            height: min(65vh, 560px);
-          }
-
-          .sessions-list {
-            max-height: none;
+            height: min(520px, max(360px, 52vh));
+            max-height: min(520px, max(360px, 52vh));
           }
         }
 
@@ -1979,9 +2021,14 @@ export default function ChatManager({ token }: ChatManagerProps) {
             padding: 0.75rem;
           }
 
-          .sessions-panel,
+          .sessions-panel {
+            height: min(480px, max(300px, 48vh));
+            max-height: min(480px, max(300px, 48vh));
+          }
+
           .chat-area {
-            height: min(62vh, 520px);
+            height: min(480px, max(300px, 48vh));
+            max-height: min(480px, max(300px, 48vh));
           }
 
           .message {
