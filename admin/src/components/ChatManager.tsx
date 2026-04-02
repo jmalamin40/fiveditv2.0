@@ -82,6 +82,14 @@ const GEMINI_MODELS = [
   'gemini-3.1-flash-lite-preview',
   'gemini-1.5-flash',
 ];
+const QUICK_REPLIES = [
+  'Hello sir, how can I help you?',
+  'Thanks',
+  'Thank you',
+  'Please share your order ID so I can check.',
+  'Please allow me 2-3 minutes to check this for you.',
+  'Can you share a screenshot, please?',
+];
 
 export default function ChatManager({ token }: ChatManagerProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -1227,27 +1235,43 @@ export default function ChatManager({ token }: ChatManagerProps) {
               </div>
 
               <div className="chat-input-area">
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  placeholder="Type your message..."
-                  disabled={isLoading || selectedSessionData?.status === 'closed'}
-                  className="chat-input"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isLoading || selectedSessionData?.status === 'closed'}
-                  className="btn-primary"
-                >
-                  <Send size={18} />
-                </button>
+                <div className="quick-replies">
+                  {QUICK_REPLIES.map((reply) => (
+                    <button
+                      key={reply}
+                      type="button"
+                      className="quick-reply-chip"
+                      onClick={() => setInputValue(reply)}
+                      disabled={isLoading || selectedSessionData?.status === 'closed'}
+                      title={reply}
+                    >
+                      {reply}
+                    </button>
+                  ))}
+                </div>
+                <div className="chat-input-row">
+                  <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Type your message..."
+                    disabled={isLoading || selectedSessionData?.status === 'closed'}
+                    className="chat-input"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!inputValue.trim() || isLoading || selectedSessionData?.status === 'closed'}
+                    className="btn-primary"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
               </div>
             </>
           ) : (
@@ -1400,6 +1424,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
           flex: 1;
           min-height: 0;
           align-items: stretch;
+          height: clamp(560px, calc(100vh - 310px), 780px);
         }
 
         .sessions-panel {
@@ -1410,6 +1435,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          min-height: 0;
         }
 
         .sessions-header {
@@ -1473,7 +1499,9 @@ export default function ChatManager({ token }: ChatManagerProps) {
         .sessions-list {
           flex: 1;
           overflow-y: auto;
-          max-height: calc(100vh - 340px);
+          min-height: 0;
+          max-height: none;
+          overscroll-behavior: contain;
         }
 
         .loading-more,
@@ -1628,6 +1656,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          min-height: 0;
         }
 
         .chat-header-bar {
@@ -1653,12 +1682,15 @@ export default function ChatManager({ token }: ChatManagerProps) {
           flex-direction: column;
           gap: 1rem;
           background: #fafbfc;
+          min-height: 0;
+          overscroll-behavior: contain;
+          scrollbar-gutter: stable;
         }
 
         .message {
           display: flex;
           gap: 0.75rem;
-          max-width: 75%;
+          max-width: min(78%, 760px);
           align-items: flex-end;
         }
 
@@ -1737,8 +1769,47 @@ export default function ChatManager({ token }: ChatManagerProps) {
           padding: 1rem 1.25rem;
           border-top: 1px solid #e2e8f0;
           display: flex;
+          flex-direction: column;
           gap: 0.75rem;
           background: white;
+        }
+
+        .chat-input-row {
+          display: flex;
+          gap: 0.75rem;
+          align-items: center;
+        }
+
+        .quick-replies {
+          display: flex;
+          gap: 0.5rem;
+          overflow-x: auto;
+          padding-bottom: 0.2rem;
+          scrollbar-width: thin;
+        }
+
+        .quick-reply-chip {
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          color: #334155;
+          border-radius: 9999px;
+          padding: 0.4rem 0.75rem;
+          font-size: 0.8rem;
+          white-space: nowrap;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .quick-reply-chip:hover:not(:disabled) {
+          background: #eff6ff;
+          border-color: #93c5fd;
+          color: #1d4ed8;
+        }
+
+        .quick-reply-chip:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .chat-input {
@@ -1862,15 +1933,17 @@ export default function ChatManager({ token }: ChatManagerProps) {
           .chat-layout {
             grid-template-columns: 1fr;
             gap: 1rem;
+            height: auto;
           }
 
           .sessions-panel,
           .chat-area {
-            min-height: 420px;
+            min-height: 0;
+            height: min(65vh, 560px);
           }
 
           .sessions-list {
-            max-height: 280px;
+            max-height: none;
           }
         }
 
@@ -1897,8 +1970,22 @@ export default function ChatManager({ token }: ChatManagerProps) {
             padding: 0.75rem;
           }
 
+          .quick-reply-chip {
+            font-size: 0.75rem;
+            padding: 0.35rem 0.65rem;
+          }
+
           .messages-container {
             padding: 0.75rem;
+          }
+
+          .sessions-panel,
+          .chat-area {
+            height: min(62vh, 520px);
+          }
+
+          .message {
+            max-width: 92%;
           }
         }
       `}</style>

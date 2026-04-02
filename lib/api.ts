@@ -91,20 +91,39 @@ export interface CodeCanyonScript {
 
 // API Functions
 export async function fetchServices(): Promise<Service[]> {
-  const response = await fetch(`${API_BASE_URL}/services`);
+  const response = await fetch(`${API_BASE_URL}/services`, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('Failed to fetch services');
   }
   const data = await response.json();
-  return data.services;
+  const services = Array.isArray(data.services) ? data.services : [];
+  return services.map(normalizeService);
 }
 
 export async function fetchServiceById(id: string): Promise<Service> {
-  const response = await fetch(`${API_BASE_URL}/services/${id}`);
+  const response = await fetch(`${API_BASE_URL}/services/${id}`, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('Failed to fetch service');
   }
-  return response.json();
+  const data = await response.json();
+  return normalizeService(data);
+}
+
+function normalizeService(service: any): Service {
+  const plans = Array.isArray(service?.plans) ? service.plans.map(normalizeServicePlan) : [];
+  return {
+    ...service,
+    plans,
+  };
+}
+
+function normalizeServicePlan(plan: any): ServicePlan {
+  return {
+    ...plan,
+    price: Number(plan?.price ?? 0),
+    deliveryTime: plan?.deliveryTime ?? plan?.delivery_time ?? '',
+    features: Array.isArray(plan?.features) ? plan.features : [],
+  };
 }
 
 export async function fetchReviews(params?: {

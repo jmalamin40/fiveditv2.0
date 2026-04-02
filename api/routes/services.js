@@ -25,7 +25,13 @@ router.get('/', async (req, res) => {
               `SELECT * FROM plan_features WHERE plan_id = ? AND plan_type = 'service' ORDER BY id`,
               [plan.id]
             );
-            return { ...plan, features };
+            return {
+              ...plan,
+              price: Number(plan.price),
+              popular: Boolean(plan.popular),
+              deliveryTime: plan.delivery_time || '',
+              features,
+            };
           })
         );
 
@@ -86,7 +92,13 @@ router.get('/:id', async (req, res) => {
           `SELECT * FROM plan_features WHERE plan_id = ? AND plan_type = 'service' ORDER BY id`,
           [plan.id]
         );
-        return { ...plan, features };
+        return {
+          ...plan,
+          price: Number(plan.price),
+          popular: Boolean(plan.popular),
+          deliveryTime: plan.delivery_time || '',
+          features,
+        };
       })
     );
 

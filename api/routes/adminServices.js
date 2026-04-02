@@ -61,18 +61,27 @@ async function deleteServicePlans(serviceId) {
 
 async function insertServicePlans(serviceId, plans = []) {
   for (const plan of plans) {
+    const planIdValue = (plan.id ?? plan.plan_id ?? '').toString().trim();
+    const delivery = (plan.deliveryTime ?? plan.delivery_time ?? '').toString();
+    const priceValue = Number(plan.price);
+    const popularValue =
+      plan.popular === true ||
+      plan.popular === 1 ||
+      plan.popular === '1' ||
+      plan.popular === 'true';
+
     const [planResult] = await pool.execute(
       `INSERT INTO service_plans (service_id, plan_id, name, price, currency, description, delivery_time, popular)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         serviceId,
-        plan.id,
-        plan.name,
-        plan.price,
-        plan.currency || 'USD',
-        plan.description || '',
-        plan.deliveryTime || '',
-        plan.popular || false,
+        planIdValue || slugify((plan.name || 'plan').toString(), { lower: true, strict: true }),
+        (plan.name || '').toString(),
+        Number.isFinite(priceValue) ? priceValue : 0,
+        (plan.currency || 'USD').toString(),
+        (plan.description || '').toString(),
+        delivery,
+        popularValue,
       ]
     );
 
@@ -82,7 +91,11 @@ async function insertServicePlans(serviceId, plans = []) {
         await pool.execute(
           `INSERT INTO plan_features (plan_id, plan_type, name, included)
            VALUES (?, 'service', ?, ?)`,
-          [planId, feature.name, feature.included !== false]
+          [
+            planId,
+            (feature?.name || '').toString(),
+            !(feature?.included === false || feature?.included === 0 || feature?.included === '0' || feature?.included === 'false'),
+          ]
         );
       }
     }
