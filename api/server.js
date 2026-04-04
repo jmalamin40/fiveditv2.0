@@ -14,7 +14,6 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  namespace: 'api'
 });
 
 const PORT = process.env.PORT || 3004;

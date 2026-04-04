@@ -753,13 +753,134 @@ async function migrate() {
         utm_source VARCHAR(255) NULL,
         utm_medium VARCHAR(255) NULL,
         utm_campaign VARCHAR(255) NULL,
+        visitor_id VARCHAR(64) NULL,
+        session_id VARCHAR(64) NULL,
+        country_code VARCHAR(2) NULL,
+        ref_param VARCHAR(320) NULL COMMENT 'URL ?ref= value (e.g. email for campaign links)',
+        ref_is_email TINYINT(1) NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_created_at (created_at),
         INDEX idx_source (source),
-        INDEX idx_referrer_domain (referrer_domain)
+        INDEX idx_referrer_domain (referrer_domain),
+        INDEX idx_visitor_id (visitor_id),
+        INDEX idx_session_id (session_id),
+        INDEX idx_country_code (country_code),
+        INDEX idx_ref_is_email (ref_is_email)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ traffic_events table created');
+
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_events ADD COLUMN visitor_id VARCHAR(64) NULL AFTER utm_campaign'
+      );
+      console.log('✅ traffic_events.visitor_id added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_events visitor_id:', e.message);
+    }
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_events ADD COLUMN session_id VARCHAR(64) NULL AFTER visitor_id'
+      );
+      console.log('✅ traffic_events.session_id added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_events session_id:', e.message);
+    }
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_events ADD COLUMN country_code VARCHAR(2) NULL AFTER session_id'
+      );
+      console.log('✅ traffic_events.country_code added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_events country_code:', e.message);
+    }
+    try {
+      await connection.execute('ALTER TABLE traffic_events ADD INDEX idx_visitor_id (visitor_id)');
+      console.log('✅ traffic_events idx_visitor_id');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_KEYNAME') console.log('⚠️ traffic_events idx_visitor_id:', e.message);
+    }
+    try {
+      await connection.execute('ALTER TABLE traffic_events ADD INDEX idx_session_id (session_id)');
+      console.log('✅ traffic_events idx_session_id');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_KEYNAME') console.log('⚠️ traffic_events idx_session_id:', e.message);
+    }
+    try {
+      await connection.execute('ALTER TABLE traffic_events ADD INDEX idx_country_code (country_code)');
+      console.log('✅ traffic_events idx_country_code');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_KEYNAME') console.log('⚠️ traffic_events idx_country_code:', e.message);
+    }
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_events ADD COLUMN ref_param VARCHAR(320) NULL COMMENT \'URL ?ref= value\' AFTER country_code'
+      );
+      console.log('✅ traffic_events.ref_param added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_events ref_param:', e.message);
+    }
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_events ADD COLUMN ref_is_email TINYINT(1) NOT NULL DEFAULT 0 AFTER ref_param'
+      );
+      console.log('✅ traffic_events.ref_is_email added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_events ref_is_email:', e.message);
+    }
+    try {
+      await connection.execute('ALTER TABLE traffic_events ADD INDEX idx_ref_is_email (ref_is_email)');
+      console.log('✅ traffic_events idx_ref_is_email');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_KEYNAME') console.log('⚠️ traffic_events idx_ref_is_email:', e.message);
+    }
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS traffic_visits (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        visitor_id VARCHAR(64) NOT NULL,
+        session_id VARCHAR(64) NOT NULL,
+        country_code VARCHAR(2) NULL,
+        country_name VARCHAR(100) NULL,
+        landing_path VARCHAR(500) NOT NULL DEFAULT '/',
+        last_path VARCHAR(500) NOT NULL DEFAULT '/',
+        page_views INT NOT NULL DEFAULT 1,
+        duration_seconds INT NOT NULL DEFAULT 0,
+        ref_param VARCHAR(320) NULL,
+        ref_is_email TINYINT(1) NOT NULL DEFAULT 0,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_traffic_session (session_id),
+        INDEX idx_visitor_id (visitor_id),
+        INDEX idx_started_at (started_at),
+        INDEX idx_country (country_code),
+        INDEX idx_ref_is_email (ref_is_email)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ traffic_visits table created');
+
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_visits ADD COLUMN ref_param VARCHAR(320) NULL AFTER duration_seconds'
+      );
+      console.log('✅ traffic_visits.ref_param added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_visits ref_param:', e.message);
+    }
+    try {
+      await connection.execute(
+        'ALTER TABLE traffic_visits ADD COLUMN ref_is_email TINYINT(1) NOT NULL DEFAULT 0 AFTER ref_param'
+      );
+      console.log('✅ traffic_visits.ref_is_email added');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_FIELDNAME') console.log('⚠️ traffic_visits ref_is_email:', e.message);
+    }
+    try {
+      await connection.execute('ALTER TABLE traffic_visits ADD INDEX idx_ref_is_email (ref_is_email)');
+      console.log('✅ traffic_visits idx_ref_is_email');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_KEYNAME') console.log('⚠️ traffic_visits idx_ref_is_email:', e.message);
+    }
 
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS ai_support_config (

@@ -78,6 +78,8 @@ const Chat: React.FC = () => {
   const [isAdminOnline, setIsAdminOnline] = useState(false);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  /** True after server accepts user:connect and sends messages:history (avoids sending before socket is bound to session). */
+  const [chatReady, setChatReady] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [pushLoading, setPushLoading] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -110,15 +112,20 @@ const Chat: React.FC = () => {
             storedSessionId = session.id;
             localStorage.setItem('chat_session_id', storedSessionId);
             // Session is created and will be notified to admins via socket
+          } else {
+            console.error('Chat session create failed:', response.status, await response.text().catch(() => ''));
           }
         }
         
         // Store session ID for socket connection
         if (storedSessionId) {
           setSessionId(storedSessionId);
+        } else {
+          setIsInitializing(false);
         }
       } catch (error) {
         console.error('Error initializing session:', error);
+        setIsInitializing(false);
       }
     };
     
@@ -135,7 +142,6 @@ const Chat: React.FC = () => {
         const socketOptions = {
           path: SOCKET_PATH,
           transports: ['websocket', 'polling'],
-          namespace: 'api'
         };
         console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
         const socket = io(SOCKET_URL, socketOptions);
@@ -146,25 +152,28 @@ const Chat: React.FC = () => {
           socket.on('connect', () => {
             console.log('Socket connected');
             setIsConnected(true);
-            setIsInitializing(false);
-            
-            // Connect user with session
+            setChatReady(false);
             socket.emit('user:connect', { sessionId });
           });
           
           socket.on('disconnect', () => {
             console.log('Socket disconnected');
             setIsConnected(false);
+            setChatReady(false);
           });
           
           socket.on('connect_error', (error) => {
             console.error('Socket connection error:', error);
             setIsInitializing(false);
+            setChatReady(false);
+            setIsConnected(false);
           });
           
           // Receive messages
           socket.on('messages:history', (messages: Message[]) => {
             setMessages(messages);
+            setChatReady(true);
+            setIsInitializing(false);
             scrollToBottom();
           });
           
@@ -201,8 +210,38 @@ const Chat: React.FC = () => {
           });
           
           // Error handling
-          socket.on('error', (error: { message: string }) => {
+          socket.on('error', async (error: { message: string }) => {
             console.error('Socket error:', error);
+            const msg = error?.message || '';
+            if (msg === 'Invalid session' || msg === 'Session ID required') {
+              localStorage.removeItem('chat_session_id');
+              setChatReady(false);
+              setIsInitializing(true);
+              try {
+                const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userIdentifier: null }),
+                });
+                if (response.ok) {
+                  const session: ChatSession = await response.json();
+                  localStorage.setItem('chat_session_id', session.id);
+                  setSessionId(session.id);
+                } else {
+                  setIsInitializing(false);
+                }
+              } catch {
+                setIsInitializing(false);
+              }
+            } else if (msg === 'Not connected to a session') {
+              setChatReady(false);
+              if (socket.connected) {
+                socket.emit('user:connect', { sessionId });
+              }
+            } else if (msg === 'Connection failed') {
+              setIsInitializing(false);
+              setChatReady(false);
+            }
           });
           
           // Send heartbeat every 15 seconds
@@ -220,6 +259,7 @@ const Chat: React.FC = () => {
     initializeChat();
     
     return () => {
+      setChatReady(false);
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
@@ -255,7 +295,7 @@ const Chat: React.FC = () => {
   }, [isOpen, sessionId, unreadCount]);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading || !sessionId || !socketRef.current || !isConnected) return;
+    if (!text.trim() || isLoading || !sessionId || !socketRef.current || !isConnected || !chatReady) return;
 
     const messageText = text.trim();
     setInputValue('');
@@ -458,6 +498,10 @@ const Chat: React.FC = () => {
               <div className="flex justify-center items-center h-full">
                 <div className="text-gray-500 text-sm">Reconnecting...</div>
               </div>
+            ) : !chatReady ? (
+              <div className="flex justify-center items-center h-full">
+                <div className="text-gray-500 text-sm">Loading conversation...</div>
+              </div>
             ) : messages.length === 0 ? (
               <div className="flex justify-center items-center h-full">
                 <div className="text-center text-gray-500">
@@ -535,12 +579,12 @@ const Chat: React.FC = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Type your message..."
-                disabled={isLoading}
+                disabled={isLoading || !isConnected || !chatReady}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
               />
               <button
                 type="submit"
-                disabled={!inputValue.trim() || isLoading || !sessionId}
+                disabled={!inputValue.trim() || isLoading || !sessionId || !isConnected || !chatReady}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-2 rounded-lg transition-colors"
               >
                 <Send size={18} />

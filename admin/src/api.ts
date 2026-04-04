@@ -416,6 +416,63 @@ export async function updateSmtpConfig(token: string, payload: SmtpConfig) {
 }
 
 // Traffic analytics
+export interface TrafficSessionStats {
+  sessions: number;
+  avgSessionSeconds: number;
+  totalPageViews: number;
+}
+
+export interface TrafficByCountry {
+  countryCode: string;
+  countryName: string;
+  visits: number;
+}
+
+export interface TrafficRecentSession {
+  visitorLabel: string;
+  durationSeconds: number;
+  pageViews: number;
+  countryCode: string | null;
+  countryName: string;
+  landingPath: string;
+  lastPath: string;
+  startedAt: string;
+  lastActivityAt: string;
+}
+
+export interface TrafficByVisitor {
+  visitorLabel: string;
+  sessionCount: number;
+  totalDurationSeconds: number;
+  longestSessionSeconds: number;
+}
+
+export interface EmailRefSummary {
+  sessions: number;
+  avgSessionSeconds: number;
+  totalDurationSeconds: number;
+}
+
+export interface EmailRefByRecipient {
+  refEmail: string;
+  sessions: number;
+  totalDurationSeconds: number;
+  avgDurationSeconds: number;
+}
+
+export interface EmailRefSession {
+  refEmail: string;
+  visitorLabel: string;
+  durationSeconds: number;
+  pageViews: number;
+  landingPath: string;
+  lastPath: string;
+  countryCode: string | null;
+  countryName: string;
+  startedAt: string;
+  lastActivityAt: string;
+}
+
 export interface TrafficAnalytics {
   from: string;
   to: string;
@@ -424,6 +481,13 @@ export interface TrafficAnalytics {
   topReferrers: { domain: string; count: number }[];
   topPaths: { path: string; count: number }[];
   visitsByDay: { date: string; count: number }[];
+  sessionStats: TrafficSessionStats;
+  emailRefSummary: EmailRefSummary;
+  emailRefByRecipient: EmailRefByRecipient[];
+  emailRefSessions: EmailRefSession[];
+  byCountry: TrafficByCountry[];
+  recentSessions: TrafficRecentSession[];
+  byVisitor: TrafficByVisitor[];
 }
 
 export async function getTrafficAnalytics(token: string, from?: string, to?: string) {
@@ -432,6 +496,19 @@ export async function getTrafficAnalytics(token: string, from?: string, to?: str
   if (to) params.set('to', to);
   const q = params.toString();
   const { data } = await client.get<TrafficAnalytics>(`/admin/analytics/traffic${q ? `?${q}` : ''}`, authHeaders(token));
+  return data;
+}
+
+/** CSV download: sessions where ?ref= looks like an email (campaign links). */
+export async function downloadEmailRefTrafficCsv(token: string, from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const q = params.toString();
+  const { data } = await client.get<Blob>(`/admin/analytics/email-ref-export${q ? `?${q}` : ''}`, {
+    ...authHeaders(token),
+    responseType: 'blob',
+  });
   return data;
 }
 

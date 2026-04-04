@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
-import { BarChart3, Globe, Link2, Search, Share2, Mail, Calendar, TrendingUp, ExternalLink } from 'lucide-react';
-import { getTrafficAnalytics, type TrafficAnalytics } from '../api';
+import { BarChart3, Globe, Link2, Search, Share2, Mail, Calendar, TrendingUp, ExternalLink, Clock, Users, MapPin, Download } from 'lucide-react';
+import { getTrafficAnalytics, downloadEmailRefTrafficCsv, type TrafficAnalytics } from '../api';
+
+function formatDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm ? `${h}h ${rm}m` : `${h}h`;
+}
 
 interface Props {
   token: string;
@@ -15,9 +26,10 @@ const SOURCE_LABELS: Record<string, { label: string; icon: typeof Globe; color: 
   email: { label: 'Email', icon: Mail, color: '#10b981' },
 };
 
-export default function TrafficAnalyticsManager({ token }: Props) {
+export default function TrafficAnalyticsManager({ token, toast }: Props) {
   const [data, setData] = useState<TrafficAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [from, setFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -37,6 +49,44 @@ export default function TrafficAnalyticsManager({ token }: Props) {
 
   const total = data?.totalVisits ?? 0;
   const maxDay = Math.max(1, ...(data?.visitsByDay?.map((d) => d.count) ?? [0]));
+  const sessionStats = data?.sessionStats ?? { sessions: 0, avgSessionSeconds: 0, totalPageViews: 0 };
+  const byCountry = data?.byCountry ?? [];
+  const recentSessions = data?.recentSessions ?? [];
+  const byVisitor = data?.byVisitor ?? [];
+  const emailRefSummary = data?.emailRefSummary ?? { sessions: 0, avgSessionSeconds: 0, totalDurationSeconds: 0 };
+  const emailRefByRecipient = data?.emailRefByRecipient ?? [];
+  const emailRefSessions = data?.emailRefSessions ?? [];
+
+  const handleExportEmailRefCsv = async () => {
+    setExportingCsv(true);
+    try {
+      const blob = await downloadEmailRefTrafficCsv(token, from, to);
+      if (blob.type.includes('json')) {
+        const text = await blob.text();
+        try {
+          const j = JSON.parse(text) as { error?: string };
+          toast?.error(j.error || 'Export failed.');
+        } catch {
+          toast?.error('Export failed.');
+        }
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `email-ref-traffic_${from}_to_${to}.csv`;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast?.success('CSV downloaded.');
+    } catch {
+      toast?.error('Could not export CSV.');
+    } finally {
+      setExportingCsv(false);
+    }
+  };
 
   return (
     <div className="traffic-analytics-page">
@@ -63,7 +113,7 @@ export default function TrafficAnalyticsManager({ token }: Props) {
         </div>
       </div>
       <p style={{ color: '#64748b', fontSize: '0.9375rem', marginTop: '-0.5rem', marginBottom: '1.5rem' }}>
-        See where your website traffic comes from: direct, search, social, referral, and email.
+        Traffic sources, page views, session length, visitor country, and email links using <code style={{ background: '#f1f5f9', padding: '0.1rem 0.35rem', borderRadius: 4 }}>?ref=</code> (see report below).
       </p>
 
       {loading && (
@@ -89,6 +139,134 @@ export default function TrafficAnalyticsManager({ token }: Props) {
                 <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</div>
               </div>
             ))}
+            <div className="card-panel" style={{ padding: '1.25rem', textAlign: 'center' }}>
+              <Users size={28} style={{ color: '#14b8a6', marginBottom: '0.5rem' }} />
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e293b' }}>{sessionStats.sessions.toLocaleString()}</div>
+              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Sessions (visits)</div>
+            </div>
+            <div className="card-panel" style={{ padding: '1.25rem', textAlign: 'center' }}>
+              <Clock size={28} style={{ color: '#f97316', marginBottom: '0.5rem' }} />
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e293b' }}>{formatDuration(sessionStats.avgSessionSeconds)}</div>
+              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Avg. time on site</div>
+            </div>
+          </div>
+
+          <div
+            className="card-panel"
+            style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid #10b981' }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+              <div style={{ flex: '1 1 280px' }}>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Mail size={22} style={{ color: '#10b981' }} />
+                  Email link traffic (<span style={{ fontFamily: 'ui-monospace' }}>?ref=</span> with email)
+                </h2>
+                <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0, lineHeight: 1.5 }}>
+                  Links like <code style={{ background: '#f1f5f9', padding: '0.12rem 0.4rem', borderRadius: 4 }}>?ref=alaminh2022@gmail.com</code>{' '}
+                  are detected as email campaigns. Time on site and page views are stored per browser session.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleExportEmailRefCsv()}
+                disabled={exportingCsv || emailRefSummary.sessions === 0}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.55rem 1rem',
+                  background: emailRefSummary.sessions === 0 ? '#e2e8f0' : '#10b981',
+                  color: emailRefSummary.sessions === 0 ? '#94a3b8' : 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  cursor: emailRefSummary.sessions === 0 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <Download size={18} />
+                {exportingCsv ? 'Exporting…' : 'Export CSV'}
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
+              <div style={{ textAlign: 'center', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{emailRefSummary.sessions.toLocaleString()}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Sessions</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{formatDuration(emailRefSummary.avgSessionSeconds)}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Avg. time (those sessions)</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e293b' }}>{formatDuration(emailRefSummary.totalDurationSeconds)}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Total time (sum)</div>
+              </div>
+            </div>
+            {emailRefByRecipient.length > 0 && (
+              <div style={{ marginTop: '1.25rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.5rem', color: '#334155' }}>By recipient (ref email)</h3>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {emailRefByRecipient.map((row, i) => (
+                    <li
+                      key={`${row.refEmail}-${i}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                        padding: '0.45rem 0',
+                        borderBottom: i < emailRefByRecipient.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      <span style={{ fontWeight: 500, wordBreak: 'break-all' }}>{row.refEmail}</span>
+                      <span style={{ color: '#64748b', flexShrink: 0, textAlign: 'right' }}>
+                        {row.sessions} session{row.sessions !== 1 ? 's' : ''}
+                        <br />
+                        <span style={{ fontSize: '0.8rem' }}>
+                          avg {formatDuration(row.avgDurationSeconds)} · total {formatDuration(row.totalDurationSeconds)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {emailRefSessions.length > 0 && (
+              <div style={{ marginTop: '1.25rem', overflowX: 'auto' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.5rem', color: '#334155' }}>Session detail (latest 200)</h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '0.4rem 0.4rem 0.6rem 0' }}>Ref email</th>
+                      <th style={{ padding: '0.4rem' }}>Visitor</th>
+                      <th style={{ padding: '0.4rem' }}>Time on site</th>
+                      <th style={{ padding: '0.4rem' }}>Pages</th>
+                      <th style={{ padding: '0.4rem' }}>Country</th>
+                      <th style={{ padding: '0.4rem' }}>Started</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emailRefSessions.map((row, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '0.5rem 0.4rem 0.5rem 0', wordBreak: 'break-all' }}>{row.refEmail}</td>
+                        <td style={{ padding: '0.5rem 0.4rem', fontFamily: 'ui-monospace, monospace' }}>{row.visitorLabel}</td>
+                        <td style={{ padding: '0.5rem 0.4rem' }}>{formatDuration(row.durationSeconds)}</td>
+                        <td style={{ padding: '0.5rem 0.4rem' }}>{row.pageViews}</td>
+                        <td style={{ padding: '0.5rem 0.4rem' }}>{row.countryName}</td>
+                        <td style={{ padding: '0.5rem 0.4rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                          {row.startedAt ? new Date(row.startedAt).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {emailRefSummary.sessions === 0 && (
+              <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '1rem', marginBottom: 0 }}>
+                No sessions with an email-shaped <code>?ref=</code> in this date range yet.
+              </p>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
@@ -135,6 +313,120 @@ export default function TrafficAnalyticsManager({ token }: Props) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
+            <div className="card-panel" style={{ padding: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MapPin size={20} />
+                Visits by country
+              </h2>
+              {byCountry.length === 0 ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No country data yet (local dev often has no geo; use Cloudflare or deploy behind a public IP).</p>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {byCountry.map((c, i) => (
+                    <li
+                      key={`${c.countryCode}-${i}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '0.5rem 0',
+                        borderBottom: i < byCountry.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      <span style={{ fontWeight: 500 }}>
+                        {c.countryName}
+                        <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: '0.35rem' }}>({c.countryCode})</span>
+                      </span>
+                      <span style={{ color: '#64748b', flexShrink: 0 }}>{c.visits.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="card-panel" style={{ padding: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Users size={20} />
+                Visitors (by session count)
+              </h2>
+              <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
+                Anonymous IDs; total time is sum of session lengths in this date range.
+              </p>
+              {byVisitor.length === 0 ? (
+                <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No session data for this period.</p>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {byVisitor.map((v, i) => (
+                    <li
+                      key={`${v.visitorLabel}-${i}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.5rem 0',
+                        borderBottom: i < byVisitor.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      <span style={{ fontWeight: 500, fontFamily: 'ui-monospace, monospace' }}>{v.visitorLabel}</span>
+                      <span style={{ color: '#64748b', flexShrink: 0, textAlign: 'right' }}>
+                        {v.sessionCount} visit{v.sessionCount !== 1 ? 's' : ''}
+                        <br />
+                        <span style={{ fontSize: '0.8rem' }}>
+                          total {formatDuration(v.totalDurationSeconds)} · longest {formatDuration(v.longestSessionSeconds)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="card-panel" style={{ padding: '1.5rem', marginTop: '1.5rem', overflowX: 'auto' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Clock size={20} />
+              Recent sessions
+            </h2>
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
+              Time on site updates as the visitor navigates and when they leave the tab.
+            </p>
+            {recentSessions.length === 0 ? (
+              <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No sessions in this range.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '0.5rem 0.5rem 0.75rem 0' }}>Visitor</th>
+                    <th style={{ padding: '0.5rem' }}>Country</th>
+                    <th style={{ padding: '0.5rem' }}>Time on site</th>
+                    <th style={{ padding: '0.5rem' }}>Pages</th>
+                    <th style={{ padding: '0.5rem' }}>Landing → last</th>
+                    <th style={{ padding: '0.5rem' }}>Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentSessions.map((row, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.6rem 0.5rem 0.6rem 0', fontFamily: 'ui-monospace, monospace' }}>{row.visitorLabel}</td>
+                      <td style={{ padding: '0.6rem 0.5rem' }}>{row.countryName}</td>
+                      <td style={{ padding: '0.6rem 0.5rem' }}>{formatDuration(row.durationSeconds)}</td>
+                      <td style={{ padding: '0.6rem 0.5rem' }}>{row.pageViews}</td>
+                      <td style={{ padding: '0.6rem 0.5rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${row.landingPath} → ${row.lastPath}`}>
+                        {row.landingPath} → {row.lastPath}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.5rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        {row.startedAt ? new Date(row.startedAt).toLocaleString() : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>

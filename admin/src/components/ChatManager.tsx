@@ -177,7 +177,6 @@ export default function ChatManager({ token }: ChatManagerProps) {
         auth: {
           token: token
         },
-        namespace: 'api'
       };
       
       console.log('Connecting to Socket.IO:', SOCKET_URL, 'with path:', SOCKET_PATH);
