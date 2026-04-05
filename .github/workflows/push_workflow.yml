@@ -243,25 +243,25 @@ jobs:
                 echo "⚠️ API .env file not found - configure database credentials in $API_DIR/.env"
               fi
 
-              echo "Installing API dependencies..."
-              cd "$API_DIR"
-              if [ -f "$API_NODEVENV" ]; then
-                source "$API_NODEVENV"
-              fi
-              npm install --production
+              # echo "Installing API dependencies..."
+              # cd "$API_DIR"
+              # if [ -f "$API_NODEVENV" ]; then
+              #   source "$API_NODEVENV"
+              # fi
+              # npm install --production
 
-              echo "Migrating API database..."
-              npm run migrate
+              # echo "Migrating API database..."
+              # npm run migrate
 
-              echo "Seeding API database..."
-              npm run seed
+              # echo "Seeding API database..."
+              # npm run seed
 
-              echo "Restarting API..."
-              cloudlinux-selector restart \
-                --user fiveditc \
-                --interpreter nodejs \
-                --app-root "$API_DIR" \
-                --json || echo "⚠️ API restart failed - ensure API is configured in CloudLinux"
+              # echo "Restarting API..."
+              # cloudlinux-selector restart \
+              #   --user fiveditc \
+              #   --interpreter nodejs \
+              #   --app-root "$API_DIR" \
+              #   --json || echo "⚠️ API restart failed - ensure API is configured in CloudLinux"
             )
           else
             echo "⚠️ API directory not found in deployment - skipping API deployment"
@@ -274,14 +274,14 @@ jobs:
           if [ -f "$NEXT_NODEVENV" ]; then
             source "$NEXT_NODEVENV"
           fi
-          npm install --production
+          # npm install --production
 
-          echo "Restarting Next.js app..."
-          cloudlinux-selector restart \
-            --user fiveditc \
-            --interpreter nodejs \
-            --app-root "$APP_DIR" \
-            --json
+          # echo "Restarting Next.js app..."
+          # cloudlinux-selector restart \
+          #   --user fiveditc \
+          #   --interpreter nodejs \
+          #   --app-root "$APP_DIR" \
+          #   --json
 
           echo "✅ Deployment completed successfully"
           EOF

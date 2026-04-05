@@ -6,6 +6,7 @@ const { sendPushToRecipient } = require('../utils/firebasePush');
 const { encryptPassword } = require('../utils/encryption');
 const { invalidateWebsiteKnowledgeCache } = require('../utils/aiSupportKnowledge');
 const { DEFAULTS, getDefaultRoutesJson } = require('../utils/defaultAiPublicInfo');
+const { SESSION_AGGREGATES_SQL } = require('../utils/chatSessionAggregates');
 
 async function ensureAiSupportConfigTable() {
   await pool.execute(`
@@ -199,99 +200,71 @@ router.post('/sessions/:sessionId/mark-read', async (req, res) => {
   }
 });
 
-// Admin: Get all chat sessions with filtering and pagination
+// Admin: Get all chat sessions with filtering and pagination (no full message JOIN — scales with large chat_messages)
 router.get('/admin/sessions', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { 
-      status, 
-      online_status, 
-      is_new_traffic, 
+    const {
+      status,
+      online_status,
+      is_new_traffic,
       has_unread,
-      page = 1, 
-      limit = 20 
+      page = 1,
+      limit = 25,
     } = req.query;
-    
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
     const offset = (pageNum - 1) * limitNum;
-    
-    // Build WHERE conditions
-    const whereConditions = [];
-    const params = [];
-    
+
+    const innerParams = [];
+    let innerWhere = ' WHERE 1=1';
     if (status) {
-      whereConditions.push('cs.status = ?');
-      params.push(status);
+      innerWhere += ' AND cs.status = ?';
+      innerParams.push(status);
     }
-    
     if (is_new_traffic === 'true') {
-      whereConditions.push('cs.is_new_traffic = TRUE');
+      innerWhere += ' AND cs.is_new_traffic = TRUE';
     }
-    
-    // Build base query with online status check
-    let baseQuery = `
-      SELECT 
-        cs.*,
-        COUNT(cm.id) as message_count,
-        MAX(cm.created_at) as last_message_time,
-        SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count,
-        CASE 
-          WHEN EXISTS (
-            SELECT 1 FROM user_online_status uos 
-            WHERE uos.session_id = cs.id 
-            AND uos.user_type = 'user' 
-            AND TIMESTAMPDIFF(SECOND, uos.last_seen, NOW()) <= 30
-          ) THEN TRUE 
-          ELSE FALSE 
-        END as is_online
+
+    const innerSql = `
+      SELECT cs.*, ${SESSION_AGGREGATES_SQL}
       FROM chat_sessions cs
-      LEFT JOIN chat_messages cm ON cs.id = cm.session_id
+      ${innerWhere}
     `;
-    
-    if (whereConditions.length > 0) {
-      baseQuery += ' WHERE ' + whereConditions.join(' AND ');
-    }
-    
-    baseQuery += ' GROUP BY cs.id';
-    
-    // Apply online status filter after grouping
-    const havingParts = [];
+
+    let wrapped = `SELECT * FROM (${innerSql}) AS s`;
+    const wrapParams = [...innerParams];
+
+    const outerFilters = [];
     if (online_status === 'online') {
-      havingParts.push('is_online = TRUE');
+      outerFilters.push('s.is_online = TRUE');
     } else if (online_status === 'offline') {
-      havingParts.push('is_online = FALSE');
+      outerFilters.push('s.is_online = FALSE');
     }
     if (has_unread === 'true') {
-      havingParts.push('unread_count > 0');
+      outerFilters.push('s.unread_count > 0');
     }
-    if (havingParts.length > 0) {
-      baseQuery += ' HAVING ' + havingParts.join(' AND ');
+    if (outerFilters.length > 0) {
+      wrapped += ` WHERE ${outerFilters.join(' AND ')}`;
     }
-    
-    // Order by
-    baseQuery += ' ORDER BY cs.is_new_traffic DESC, cs.last_message_at DESC';
-    
-    // Get total count for pagination (same filters including HAVING)
-    const countQuery = 'SELECT COUNT(*) as total FROM (' + baseQuery.replace(/\s+LIMIT\s+\?\s+OFFSET\s+\?/, '').replace(/\s+ORDER BY[\s\S]*$/, '') + ') _count';
-    
-    const [countResult] = await pool.execute(countQuery, params);
-    const total = countResult[0]?.total || 0;
-    
-    // Apply pagination
-    baseQuery += ` LIMIT ? OFFSET ?`;
-    params.push(limitNum, offset);
-    
-    const [sessions] = await pool.execute(baseQuery, params);
-    
+
+    const countSql = `SELECT COUNT(*) AS total FROM (${wrapped}) c`;
+    const [countResult] = await pool.execute(countSql, wrapParams);
+    const total = Number(countResult[0]?.total || 0);
+
+    const listSql = `${wrapped} ORDER BY s.is_new_traffic DESC, s.last_message_at DESC LIMIT ? OFFSET ?`;
+    const listParams = [...wrapParams, limitNum, offset];
+    const [sessions] = await pool.execute(listSql, listParams);
+
     res.json({
       sessions,
       pagination: {
         page: pageNum,
         limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limitNum),
-        hasMore: pageNum * limitNum < total
-      }
+        totalPages: Math.ceil(total / limitNum) || 0,
+        hasMore: pageNum * limitNum < total,
+      },
     });
   } catch (error) {
     console.error('Error fetching sessions:', error);
@@ -299,15 +272,18 @@ router.get('/admin/sessions', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// Admin: Get messages for a session
+// Admin: Get messages for a session (newest chunk first; cap avoids huge payloads)
 router.get('/admin/sessions/:sessionId/messages', authenticate, requireAdmin, async (req, res) => {
   try {
     const { sessionId } = req.params;
-    
-    const [messages] = await pool.execute(
-      'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC',
-      [sessionId]
+    const rawLimit = parseInt(req.query.limit, 10);
+    const limit = Math.min(3000, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 800));
+
+    const [rows] = await pool.execute(
+      `SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?`,
+      [sessionId, limit]
     );
+    const messages = [...rows].reverse();
     
     // Mark messages as read
     await pool.execute(

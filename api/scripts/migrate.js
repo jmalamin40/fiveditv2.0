@@ -213,6 +213,14 @@ async function migrate() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ Chat messages table created');
+    try {
+      await connection.execute(
+        'ALTER TABLE chat_messages ADD INDEX idx_session_sender_read (session_id, sender_type, is_read)'
+      );
+      console.log('✅ chat_messages idx_session_sender_read');
+    } catch (e) {
+      if (e.code !== 'ER_DUP_KEYNAME') console.log('⚠️ chat_messages idx_session_sender_read:', e.message);
+    }
 
     // Create user_online_status table
     await connection.execute(`

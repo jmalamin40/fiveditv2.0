@@ -483,7 +483,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
       setIsLoadingMore(true);
       const filters: ChatSessionsFilters = {
         page,
-        limit: 20,
+        limit: 25,
         online_status: onlineFilter !== 'all' ? onlineFilter : undefined,
         is_new_traffic: trafficFilter === 'new' ? true : undefined,
         has_unread: unreadFilter === 'unread' ? true : undefined
@@ -494,7 +494,7 @@ export default function ChatManager({ token }: ChatManagerProps) {
       if (append) {
         setSessions((prev) => mergeUniqueSessions(prev, response.sessions));
       } else {
-        setSessions(response.sessions);
+        setSessions((prev) => mergeUniqueSessions(response.sessions, prev));
       }
       
       setHasMore(response.pagination.hasMore);

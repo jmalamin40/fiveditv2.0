@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const { sendPushToRecipient } = require('../utils/firebasePush');
 const { generateSupportReply } = require('../utils/aiSupport');
+const { SESSION_AGGREGATES_SQL } = require('../utils/chatSessionAggregates');
 
 // Store active connections
 const activeUsers = new Map(); // sessionId -> socketId
@@ -210,15 +211,9 @@ function setupSocketHandlers(io) {
         if (isNewTraffic) {
           // Get full session data with message count
           const [newSession] = await pool.execute(
-            `SELECT 
-              cs.*,
-              COUNT(cm.id) as message_count,
-              MAX(cm.created_at) as last_message_time,
-              SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+            `SELECT cs.*, ${SESSION_AGGREGATES_SQL}
             FROM chat_sessions cs
-            LEFT JOIN chat_messages cm ON cs.id = cm.session_id
-            WHERE cs.id = ?
-            GROUP BY cs.id`,
+            WHERE cs.id = ?`,
             [sessionId]
           );
           
@@ -262,17 +257,12 @@ function setupSocketHandlers(io) {
         // Update online status
         await updateOnlineStatus(admin.id, 'admin');
 
-        // Load and send all sessions with unread count and new traffic flag
+        // Recent sessions only (full list loads via HTTP pagination — avoids scanning all messages)
         const [sessions] = await pool.execute(
-          `SELECT 
-            cs.*,
-            COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time,
-            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+          `SELECT cs.*, ${SESSION_AGGREGATES_SQL}
           FROM chat_sessions cs
-          LEFT JOIN chat_messages cm ON cs.id = cm.session_id
-          GROUP BY cs.id 
-          ORDER BY cs.is_new_traffic DESC, cs.last_message_at DESC`
+          ORDER BY cs.is_new_traffic DESC, cs.last_message_at DESC
+          LIMIT 120`
         );
         socket.emit('sessions:list', sessions);
 
@@ -342,15 +332,9 @@ function setupSocketHandlers(io) {
 
         // Update sessions list for admins
         const [sessions] = await pool.execute(
-          `SELECT 
-            cs.*,
-            COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time,
-            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+          `SELECT cs.*, ${SESSION_AGGREGATES_SQL}
           FROM chat_sessions cs
-          LEFT JOIN chat_messages cm ON cs.id = cm.session_id
-          WHERE cs.id = ?
-          GROUP BY cs.id`,
+          WHERE cs.id = ?`,
           [sessionId]
         );
         io.to('admins').emit('session:updated', sessions[0]);
@@ -473,15 +457,9 @@ function setupSocketHandlers(io) {
 
         // Update sessions list for admins
         const [updatedSessions] = await pool.execute(
-          `SELECT 
-            cs.*,
-            COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time,
-            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+          `SELECT cs.*, ${SESSION_AGGREGATES_SQL}
           FROM chat_sessions cs
-          LEFT JOIN chat_messages cm ON cs.id = cm.session_id
-          WHERE cs.id = ?
-          GROUP BY cs.id`,
+          WHERE cs.id = ?`,
           [sessionId]
         );
         io.to('admins').emit('session:updated', updatedSessions[0]);
@@ -511,10 +489,12 @@ function setupSocketHandlers(io) {
         }
 
         const { sessionId } = data;
-        const [messages] = await pool.execute(
-          'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC',
-          [sessionId]
+        const MSG_LIMIT = 800;
+        const [rows] = await pool.execute(
+          `SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?`,
+          [sessionId, MSG_LIMIT]
         );
+        const messages = [...rows].reverse();
 
         // Mark messages as read
         await pool.execute(
@@ -534,15 +514,9 @@ function setupSocketHandlers(io) {
 
         // Update session with new unread count (should be 0 after marking as read)
         const [updatedSessions] = await pool.execute(
-          `SELECT 
-            cs.*,
-            COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time,
-            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+          `SELECT cs.*, ${SESSION_AGGREGATES_SQL}
           FROM chat_sessions cs
-          LEFT JOIN chat_messages cm ON cs.id = cm.session_id
-          WHERE cs.id = ?
-          GROUP BY cs.id`,
+          WHERE cs.id = ?`,
           [sessionId]
         );
         io.to('admins').emit('session:updated', updatedSessions[0]);
@@ -573,15 +547,9 @@ function setupSocketHandlers(io) {
         );
 
         const [sessions] = await pool.execute(
-          `SELECT 
-            cs.*,
-            COUNT(cm.id) as message_count,
-            MAX(cm.created_at) as last_message_time,
-            SUM(CASE WHEN cm.sender_type = 'user' AND cm.is_read = FALSE THEN 1 ELSE 0 END) as unread_count
+          `SELECT cs.*, ${SESSION_AGGREGATES_SQL}
           FROM chat_sessions cs
-          LEFT JOIN chat_messages cm ON cs.id = cm.session_id
-          WHERE cs.id = ?
-          GROUP BY cs.id`,
+          WHERE cs.id = ?`,
           [sessionId]
         );
         io.to('admins').emit('session:updated', sessions[0]);
