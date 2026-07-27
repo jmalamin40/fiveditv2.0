@@ -130,17 +130,28 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// One-time login after SMM purchase: exchange order token for customer JWT
+// One-time login after a guest purchase: exchange order token for customer JWT.
+// `type` selects which orders table to look the token up in (defaults to 'smm' for
+// backward compatibility with existing SMM checkout callers).
+const GUEST_LOGIN_ORDER_TABLES = {
+  smm: 'smm_website_orders',
+  course: 'course_orders',
+};
+
 router.post('/guest-login', async (req, res) => {
   try {
-    const { token, order_id } = req.body;
+    const { token, order_id, type } = req.body;
     if (!token || !order_id) {
       return res.status(400).json({ error: 'token and order_id required' });
     }
 
+    const ordersTable = GUEST_LOGIN_ORDER_TABLES[type] || GUEST_LOGIN_ORDER_TABLES.smm;
+
     const [orders] = await pool.execute(
-      `SELECT id, customer_email, customer_name, one_time_login_token, one_time_login_expires_at
-       FROM smm_website_orders WHERE order_id = ? LIMIT 1`,
+      `SELECT id, customer_email, customer_name, one_time_login_token, one_time_login_expires_at${
+        ordersTable === 'course_orders' ? ', course_id' : ''
+      }
+       FROM ${ordersTable} WHERE order_id = ? LIMIT 1`,
       [order_id]
     );
     if (orders.length === 0) return res.status(404).json({ error: 'Order not found' });
@@ -151,7 +162,7 @@ router.post('/guest-login', async (req, res) => {
     }
 
     await pool.execute(
-      'UPDATE smm_website_orders SET one_time_login_token = NULL, one_time_login_expires_at = NULL WHERE id = ?',
+      `UPDATE ${ordersTable} SET one_time_login_token = NULL, one_time_login_expires_at = NULL WHERE id = ?`,
       [order.id]
     );
 
@@ -172,6 +183,14 @@ router.post('/guest-login', async (req, res) => {
     }
     const user = users[0];
     if (!user) return res.status(500).json({ error: 'Failed to create session' });
+
+    if (ordersTable === 'course_orders') {
+      await pool.execute('UPDATE course_orders SET customer_id = ? WHERE id = ?', [user.id, order.id]);
+      await pool.execute(
+        'INSERT IGNORE INTO course_enrollments (course_id, customer_id, order_id) VALUES (?, ?, ?)',
+        [order.course_id, user.id, order.id]
+      );
+    }
 
     if (!process.env.JWT_SECRET) return res.status(500).json({ error: 'Authentication not configured' });
     const jwtToken = jwt.sign(

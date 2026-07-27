@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, getCustomerSmmOrders, getCustomerSmmInstances, getSmmProvisioningSteps, retrySmmProvisioning, CustomerOrder, CustomerAccount, Invoice, SmmOrder, SmmInstance, SmmProvisioningStep } from '@/lib/api';
-import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText, Share2, ExternalLink, RefreshCw } from 'lucide-react';
+import { getCustomerOrders, getCustomerAccounts, getCustomerProfile, getCustomerInvoices, getCustomerSmmOrders, getCustomerSmmInstances, getSmmProvisioningSteps, retrySmmProvisioning, getCustomerCourseOrders, CustomerOrder, CustomerAccount, Invoice, SmmOrder, SmmInstance, SmmProvisioningStep, CustomerCourseEnrollment } from '@/lib/api';
+import { Loader2, LogOut, Package, Server, User, Calendar, DollarSign, CheckCircle, XCircle, Clock, FileText, Share2, ExternalLink, RefreshCw, GraduationCap } from 'lucide-react';
 
 export default function CustomerDashboard() {
   const router = useRouter();
@@ -14,10 +14,11 @@ export default function CustomerDashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [smmOrders, setSmmOrders] = useState<SmmOrder[]>([]);
   const [smmInstances, setSmmInstances] = useState<SmmInstance[]>([]);
+  const [courses, setCourses] = useState<CustomerCourseEnrollment[]>([]);
   const [provisioningSteps, setProvisioningSteps] = useState<Record<string, SmmProvisioningStep[]>>({});
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'smm' | 'invoices' | 'profile'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'accounts' | 'smm' | 'courses' | 'invoices' | 'profile'>('orders');
 
   useEffect(() => {
     const storedToken = localStorage.getItem('customer_token');
@@ -37,12 +38,13 @@ export default function CustomerDashboard() {
   const loadData = async (authToken: string) => {
     try {
       setLoading(true);
-      const [ordersData, accountsData, invoicesData, smmOrdersData, smmInstancesData, profileData] = await Promise.all([
+      const [ordersData, accountsData, invoicesData, smmOrdersData, smmInstancesData, coursesData, profileData] = await Promise.all([
         getCustomerOrders(authToken),
         getCustomerAccounts(authToken),
         getCustomerInvoices(authToken).catch(() => ({ invoices: [] })),
         getCustomerSmmOrders(authToken).catch(() => ({ orders: [] })),
         getCustomerSmmInstances(authToken).catch(() => ({ instances: [] })),
+        getCustomerCourseOrders(authToken).catch(() => ({ courses: [] })),
         getCustomerProfile(authToken),
       ]);
       setOrders(ordersData.orders);
@@ -50,6 +52,7 @@ export default function CustomerDashboard() {
       setInvoices(invoicesData.invoices);
       setSmmOrders(smmOrdersData.orders);
       setSmmInstances(smmInstancesData.instances);
+      setCourses(coursesData.courses);
       setUser(profileData.user);
       for (const o of smmOrdersData.orders) {
         if ((o.status === 'paid' || o.status === 'completed') && !o.smm_instance_id) {
@@ -170,6 +173,17 @@ export default function CustomerDashboard() {
               >
                 <Share2 className="w-4 h-4 inline mr-2" />
                 SMM Websites
+              </button>
+              <button
+                onClick={() => setActiveTab('courses')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 ${
+                  activeTab === 'courses'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <GraduationCap className="w-4 h-4 inline mr-2" />
+                My Courses
               </button>
               <button
                 onClick={() => setActiveTab('invoices')}
@@ -455,6 +469,46 @@ export default function CustomerDashboard() {
                   >
                     Get SMM Website
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'courses' && (
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Your Courses</h2>
+              {courses.length === 0 ? (
+                <div className="text-center py-12">
+                  <GraduationCap className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">You haven&apos;t enrolled in any courses yet</p>
+                  <button
+                    onClick={() => router.push('/courses')}
+                    className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Browse Courses
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {courses.map((course) => (
+                    <div key={course.enrollment_id} className="border border-gray-200 rounded-lg p-6 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">{course.title}</h3>
+                        {course.instructor_name && (
+                          <p className="text-sm text-gray-600">Instructor: {course.instructor_name}</p>
+                        )}
+                        <p className="text-sm text-gray-500 mt-1">
+                          Enrolled {new Date(course.enrolled_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => router.push(`/courses/${course.course_id}`)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                      >
+                        Watch Course
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

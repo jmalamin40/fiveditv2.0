@@ -1015,6 +1015,115 @@ async function migrate() {
     // const { seedSmmPackages } = require('./seedSmmPackages');
     // await seedSmmPackages(connection);
 
+    // ===== Course selling module =====
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS courses (
+        id VARCHAR(100) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        thumbnail VARCHAR(500),
+        short_description TEXT,
+        description TEXT,
+        instructor_name VARCHAR(255),
+        level ENUM('beginner', 'intermediate', 'advanced') DEFAULT 'beginner',
+        language VARCHAR(50) DEFAULT 'English',
+        duration VARCHAR(100),
+        price DECIMAL(10, 2) NOT NULL,
+        discount_price DECIMAL(10, 2) NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        category VARCHAR(100),
+        category_id VARCHAR(100),
+        features JSON,
+        requirements JSON,
+        status ENUM('draft', 'published') DEFAULT 'draft',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+        INDEX idx_category_id (category_id),
+        INDEX idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ courses table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS course_modules (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id VARCHAR(100) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        INDEX idx_course_id (course_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ course_modules table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS course_lessons (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        module_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        duration VARCHAR(50),
+        video_url VARCHAR(500),
+        is_preview BOOLEAN DEFAULT FALSE,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (module_id) REFERENCES course_modules(id) ON DELETE CASCADE,
+        INDEX idx_module_id (module_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ course_lessons table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS course_orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id VARCHAR(50) NOT NULL UNIQUE,
+        course_id VARCHAR(100) NOT NULL,
+        course_title VARCHAR(255) NOT NULL,
+        transaction_id VARCHAR(100),
+        customer_id INT NULL,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(50),
+        amount DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'BDT',
+        status ENUM('pending', 'paid', 'failed', 'cancelled', 'completed') DEFAULT 'pending',
+        payment_url VARCHAR(500),
+        return_url VARCHAR(500),
+        cancel_url VARCHAR(500),
+        webhook_url VARCHAR(500),
+        payment_gateway_response TEXT,
+        one_time_login_token VARCHAR(64) NULL,
+        one_time_login_expires_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        paid_at TIMESTAMP NULL,
+        FOREIGN KEY (course_id) REFERENCES courses(id),
+        FOREIGN KEY (customer_id) REFERENCES customer_users(id) ON DELETE SET NULL,
+        INDEX idx_status (status),
+        INDEX idx_transaction_id (transaction_id),
+        INDEX idx_customer_email (customer_email),
+        INDEX idx_order_id (order_id),
+        INDEX idx_customer_id (customer_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ course_orders table created');
+
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS course_enrollments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        course_id VARCHAR(100) NOT NULL,
+        customer_id INT NOT NULL,
+        order_id INT NOT NULL,
+        enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customer_users(id) ON DELETE CASCADE,
+        FOREIGN KEY (order_id) REFERENCES course_orders(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_enrollment (course_id, customer_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ course_enrollments table created');
+
     console.log('\n🎉 Database migration completed successfully!');
     
   } catch (error) {

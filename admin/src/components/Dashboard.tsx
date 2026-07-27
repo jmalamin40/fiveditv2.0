@@ -16,6 +16,8 @@ import SmmWebsiteConfigManager from './SmmWebsiteConfigManager';
 import TrafficAnalyticsManager from './TrafficAnalyticsManager';
 import ProfileManager from './ProfileManager';
 import InvoiceManager from './InvoiceManager';
+import CoursesManager from './CoursesManager';
+import CourseOrdersManager from './CourseOrdersManager';
 import { fetchAdminProfile } from '../api';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './ToastContainer';
@@ -51,6 +53,8 @@ const navSections: NavSection[] = [
     items: [
       { id: 'categories', label: 'Categories', icon: '📁' },
       { id: 'services', label: 'Services', icon: '⚙️' },
+      { id: 'courses', label: 'Courses', icon: '🎓' },
+      { id: 'course-orders', label: 'Course Sales', icon: '💳' },
       { id: 'scripts', label: 'CodeCanyon Scripts', icon: '💻' },
       { id: 'invoices', label: 'Invoices', icon: '🧾' },
     ],
@@ -192,6 +196,8 @@ export default function Dashboard({ token, user, onLogout }: DashboardProps) {
         <Routes>
           <Route path="categories" element={<CategoriesManager token={token} />} />
           <Route path="services" element={<ServicesManager token={token} />} />
+          <Route path="courses" element={<CoursesManager token={token} />} />
+          <Route path="course-orders" element={<CourseOrdersManager token={token} toast={toast} />} />
           <Route path="scripts" element={<ScriptsManager token={token} />} />
           <Route path="hosting/*" element={<HostingManager token={token} toast={toast} />} />
           <Route path="smm-packages" element={<SmmPackagesManager token={token} toast={toast} />} />

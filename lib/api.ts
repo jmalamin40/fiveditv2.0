@@ -684,11 +684,15 @@ export async function getSmmGuestSession(orderId: string): Promise<{ token: stri
   return response.json();
 }
 
-export async function customerGuestLogin(token: string, orderId: string): Promise<{ token: string; user: { id: number; name: string; email: string; phone?: string; role: string } }> {
+export async function customerGuestLogin(
+  token: string,
+  orderId: string,
+  type?: 'smm' | 'course'
+): Promise<{ token: string; user: { id: number; name: string; email: string; phone?: string; role: string } }> {
   const response = await fetch(`${API_BASE_URL}/customer/auth/guest-login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, order_id: orderId }),
+    body: JSON.stringify({ token, order_id: orderId, type }),
   });
   if (!response.ok) throw new Error('Failed to login');
   return response.json();
@@ -712,5 +716,136 @@ export async function submitContactForm(payload: ContactFormPayload): Promise<{ 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Failed to send message');
   return data;
+}
+
+// Courses
+export interface CourseLesson {
+  id: number;
+  title: string;
+  duration: string;
+  is_preview: boolean;
+  sort_order: number;
+  video_url: string | null;
+}
+
+export interface CourseModule {
+  id: number;
+  title: string;
+  sort_order: number;
+  lessons: CourseLesson[];
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  thumbnail: string | null;
+  short_description: string;
+  description?: string;
+  instructor_name: string;
+  level: 'beginner' | 'intermediate' | 'advanced';
+  language: string;
+  duration: string;
+  price: number;
+  discount_price: number | null;
+  currency: string;
+  category?: string;
+  category_id?: string;
+  features?: string[];
+  requirements?: string[];
+  modules?: CourseModule[];
+  is_enrolled?: boolean;
+  created_at?: string;
+}
+
+export interface CourseOrder {
+  order_id: string;
+  transaction_id?: string;
+  status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'completed';
+  amount: number;
+  currency: string;
+  course_id?: string;
+  course_title?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  paid_at?: string | null;
+  created_at?: string;
+}
+
+export async function fetchCourses(category?: string): Promise<Course[]> {
+  const url = new URL(`${API_BASE_URL}/courses`);
+  if (category) url.searchParams.set('category', category);
+  const response = await fetch(url.toString(), { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch courses');
+  }
+  const data = await response.json();
+  return data.courses || [];
+}
+
+export async function fetchCourseById(id: string): Promise<Course> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('customer_token') : null;
+  const headers: HeadersInit = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}/courses/${id}`, { headers, cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch course');
+  }
+  return response.json();
+}
+
+export async function createCourseOrder(data: {
+  course_id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string;
+}): Promise<{ success: boolean; order_id: string; transaction_id: string; payment_url: string; amount: number; currency: string }> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('customer_token') : null;
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}/courses/payments/orders`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create course order');
+  }
+  return response.json();
+}
+
+export async function getCourseOrderStatus(orderId: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/courses/payments/orders/${orderId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch order status');
+  }
+  return response.json();
+}
+
+export interface CustomerCourseEnrollment {
+  enrollment_id: number;
+  enrolled_at: string;
+  course_id: string;
+  title: string;
+  thumbnail: string | null;
+  instructor_name: string;
+  level: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  paid_at: string | null;
+}
+
+export async function getCustomerCourseOrders(token: string): Promise<{ courses: CustomerCourseEnrollment[] }> {
+  const response = await fetch(`${API_BASE_URL}/customer/courses`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch courses');
+  }
+  return response.json();
 }
 

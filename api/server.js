@@ -58,6 +58,9 @@ app.use('/api/admin/smtp-config', smtpConfig.adminRouter);
 app.use('/api/admin/analytics', analytics.adminRouter);
 app.use('/api/domain', require('./routes/domain'));
 app.use('/api/admin/domain', require('./routes/domainAdmin'));
+app.use('/api/courses', require('./routes/courses'));
+app.use('/api/admin/courses', require('./routes/adminCourses'));
+app.use('/api/courses/payments', require('./routes/coursePayments'));
 
 // Invoice routes
 const invoices = require('./routes/invoices');

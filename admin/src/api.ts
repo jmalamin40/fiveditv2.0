@@ -114,6 +114,83 @@ export async function deleteService(token: string, id: string) {
   await client.delete(`/admin/services/${id}`, authHeaders(token));
 }
 
+// Courses
+export interface CourseLessonInput {
+  id?: number;
+  title: string;
+  duration?: string;
+  videoUrl?: string;
+  isPreview?: boolean;
+}
+
+export interface CourseModuleInput {
+  id?: number;
+  title: string;
+  lessons?: CourseLessonInput[];
+}
+
+export interface CourseInput {
+  id?: string;
+  title: string;
+  thumbnail?: string;
+  shortDescription?: string;
+  description?: string;
+  instructorName?: string;
+  level?: 'beginner' | 'intermediate' | 'advanced';
+  language?: string;
+  duration?: string;
+  price: number;
+  discountPrice?: number | null;
+  currency?: string;
+  categoryId?: string;
+  features?: string[];
+  requirements?: string[];
+  status?: 'draft' | 'published';
+  modules?: CourseModuleInput[];
+}
+
+export interface CourseOrderAdmin {
+  id: number;
+  order_id: string;
+  course_id: string;
+  course_title: string;
+  course_current_title?: string;
+  customer_name: string;
+  customer_email: string;
+  amount: number;
+  currency: string;
+  status: string;
+  created_at: string;
+  paid_at: string | null;
+}
+
+export async function fetchCourses(token: string) {
+  const { data } = await client.get('/admin/courses', authHeaders(token));
+  return data;
+}
+
+export async function createCourse(token: string, payload: CourseInput) {
+  const { data } = await client.post('/admin/courses', payload, authHeaders(token));
+  return data;
+}
+
+export async function updateCourse(token: string, id: string, payload: CourseInput) {
+  const { data } = await client.put(`/admin/courses/${id}`, payload, authHeaders(token));
+  return data;
+}
+
+export async function deleteCourse(token: string, id: string) {
+  await client.delete(`/admin/courses/${id}`, authHeaders(token));
+}
+
+export async function fetchCourseOrders(token: string, status?: string): Promise<CourseOrderAdmin[]> {
+  const { data } = await client.get<CourseOrderAdmin[]>('/admin/courses/orders', {
+    ...authHeaders(token),
+    params: status ? { status } : undefined,
+  });
+  return data;
+}
+
 // CodeCanyon Scripts
 export async function fetchScripts(token: string) {
   const { data } = await client.get('/admin/codecanyon', authHeaders(token));

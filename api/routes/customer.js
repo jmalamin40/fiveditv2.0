@@ -74,6 +74,39 @@ router.get('/orders', async (req, res) => {
   }
 });
 
+// Get customer's enrolled courses
+router.get('/courses', async (req, res) => {
+  try {
+    const customerId = req.user.id;
+
+    const [enrollments] = await pool.execute(
+      `SELECT
+        ce.id AS enrollment_id,
+        ce.enrolled_at,
+        c.id AS course_id,
+        c.title,
+        c.thumbnail,
+        c.instructor_name,
+        c.level,
+        co.order_id,
+        co.amount,
+        co.currency,
+        co.paid_at
+      FROM course_enrollments ce
+      JOIN courses c ON c.id = ce.course_id
+      LEFT JOIN course_orders co ON co.id = ce.order_id
+      WHERE ce.customer_id = ?
+      ORDER BY ce.enrolled_at DESC`,
+      [customerId]
+    );
+
+    res.json({ courses: enrollments });
+  } catch (error) {
+    defaultLogger.error('Error fetching customer courses:', error);
+    res.status(500).json({ error: 'Failed to fetch courses' });
+  }
+});
+
 // Get customer's hosting accounts
 router.get('/accounts', async (req, res) => {
   try {

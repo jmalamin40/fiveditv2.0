@@ -74,6 +74,7 @@ export default function Header() {
   const navItems = [
     { label: 'About', href: isHomePage ? '#about' : '/#about' },
     { label: 'Services', href: '/services' },
+    { label: 'Courses', href: '/courses' },
     { label: 'Hosting', href: '/hosting' },
     { label: 'Domains', href: '/domains' },
     { label: 'Technologies', href: isHomePage ? '#technologies' : '/#technologies' },
