@@ -33,8 +33,8 @@ async function createGatewayOrder({
 }) {
   const payload = {
     order_id: orderId,
-    amount: Number(amount)?.toFixed(2) || '0.00',
-    currency,
+    amount: Number.isFinite(Number(amount)) ? Number(amount).toFixed(2) : '0.00',
+    currency: (currency && String(currency).trim()) || 'BDT',
     customer_name: customerName,
     customer_email: customerEmail,
     customer_phone: customerPhone || '',

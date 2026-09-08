@@ -39,10 +39,25 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
     const course = courses[0];
-    const amount = course.discount_price !== null && course.discount_price !== undefined ? course.discount_price : course.price;
+    const hasDiscount =
+      course.discount_price !== null &&
+      course.discount_price !== undefined &&
+      course.discount_price !== '';
+    const amount = Number(hasDiscount ? course.discount_price : course.price);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ error: 'Course has an invalid price' });
+    }
+    const currency = (course.currency && String(course.currency).trim()) || 'BDT';
+    const courseTitle = (course.title && String(course.title).trim()) || course_id;
+    const phone = customer_phone != null && String(customer_phone).trim() !== ''
+      ? String(customer_phone).trim()
+      : null;
 
     const orderId = `COURSE-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const returnUrlBase = `${FRONTEND_URL}/courses/payment/success`;
+    const cancelUrlBase = `${FRONTEND_URL}/courses/payment/cancel`;
 
+    // mysql2 rejects `undefined` in bind params — always coerce to null / defaults
     const [orderResult] = await pool.execute(
       `INSERT INTO course_orders (
         order_id, course_id, course_title, amount, currency,
@@ -52,39 +67,59 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
       [
         orderId,
         course_id,
-        course.title,
+        courseTitle,
         amount,
-        course.currency,
-        customer_name,
-        customer_email,
-        customer_phone || null,
-        `${FRONTEND_URL}/courses/payment/success`,
-        `${FRONTEND_URL}/courses/payment/cancel`,
-        customer_id,
+        currency,
+        String(customer_name).trim(),
+        String(customer_email).trim(),
+        phone,
+        returnUrlBase,
+        cancelUrlBase,
+        customer_id ?? null,
       ]
     );
     defaultLogger.log(`Course order created with ID: ${orderResult.insertId}, customer_id: ${customer_id || 'null'}`);
 
-    const returnUrl = `${FRONTEND_URL}/courses/payment/success?order_id=${encodeURIComponent(orderId)}`;
-    const cancelUrl = `${FRONTEND_URL}/courses/payment/cancel?order_id=${encodeURIComponent(orderId)}`;
+    const returnUrl = `${returnUrlBase}?order_id=${encodeURIComponent(orderId)}`;
+    const cancelUrl = `${cancelUrlBase}?order_id=${encodeURIComponent(orderId)}`;
     const webhookUrl = `${process.env.API_BASE_URL || 'http://localhost:3001'}/api/courses/payments/webhook`;
 
     try {
       const gatewayResponse = await createGatewayOrder({
         orderId: orderResult.insertId,
         amount,
-        currency: course.currency,
-        customerName: customer_name,
-        customerEmail: customer_email,
-        customerPhone: customer_phone,
+        currency,
+        customerName: String(customer_name).trim(),
+        customerEmail: String(customer_email).trim(),
+        customerPhone: phone || '',
         returnUrl,
         cancelUrl,
         webhookUrl,
       });
 
-      const transactionId = gatewayResponse.transaction_id;
-      const paymentUrl = gatewayResponse.payment_url;
+      const transactionId =
+        gatewayResponse?.transaction_id ??
+        gatewayResponse?.tnx_id ??
+        gatewayResponse?.transactionId ??
+        null;
+      const paymentUrl =
+        gatewayResponse?.payment_url ??
+        gatewayResponse?.paymentUrl ??
+        gatewayResponse?.url ??
+        null;
       syncLogger.info('Course payment response:', gatewayResponse);
+
+      if (!transactionId || !paymentUrl) {
+        defaultLogger.error('Course payment gateway returned incomplete payload:', gatewayResponse);
+        await pool.execute(
+          'UPDATE course_orders SET status = "failed", payment_gateway_response = ? WHERE id = ?',
+          [JSON.stringify(gatewayResponse || { error: 'Incomplete gateway response' }), orderResult.insertId]
+        );
+        return res.status(502).json({
+          error: 'Failed to create payment order',
+          details: 'Payment gateway did not return transaction_id/payment_url',
+        });
+      }
 
       await pool.execute(
         'UPDATE course_orders SET transaction_id = ?, payment_url = ?, payment_gateway_response = ? WHERE id = ?',
@@ -93,12 +128,12 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
 
       try {
         await sendOrderConfirmationEmail({
-          to: customer_email,
-          customerName: customer_name,
+          to: String(customer_email).trim(),
+          customerName: String(customer_name).trim(),
           orderId,
-          packageName: course.title,
+          packageName: courseTitle,
           amount,
-          currency: course.currency,
+          currency,
           paymentUrl,
         });
       } catch (emailError) {
@@ -111,26 +146,26 @@ router.post('/orders', optionalCustomerAuth, async (req, res) => {
         transaction_id: transactionId,
         payment_url: paymentUrl,
         amount,
-        currency: course.currency,
+        currency,
       });
     } catch (paymentError) {
       defaultLogger.error('Course payment gateway error:', paymentError.response?.data || paymentError.message);
 
       await pool.execute(
         'UPDATE course_orders SET status = "failed", payment_gateway_response = ? WHERE id = ?',
-        [JSON.stringify({ error: paymentError.response?.data || paymentError.message }), orderResult.insertId]
+        [JSON.stringify({ error: paymentError.response?.data || paymentError.message || String(paymentError) }), orderResult.insertId]
       );
 
       return res.status(500).json({
         error: 'Failed to create payment order',
-        details: paymentError.response?.data || paymentError.message,
+        details: paymentError.response?.data || paymentError.message || 'Payment gateway error',
       });
     }
   } catch (error) {
     defaultLogger.error('Error creating course payment order:', error);
     res.status(500).json({
       error: 'Failed to create payment order',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      details: error.message || 'Unexpected error',
     });
   }
 });
@@ -265,7 +300,7 @@ router.post('/webhook', async (req, res) => {
            payment_gateway_response = ?,
            transaction_id = COALESCE(?, transaction_id)
        WHERE id = ?`,
-      [status, status, JSON.stringify(req.body), transaction_id || tnx_id, order.id]
+      [status, status, JSON.stringify(req.body), transaction_id || tnx_id || null, order.id]
     );
 
     const isPaymentSuccessful = status === 'paid' || status === 'completed';
